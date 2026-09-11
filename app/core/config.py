@@ -20,5 +20,7 @@ class Settings:
     fred_api_key: str | None = os.environ.get("FRED_API_KEY")
     fred_timeout_seconds: float = 10.0
 
+    database_url: str | None = os.environ.get("DATABASE_URL")
+
 
 settings = Settings()

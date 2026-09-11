@@ -8,6 +8,9 @@ dependencies = [
     "uvicorn[standard]",
     "httpx",
     "python-dotenv",
+    "sqlalchemy>=2.0",
+    "alembic",
+    "psycopg[binary]",
 ]
 
 [build-system]

@@ -387,3 +387,385 @@ the code:
 - A build artifact that was committed once will keep coming back —
   removing it from the index and ignoring it going forward are both
   required, and neither alone is enough.
+
+---
+
+## Increment 003 — PostgreSQL Persistence
+
+**Objective:** give the application a persistence layer — retrieve real FRED
+data, normalize it (as already happened in Increment 002), and store the
+series and its observations transactionally in PostgreSQL. Explicitly not
+in scope: using the database as a cache, database-first reads, freshness
+policies, or any automatic refresh — this increment only adds the ability
+to *write* normalized data deliberately, via a new endpoint.
+
+### Architecture before this increment
+
+At the end of Increment 002, the request flow was:
+
+```
+Client -> Route -> EconomicDataService -> FREDClient -> FRED API
+```
+
+Every request re-fetched from FRED live; nothing was ever stored.
+`GET /api/v1/series/{series_id}` was, and remains, a read-only pass-through.
+
+### Why persistence now
+
+The project's purpose is to combine external data with the application's
+own reliable data infrastructure. Increment 002 proved the external
+integration works; this increment proves the application can own data
+durably rather than being a pure proxy in front of FRED. It's also the
+natural point to introduce the skills a "data engineering" platform is
+supposed to demonstrate: relational modeling, constraints, transactions,
+and version-controlled schema migrations — before layering AI reasoning on
+top of data nothing actually persists.
+
+### PostgreSQL, not SQLite or a NoSQL store
+
+The domain here is genuinely relational: one series has many observations,
+each observation belongs to exactly one series, and "don't duplicate this
+row" is a real constraint the database should enforce, not something
+application code should have to re-check by convention. Three realistic
+alternatives and why they were set aside:
+
+- **SQLite** — fine for a single-file embedded use case, but doesn't
+  reflect how this system would actually run in production (concurrent
+  connections, a separate database process, a real connection pool), and
+  the project explicitly wants that production-relevant experience.
+- **A document store (e.g. MongoDB)** — would mean either duplicating
+  observation arrays inside series documents (awkward uniqueness
+  enforcement, awkward partial updates) or building a manual "foreign key"
+  by convention with no real referential integrity. The data doesn't have
+  a variable/document-shaped structure that would benefit from schema
+  flexibility — it has two fixed, related shapes.
+- **A key-value store (e.g. DynamoDB)** — would push relational query
+  patterns (e.g. "all observations for this series between two dates")
+  into application code instead of letting the database do them natively.
+
+PostgreSQL was already the decided technology (see
+[ADR-006](adr/006-postgresql-persistence.md)); this section records *why*
+that fits the actual data shape, not just that it was chosen.
+
+### Relational data model
+
+Two tables, matching the one-to-many relationship in the domain:
+
+```
+economic_series (1) ──< economic_observations (N)
+```
+
+**`economic_series`** — one row per FRED series ever synced.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `integer`, PK | Internal database identity — see below. |
+| `series_id` | `varchar(64)`, unique, not null | The provider's business identifier, e.g. `"UNRATE"`. |
+| `title` | `varchar(255)`, not null | |
+| `units` | `varchar(64)`, not null | |
+| `source` | `varchar(32)`, not null, default `'FRED'` | Only one provider exists today; the column exists so a second provider wouldn't require a schema change. |
+| `created_at` | `timestamptz`, not null, server default `now()` | |
+| `updated_at` | `timestamptz`, not null, server default `now()`, updated on write | |
+
+**`economic_observations`** — one row per (series, date).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `integer`, PK | |
+| `economic_series_id` | `integer`, FK → `economic_series.id`, not null, indexed | See naming note below. |
+| `observation_date` | `date`, not null | |
+| `value` | `double precision`, nullable | `NULL` represents a FRED-reported missing observation (the same thing `Observation.value: float \| None` already represents at the API layer — see [ADR-005](adr/005-own-data-contract.md)). |
+| `created_at` | `timestamptz`, not null, server default `now()` | |
+
+`UNIQUE (economic_series_id, observation_date)` — the database itself
+guarantees one row per series/date, rather than trusting application code
+to always check first.
+
+### Internal identity vs. provider identity
+
+`economic_series.id` (an auto-incrementing integer) and
+`economic_series.series_id` (FRED's string, `"UNRATE"`) are deliberately
+different columns with different jobs. The foreign key on
+`economic_observations` points at `economic_series.id` — the *internal*
+identity — not at the provider's string. This matters for two reasons:
+an integer FK is cheaper to index and join on than a string one, and, more
+importantly, the relational structure doesn't depend on FRED's identifier
+scheme being stable or collision-free forever — if a second provider is
+ever added with its own identifier format, the internal `id` is unaffected.
+
+### Foreign key naming
+
+The FK column is named `economic_series_id`, not `series_id`. Reusing
+`series_id` for the FK would have created real ambiguity: is "series_id"
+the FRED string (`"UNRATE"`) or the internal row number this observation
+belongs to? Naming it `economic_series_id` makes the column
+unambiguously "the `id` column of `economic_series`" at a glance, in the
+schema and in every query.
+
+### The SQLAlchemy relationship
+
+```python
+class EconomicSeries(Base):
+    observations: Mapped[list["EconomicObservation"]] = relationship(
+        back_populates="series", cascade="all, delete-orphan"
+    )
+
+class EconomicObservation(Base):
+    series: Mapped["EconomicSeries"] = relationship(back_populates="series")
+```
+
+A plain one-to-many, both directions declared so either side can be
+navigated in Python. `cascade="all, delete-orphan"` means deleting an
+`EconomicSeries` deletes its observations too — the correct default for
+this domain (an observation orphaned from its series is meaningless), and
+nothing more elaborate (no many-to-many, no polymorphic association) was
+introduced, because nothing in this increment needs it.
+
+### SQLAlchemy: engine, pooling, session, transaction
+
+A few ORM/database concepts as they concretely apply in this codebase
+(`app/db/session.py`):
+
+- **Engine** (`create_engine(...)`) — the object that knows how to open
+  connections to PostgreSQL and owns a **connection pool** (a small set of
+  reused connections, so the application isn't opening a fresh TCP/auth
+  handshake for every query). Created once, lazily, the first time a
+  database operation is actually attempted — not at import time — so the
+  app can still start (and `/health` still work) even with no
+  `DATABASE_URL` set, mirroring the same lazy-config pattern established
+  for `FRED_API_KEY` in Increment 002. `pool_pre_ping=True` is the one
+  pool setting applied, so a stale connection (e.g. after a database
+  restart) is detected and replaced rather than causing a confusing
+  failure — no other pool tuning was done; the defaults are sensible for
+  this scale.
+- **Session** — a single unit-of-work bound to one engine connection at a
+  time: it tracks objects loaded/added/changed and turns that into SQL
+  when flushed. One `Session` is created per `session_scope()` call
+  (i.e., per request that touches the database) — never a global, shared
+  session.
+- **Transaction** — everything that happens between opening a session and
+  either committing or rolling it back. `session_scope()` (a context
+  manager) is the *only* place a commit or rollback happens: it commits if
+  the `with` block completes normally, rolls back if any exception
+  propagates out of it, and always closes the session. `SeriesRepository`
+  never calls `commit()` or `rollback()` — it only `add()`s and
+  `flush()`es (flush sends SQL to Postgres within the open transaction,
+  without ending it — used here so a newly created series' auto-generated
+  `id` is available in Python before its observations are inserted).
+
+This gives the operation exactly the "BEGIN … COMMIT or ROLLBACK" shape
+the increment asked for, with the transaction boundary owned in one place
+(see [ADR-009](adr/009-repository-boundary.md) for the fuller reasoning
+on why the repository itself stays commit-free).
+
+### Repository / data-access boundary
+
+`SeriesRepository` (`app/repositories/series_repository.py`) is the only
+code that issues SQL for series/observation data. It takes a `Session` the
+caller already has open, and exposes one real operation:
+`save_series(data: SeriesResponse) -> EconomicSeries`, which upserts both
+the series row and its observations. No generic `Repository[T]` base
+class, no interface separate from the one concrete implementation — see
+[ADR-009](adr/009-repository-boundary.md) for why a generic framework was
+deliberately not built here.
+
+### Alembic: migrations as the schema-management strategy
+
+The schema is never created by calling `Base.metadata.create_all()` at
+app startup — that would mean the "current schema" is just whatever the
+Python models happen to say *right now*, with no history and no reviewable
+diff when they change. Instead:
+
+- `alembic/env.py` imports `Base.metadata` from `app/db/base.py` /
+  `app/db/models.py` and points Alembic's `--autogenerate` at it, and
+  overrides `alembic.ini`'s placeholder `sqlalchemy.url` with the real
+  `DATABASE_URL` from the app's own `Settings` at runtime — so no
+  credential ever needs to live in a committed file.
+- The first migration (`alembic/versions/6412695f6f9d_*.py`) was
+  generated with `alembic revision --autogenerate`, then reviewed by hand
+  against the ORM models before being applied — autogenerate is a
+  starting draft, not something to trust blindly. It matched the models
+  exactly: both primary keys, the foreign key with `ON DELETE CASCADE`,
+  the unique index on `series_id`, the unique constraint on
+  `(economic_series_id, observation_date)`, and correct nullability
+  throughout.
+- The migration's `downgrade()` drops the tables in dependency order
+  (observations before series) — verified by reading it, not just trusting
+  the autogenerated output.
+
+### Upsert / idempotency behavior
+
+`SeriesRepository.save_series`:
+
+1. Look up the series by its business identifier (`series_id`). If it
+   doesn't exist, insert it and `flush()` to get its new `id`; if it
+   exists, update its `title`/`units`/`source` in place — same row, same
+   `id`, always.
+2. For each observation FRED returned, look up whether a row already
+   exists for that `(series, date)`. If yes, update its `value` in place;
+   if no, insert a new row.
+
+Calling `POST /api/v1/series/UNRATE/sync` twice therefore does not create
+a second `economic_series` row or duplicate any `economic_observations`
+row — verified directly (see Verification below). Observations for dates
+*not* present in the latest FRED response are left untouched — the sync
+operation never deletes history, only adds or updates what FRED currently
+reports.
+
+### `DATABASE_URL` configuration
+
+Read the same way `FRED_API_KEY` is (`app/core/config.py`,
+`os.environ.get("DATABASE_URL")`, populated for local dev via `.env`).
+Local development uses:
+
+```
+DATABASE_URL=postgresql+psycopg://<local-user>@localhost:5432/economic_intelligence
+```
+
+No password segment — the local PostgreSQL installation used for this
+increment (Homebrew `postgresql@16`) is configured with `trust`
+authentication for local/loopback connections (`pg_hba.conf`), which is
+standard for local development and predates this increment; it is not
+something this increment changed. `.env.example` documents the variable
+with a generic `user:password@localhost:5432/...` placeholder — a
+production `DATABASE_URL` would include real credentials, which is
+exactly why the variable is environment-sourced and never hardcoded.
+
+### `POST /api/v1/series/{series_id}/sync` semantics
+
+Added as a new endpoint rather than changing `GET`'s behavior:
+`GET /api/v1/series/{series_id}` remains a pure read against FRED, as
+before — it does not touch the database, and calling it does not persist
+anything. `POST /{series_id}/sync` is the explicit, deliberate operation
+that fetches from FRED *and* persists — `POST` because it changes
+server-side state, which is exactly what happened here and exactly why a
+`GET` was not reused for it.
+
+### Failures encountered during this increment
+
+- **`python-dotenv` and multi-line `.env` editing**: appending a new line
+  to `.env` with a shell `>>` redirect landed on the same line as the
+  existing `FRED_API_KEY` entry, because the file had no trailing newline
+  — corrupting it into one unparsceable line. Caught immediately (by
+  checking key names present via `grep -o '^[A-Z_]*'`, not by printing
+  values) and fixed. Lesson: when a `.env` file might lack a trailing
+  newline, write the whole file's structure deliberately rather than
+  blindly appending.
+- **A second accidental secret exposure**: inspecting `.env`'s current
+  state at one point used the file-reading tool directly instead of a
+  redaction-safe check, printing the real `FRED_API_KEY` value into the
+  session a second time (the first was in Increment 002). Caught
+  immediately; **the key should be rotated again**. Recorded here plainly
+  because repeating a known mistake is itself worth a permanent note:
+  the rule from Increment 002 ("never dump a secrets file — check
+  structure, not content") has to be followed by *every* tool used to
+  touch the file, including ones that don't look like "dumping" a file.
+- **FRED latency near the configured timeout**: live verification of
+  `POST /sync` hit the existing 10-second `FRED_TIMEOUT_SECONDS` a few
+  times during testing, because FRED's real response time fluctuated
+  between roughly 3 and 11 seconds over the course of this session. Not a
+  bug — the timeout did exactly what it's supposed to (see
+  [request-flows.md](architecture/request-flows.md)) — but it's a
+  concrete data point that 10 seconds is a tight margin against FRED's
+  actual observed latency, worth revisiting if it causes real friction.
+
+### Verification performed
+
+All done against the real, locally running PostgreSQL instance and the
+real FRED API:
+
+- App starts; `GET /health` → `200 {"status": "ok"}`, unchanged.
+- `GET /api/v1/series/UNRATE` → still `200` with normalized FRED data,
+  unaffected by the database changes.
+- `alembic upgrade head` applied cleanly against a freshly created
+  `economic_intelligence` database; `\d economic_series` /
+  `\d economic_observations` in `psql` confirmed the schema matches the
+  ORM models exactly (PK, FK with `ON DELETE CASCADE`, both unique
+  constraints, correct nullability).
+- `POST /api/v1/series/UNRATE/sync` (first real call): `200`, and a
+  direct `psql` query confirmed exactly one `economic_series` row
+  (`series_id='UNRATE'`) and ten `economic_observations` rows, dates and
+  values matching what FRED returned.
+- The same sync call repeated three times total: still exactly one
+  series row, still ten observation rows — no duplicates.
+- A targeted test through `SeriesRepository` directly (not through the
+  API) changed the series title and one observation's value, then called
+  `save_series` again: confirmed the *same* series `id` with the *updated*
+  title (`updated_at` genuinely advanced, confirmed via `psql`, not just
+  the in-memory object), the existing observation's value updated in
+  place, and a new observation date inserted — proving the update path,
+  not just the no-op "nothing changed" path. The synthetic test data was
+  then removed and a real sync re-run to leave the database holding only
+  genuine FRED data.
+- Rollback: a script began a `session_scope()`, flushed a new (fake)
+  series row — sending the `INSERT` to PostgreSQL inside the still-open
+  transaction — then raised an injected exception before committing.
+  Confirmed the series was **not** present afterward: `flush()` alone is
+  not durable, and the `except`/`rollback()` path in `session_scope()`
+  correctly discarded it.
+- Missing `DATABASE_URL`: sync returned `503`
+  ("Database is not configured on this server."); `/health` on the same
+  process still returned `200`.
+- Unreachable database (`DATABASE_URL` pointed at a closed port): sync
+  returned `503` ("Database is currently unavailable."), and neither the
+  HTTP response nor the server log contained the connection string.
+- Confirmed via `git status`/`git check-ignore` that `.env` remains
+  untracked and ignored, and that no tracked file (including
+  `.env.example`, `alembic.ini`) contains anything but the generic
+  placeholder connection string.
+
+### Deferred decisions
+
+- **`value` stored as `double precision` (Python `float`)**, matching the
+  existing Pydantic `Observation.value: float | None` exactly, rather than
+  a fixed-precision `NUMERIC` type. `NUMERIC` would be the more
+  traditionally "correct" choice for financial/economic figures (no
+  binary floating-point rounding), but it would introduce `Decimal`
+  conversions between the ORM and the Pydantic layer for no immediate
+  benefit — FRED's own values are already floating-point-precision
+  strings. Worth reconsidering if this data is ever used for anything
+  precision-sensitive (e.g. downstream calculation, not just display).
+- **Upsert implemented as "select, then insert-or-update in Python"**,
+  not PostgreSQL's native `INSERT ... ON CONFLICT DO UPDATE`. Simpler to
+  read and entirely correct for this increment's single-request,
+  low-concurrency usage (and the unique constraint still protects against
+  a genuine race, surfacing as an `IntegrityError` mapped to `409`). Under
+  real concurrent writes to the same series, the native upsert would be
+  more efficient and avoid a rare race window between the `SELECT` and
+  the `INSERT`/`UPDATE`; revisit if concurrent sync calls for the same
+  series become a real scenario.
+- **`POST /sync` returns the same `SeriesResponse` shape as `GET`**,
+  rather than a distinct result carrying e.g. counts of rows
+  created/updated. Kept minimal deliberately; a richer sync-result model
+  is easy to add later if a consumer actually needs to know what changed.
+
+### Reusable engineering lessons
+
+- A relational schema question worth asking on every new entity: does
+  this thing have its own lifecycle-independent identity (→ needs its own
+  primary key), and is any *other* identifier attached to it (a provider
+  code, a public slug) something that should also be unique but never
+  double as the join key? Conflating the two saves a column today and
+  costs a migration later.
+- `Base.metadata.create_all()` and Alembic are not "either works, pick
+  one" — only one of them produces a reviewable, revertible history of
+  how the schema got to its current shape, which is the actual point of
+  migrations.
+- Autogenerated migrations are a draft. Reading the generated
+  `upgrade()`/`downgrade()` against what was actually intended (PK, FK
+  behavior, constraints, nullability) is not optional busywork — it's the
+  step that catches the difference between "the tool produced valid SQL"
+  and "the tool produced the SQL we meant."
+- A transaction boundary should have exactly one owner. Once a repository
+  is tempted to call `commit()` "just to be safe," the whole point of an
+  explicit `session_scope()` — one operation, one BEGIN, one COMMIT or
+  ROLLBACK — is gone; `flush()` (visible to the current transaction,
+  not durable) vs. `commit()` (durable) is the tool that makes this
+  possible without the repository needing to know whether it's one step
+  of a larger operation or the whole thing.
+- Verifying "the operation is idempotent" by calling the endpoint twice
+  is necessary but not sufficient if both calls happen to hit the
+  no-op path (nothing upstream changed). It's worth a second, more
+  targeted check that actually forces the update-in-place path to run
+  (changed metadata, changed observation value) — otherwise "idempotent"
+  and "doesn't do anything on the second call" are easy to confuse.
