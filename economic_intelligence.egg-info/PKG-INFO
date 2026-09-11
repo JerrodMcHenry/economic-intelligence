@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: economic-intelligence
+Version: 0.1.0
+Summary: Enterprise AI economic intelligence and data integration platform
+Requires-Python: <3.13,>=3.12
+Requires-Dist: fastapi
+Requires-Dist: uvicorn[standard]

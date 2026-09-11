@@ -1,0 +1,13 @@
+[project]
+name = "economic-intelligence"
+version = "0.1.0"
+description = "Enterprise AI economic intelligence and data integration platform"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
