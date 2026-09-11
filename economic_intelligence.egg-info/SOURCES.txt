@@ -1,9 +1,0 @@
-README.md
-pyproject.toml
-app/__init__.py
-app/main.py
-economic_intelligence.egg-info/PKG-INFO
-economic_intelligence.egg-info/SOURCES.txt
-economic_intelligence.egg-info/dependency_links.txt
-economic_intelligence.egg-info/requires.txt
-economic_intelligence.egg-info/top_level.txt
