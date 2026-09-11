@@ -5,7 +5,10 @@ failures into appropriate HTTP status codes. No FRED- or business-logic
 details live here.
 """
 
-from fastapi import APIRouter, HTTPException
+from datetime import date
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 
 from app.clients.fred import (
@@ -17,8 +20,8 @@ from app.clients.fred import (
 )
 from app.core.config import settings
 from app.db.session import session_scope
-from app.models.series import SeriesResponse
-from app.services.economic_data import EconomicDataService
+from app.models.series import SeriesObservationsResponse, SeriesResponse
+from app.services.economic_data import EconomicDataService, InvalidDateRangeError, SeriesNotFoundError
 
 router = APIRouter(prefix="/series", tags=["series"])
 
@@ -90,3 +93,46 @@ def sync_series(series_id: str) -> SeriesResponse:
         raise HTTPException(status_code=503, detail="Database is currently unavailable.")
     except SQLAlchemyError:
         raise HTTPException(status_code=500, detail="Database error while persisting series data.")
+
+
+@router.get("/{series_id}/observations", response_model=SeriesObservationsResponse)
+def get_series_observations(
+    series_id: str,
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    order: Literal["asc", "desc"] = Query(default="asc"),
+) -> SeriesObservationsResponse:
+    """Query persisted historical observations for a series from PostgreSQL.
+
+    Database-only: never calls FRED, never syncs, never mutates data. Use
+    POST /{series_id}/sync to populate/refresh what this endpoint reads.
+    """
+    if not settings.database_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Database is not configured on this server.",
+        )
+
+    service = EconomicDataService()
+
+    try:
+        with session_scope() as session:
+            return service.get_observations(
+                series_id,
+                session,
+                start_date=start_date,
+                end_date=end_date,
+                limit=limit,
+                offset=offset,
+                order=order,
+            )
+    except InvalidDateRangeError:
+        raise HTTPException(status_code=400, detail="start_date must not be after end_date.")
+    except SeriesNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Series '{series_id}' was not found.")
+    except OperationalError:
+        raise HTTPException(status_code=503, detail="Database is currently unavailable.")
+    except SQLAlchemyError:
+        raise HTTPException(status_code=500, detail="Database error while reading series data.")

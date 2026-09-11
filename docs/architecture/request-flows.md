@@ -5,10 +5,12 @@ Runtime flows through the system as it exists today. See
 component picture.
 
 - Flow 1 — Health Check
-- Flow 2 — Economic Series Request (`GET`, read-only, unchanged since Increment 002)
+- Flow 2 — Economic Series Request (`GET`, FRED-backed, read-only, unchanged since Increment 002)
 - Flow 3 — Failure Scenarios for the `GET` flow
 - Flow 4 — Economic Series Sync (`POST .../sync`, persists to PostgreSQL) — new in Increment 003
 - Flow 5 — Sync Failure Scenarios, including transaction rollback — new in Increment 003
+- Flow 6 — Historical Observations Query (`GET .../observations`, PostgreSQL-only) — new in Increment 004
+- Flow 7 — Observations Query Failure Scenarios — new in Increment 004
 
 ## Flow 1 — Health Check
 
@@ -269,3 +271,105 @@ sequenceDiagram
 No session is opened and FRED is never called in this case — the route
 short-circuits before any work begins, the same pattern used for a
 missing `FRED_API_KEY`.
+
+## Flow 6 — Historical Observations Query (success path)
+
+`GET /api/v1/series/{series_id}/observations` reads only from PostgreSQL.
+`FREDClient` never appears anywhere in this flow — no import, no
+instantiation, no call.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/series.py)
+    participant S as EconomicDataService
+    participant SS as session_scope()
+    participant Repo as SeriesRepository
+    participant DB as PostgreSQL
+
+    C->>R: GET /api/v1/series/UNRATE/observations?start_date=2020-01-01&limit=100&order=asc
+    Note over R: FastAPI/Pydantic validate limit, offset, order,<br/>and date syntax before this handler runs
+    R->>R: database_url present?
+    R->>SS: enter session_scope()
+    R->>S: get_observations("UNRATE", session, start_date, end_date, limit, offset, order)
+    S->>S: start_date > end_date? (application-level check)
+    S->>Repo: get_series_by_series_id("UNRATE")
+    Repo->>DB: SELECT economic_series WHERE series_id = 'UNRATE'
+    DB-->>Repo: series row
+    Repo-->>S: EconomicSeries
+    S->>Repo: get_observations(economic_series_id, start_date, end_date, limit, offset, order)
+    Repo->>DB: SELECT count(*) FROM economic_observations WHERE economic_series_id = ? [AND date filters]
+    DB-->>Repo: total
+    Repo->>DB: SELECT * FROM economic_observations WHERE ... ORDER BY observation_date LIMIT ? OFFSET ?
+    DB-->>Repo: page of rows
+    Repo-->>S: (rows, total)
+    S->>S: build SeriesObservationsResponse (observations + pagination)
+    S-->>R: SeriesObservationsResponse
+    R->>SS: exit session_scope() normally
+    SS->>DB: COMMIT (no-op for a read, but the same owned boundary as every other DB access)
+    R-->>C: 200 JSON
+```
+
+Both the count query and the page query share the same `WHERE`
+conditions, which is what guarantees `pagination.total` always describes
+exactly what `limit`/`offset` are paginating over.
+
+## Flow 7 — Observations Query Failure Scenarios
+
+| Scenario | Where it's caught | HTTP status |
+|---|---|---|
+| Malformed `limit`/`offset`/`order`/date syntax | FastAPI/Pydantic, before the route body runs | `422` |
+| `start_date` after `end_date` | `InvalidDateRangeError` from `EconomicDataService.get_observations` | `400` |
+| Series not persisted in PostgreSQL | `SeriesNotFoundError` from the service (repository returned no series row) | `404` |
+| Series persisted, but no observation matches the filters | *(no exception — a normal empty result)* | `200`, `observations: []`, `total: 0` |
+| `DATABASE_URL` not configured | Checked in the route before a session is opened | `503` |
+| Database unreachable | `sqlalchemy.exc.OperationalError` | `503` |
+| Any other database-layer failure | `sqlalchemy.exc.SQLAlchemyError` (base class) | `500` |
+
+Note what's *not* in this table compared to Flow 5's write-side table:
+`IntegrityError` has no branch here. A read-only `SELECT` cannot violate a
+unique or foreign-key constraint, so there is no realistic way for this
+endpoint to raise one — a handler for it would be dead code, not defense.
+
+### Nonexistent persisted series vs. an empty filtered result
+
+These look similar from the outside (no observations come back) but mean
+different things and are handled differently:
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route
+    participant S as EconomicDataService
+    participant Repo as SeriesRepository
+    participant DB as PostgreSQL
+
+    rect rgb(248, 113, 113)
+    Note over C,DB: Series never synced -- no row in economic_series
+    C->>R: GET /api/v1/series/NOTPERSISTED/observations
+    R->>S: get_observations(...)
+    S->>Repo: get_series_by_series_id("NOTPERSISTED")
+    Repo->>DB: SELECT ... WHERE series_id = 'NOTPERSISTED'
+    DB-->>Repo: no row
+    Repo-->>S: None
+    S->>S: raise SeriesNotFoundError
+    S-->>R: (exception propagates)
+    R-->>C: 404 {"detail": "Series 'NOTPERSISTED' was not found."}
+    end
+
+    rect rgb(134, 239, 172)
+    Note over C,DB: Series exists, but no observation matches the date filter
+    C->>R: GET /api/v1/series/UNRATE/observations?start_date=2099-01-01
+    R->>S: get_observations(...)
+    S->>Repo: get_series_by_series_id("UNRATE")
+    Repo->>DB: SELECT ... WHERE series_id = 'UNRATE'
+    DB-->>Repo: series row (found)
+    Repo-->>S: EconomicSeries
+    S->>Repo: get_observations(..., start_date=2099-01-01)
+    Repo->>DB: SELECT count(*) / SELECT * ... WHERE observation_date >= '2099-01-01'
+    DB-->>Repo: 0 rows, total=0
+    Repo-->>S: ([], 0)
+    S-->>R: SeriesObservationsResponse(observations=[], pagination.total=0)
+    R-->>C: 200 {"observations": [], "pagination": {"total": 0, "returned": 0, ...}}
+    end
+```

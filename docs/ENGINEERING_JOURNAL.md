@@ -769,3 +769,262 @@ real FRED API:
   targeted check that actually forces the update-in-place path to run
   (changed metadata, changed observation value) — otherwise "idempotent"
   and "doesn't do anything on the second call" are easy to confuse.
+
+---
+
+## Increment 004 — Historical Data Query API
+
+**Objective:** make the data Increment 003 started persisting actually
+useful by adding a read endpoint over it —
+`GET /api/v1/series/{series_id}/observations` — that queries PostgreSQL
+directly, with date filtering, ordering, and pagination. Explicitly not in
+scope: falling back to FRED, auto-syncing, caching, or any transformation
+of the stored values (percent changes, moving averages, etc.).
+
+### Architecture before this increment
+
+```
+POST /sync  -> Route -> Service -> FREDClient -> FRED
+                              \-> SeriesRepository -> PostgreSQL (write)
+
+GET /series/{id} -> Route -> Service -> FREDClient -> FRED (read, but from FRED, not the DB)
+```
+
+Nothing in the application read *from* PostgreSQL — Increment 003 built a
+write-only path. `GET /api/v1/series/{series_id}` reads from FRED every
+time, same as Increment 002; it was never changed to read the database.
+
+### Why a database read path now, and why it's a distinct path
+
+The persisted data was inert until something could query it — sync writes
+data nobody could retrieve without going back to FRED, which defeats the
+point of persisting it. This increment adds that missing read path, and
+deliberately keeps it separate from the existing FRED-backed
+`GET /api/v1/series/{series_id}`:
+
+```
+WRITE PATH:  POST /sync         -> Service -> FREDClient   -> FRED       -> Repository -> PostgreSQL
+READ PATH:   GET  /observations -> Service -> SeriesRepository -> PostgreSQL
+```
+
+`GET /api/v1/series/{series_id}/observations` never imports, constructs,
+or calls anything FRED-related — verified directly (see Verification
+below) by patching `FREDClient` to raise if instantiated and confirming
+the endpoint still succeeds. This is a genuinely different contract from
+`GET /api/v1/series/{series_id}`: that endpoint answers "what does FRED
+say right now," this one answers "what has our application actually
+stored" — they can legitimately disagree if nobody has synced recently,
+and that's expected, not a bug, at this stage (no freshness policy exists
+yet — see Deferred decisions).
+
+### Query parameters
+
+| Parameter | Type | Default | Constraint |
+|---|---|---|---|
+| `start_date` | date, optional | none | — |
+| `end_date` | date, optional | none | — |
+| `limit` | int | 100 | `1 <= limit <= 1000` |
+| `offset` | int | 0 | `offset >= 0` |
+| `order` | `"asc"` \| `"desc"` | `"asc"` | one of the two literal values |
+
+### Two layers of validation, on purpose
+
+- **FastAPI/Pydantic (route layer)** — `Query(ge=1, le=1000)` on `limit`,
+  `Query(ge=0)` on `offset`, a `Literal["asc", "desc"]` type on `order`,
+  and `date` typing on `start_date`/`end_date`. These are all things
+  FastAPI can reject before any application code runs, and it does:
+  malformed dates, an out-of-range `limit`, a negative `offset`, or an
+  `order` value that isn't `"asc"`/`"desc"` all come back as `422` with
+  FastAPI's own structured validation error body — no code in this
+  project had to write that logic.
+- **Application rule (service layer)** — `start_date > end_date` is not a
+  primitive-type problem (both are individually valid dates); it's a
+  cross-field business rule, so it's checked in `EconomicDataService.get_observations`
+  and raises a small typed `InvalidDateRangeError`, which the route maps
+  to `400` with a fixed, generic message. This is the same
+  "primitive validation at the boundary, business rules in the service"
+  split the project has used since Increment 002 — FastAPI validates
+  *shape*, the service validates *meaning*.
+
+### Filtering, ordering, and pagination (the repository)
+
+`SeriesRepository.get_observations` builds one shared list of SQLAlchemy
+`WHERE` conditions — always `economic_series_id == ...`, plus
+`observation_date >= start_date` and/or `observation_date <= end_date`
+when those were given — and uses the *same* conditions for both:
+
+1. a `SELECT count(*) ... WHERE ...` for the total matching the filters, and
+2. a `SELECT * ... WHERE ... ORDER BY ... LIMIT ... OFFSET ...` for the
+   actual page.
+
+Sharing the conditions between the two queries is what guarantees
+`pagination.total` always reflects exactly what `limit`/`offset` are
+paginating over — if the two queries ever drifted (e.g. one used
+`start_date` and the other forgot it), `total` and the actual filtered
+set would silently disagree.
+
+`ORDER BY observation_date` (ascending or descending per `order`) is the
+entire sort key — no secondary tiebreaker column was added, because none
+is needed: `uq_observation_series_date` (`UNIQUE(economic_series_id,
+observation_date)`) already guarantees no two observations in the same
+series share a date, so within one series' results, `observation_date`
+alone is already a unique, deterministic sort key.
+
+### `LIMIT`/`OFFSET`, and its known cost
+
+Pagination is plain SQL `LIMIT`/`OFFSET` — the simplest option, and
+adequate for this project's current data volumes (one series currently
+holds 10 observations; even a long daily series over decades is a few
+thousand rows). The known tradeoff: `OFFSET` on a large table makes
+PostgreSQL walk and discard `offset` rows before it can return anything,
+so a very large `offset` against a very large table gets slower as the
+offset grows — a cost cursor/keyset pagination (paginating by "give me
+rows after the last date I saw" instead of a row count) avoids. Not
+implemented here deliberately — it would be solving a scale problem this
+project doesn't have yet, at the cost of a less obvious API (`offset` is
+immediately understandable; a keyset cursor is not, without explanation).
+Worth revisiting if a series' observation count grows enough, or query
+latency at high offsets actually becomes measurable, but not before.
+
+### Indexing — why no migration was needed this increment
+
+Increment 003's migration already created
+`uq_observation_series_date`, a unique constraint on
+`(economic_series_id, observation_date)`. PostgreSQL backs every unique
+constraint with a btree index automatically — confirmed directly via
+`psql`'s `\d economic_observations`, which shows
+`"uq_observation_series_date" UNIQUE CONSTRAINT, btree (economic_series_id, observation_date)`.
+
+That composite index's leading column is exactly `economic_series_id`,
+which is exactly this increment's dominant filter
+(`WHERE economic_series_id = ?`), and a btree index on
+`(economic_series_id, observation_date)` also directly serves range
+filtering and ordering on `observation_date` *within* a matching
+`economic_series_id` — precisely the
+`AND observation_date BETWEEN ? AND ? ORDER BY observation_date` half of
+the query. Adding a second, separate index on the same two columns would
+have been pure duplication: extra disk space and extra write-time
+maintenance cost on every future sync, for a query the existing index
+already serves. No new Alembic migration was created this increment
+because no schema change was needed — the existing constraint already
+implied the index this feature needed.
+
+(Aside, not acted on: `economic_observations` also still carries the
+single-column index `ix_economic_observations_economic_series_id` from
+Increment 003, which is now redundant on top of the composite unique
+index — a btree index on `(A, B)` already serves lookups on `A` alone
+just as well as a standalone index on `A`. Removing it is a legitimate
+future cleanup, but it predates this increment and wasn't requested, so
+it was left alone rather than folded into an unrelated migration.)
+
+### Database-only read semantics: 404 vs. empty result
+
+Two different "nothing here" cases, deliberately given different
+meanings:
+
+- **The series itself was never persisted** (no `POST .../sync` has ever
+  succeeded for it) → `404`. The route/service can't return "a series
+  with zero observations" because there's no series row to describe —
+  there's no `title`/`units` to put in the response at all.
+- **The series exists, but no observation matches the date filter** (or
+  the series has been synced but genuinely has no observations yet) →
+  `200`, with `observations: []` and `pagination: {"total": 0, "returned": 0, ...}`.
+  This is a normal, successful answer to "what do you have in this date
+  range" — the honest answer is "nothing," not an error.
+
+### Error handling — only what can actually happen on a read
+
+The route only maps exceptions that a pure read can realistically raise:
+`InvalidDateRangeError` → `400`, `SeriesNotFoundError` → `404`,
+`OperationalError` (database unreachable) → `503`, and a generic
+`SQLAlchemyError` fallback → `500`. `IntegrityError` — meaningful for the
+`sync` endpoint's writes — was deliberately **not** given a branch here:
+a `SELECT`-only code path cannot violate a unique or foreign-key
+constraint, so a branch for it would be dead code asserting a failure
+mode that can't occur, not real error handling.
+
+### A small, honest signature change: `FREDClient` became optional
+
+`EconomicDataService.__init__` previously required a `FREDClient`.
+`get_observations` never touches FRED, so the new route never constructs
+one — meaning the existing constructor signature would have forced either
+a fake/unused client just to satisfy typing, or a second service class.
+Neither was appealing, so `fred_client: FREDClient | None = None` was the
+smallest honest change: the two FRED-backed methods (`get_series`,
+`sync_series`) are only ever called from routes that already guarantee a
+real client is present; `get_observations` never references
+`self._fred_client` at all.
+
+### Verification performed
+
+Against the real running application and real local PostgreSQL:
+
+- `GET /health` → `200`; `GET /api/v1/series/UNRATE` (FRED-backed) →
+  `200`; `POST /api/v1/series/UNRATE/sync` → `200` — all three unchanged
+  from Increment 003.
+- **Proof of no FRED dependency**: `FREDClient` patched to raise on
+  instantiation anywhere it could be constructed; `GET .../observations`
+  still returned `200` normally — a call to FRED would have blown up the
+  test, and didn't.
+- Basic query (no params) → `200`, 10 observations, `pagination.total == 10`.
+- `start_date` alone, `end_date` alone, and both together → each returned
+  exactly the expected subset (inclusive boundaries on both ends).
+- `order=asc` / `order=desc` → confirmed actual returned date ordering in
+  both directions.
+- `limit=3` → `returned: 3`, `total: 10` (total unaffected by limit).
+- `offset=8` (10 total rows) → returned the final 2 rows, correct
+  `pagination.offset`/`returned`.
+- Combined filter + `limit` → `total` reflected the *filtered* count (6),
+  not the unfiltered series total (10), while `returned` reflected the
+  page size (3) — confirming `total` and `returned` measure different
+  things, as specified.
+- Nonexistent persisted series → `404`.
+- Valid series with a date filter matching nothing → `200`,
+  `observations: []`, `total: 0`, `returned: 0`.
+- `start_date > end_date` → `400` with the fixed generic message.
+- Invalid date syntax, invalid `order`, `limit=0`, `limit=-1`,
+  `limit=1001`, `offset=-1` → each `422`, via FastAPI's own validation
+  (no application code involved).
+- Database unreachable (`DATABASE_URL` pointed at a closed port) → `503`,
+  confirmed no connection string in the response or server log.
+- `DATABASE_URL` unset entirely → `503`.
+- Confirmed via `git status`/`grep` that no secret value appears in any
+  changed file, and that `.env` itself was never read, printed, or
+  otherwise displayed during this increment (only existence/ignore/
+  variable-name checks and behavior through the running application).
+
+### Deferred decisions
+
+- **No freshness/staleness signal on the read path.** `GET .../observations`
+  answers strictly "what's in our database right now" — it doesn't
+  indicate how stale that is relative to FRED, or suggest a re-sync. Any
+  freshness policy is explicitly a later increment's concern (per the
+  project's own out-of-scope list).
+- **Cursor/keyset pagination** was considered and deliberately deferred —
+  see the `LIMIT`/`OFFSET` section above for the concrete tradeoff.
+- **The pre-existing redundant single-column index** on
+  `economic_series_id` (from Increment 003) was noticed but not removed —
+  see the Indexing section above.
+
+### Reusable engineering lessons
+
+- "Only map the exceptions that can actually happen" is a real design
+  check, not just tidiness — a read-only repository method genuinely
+  cannot raise `IntegrityError`, so a handler for it in the read route
+  would be asserting a false story about what can go wrong there.
+  Exception handling should describe reality, not mirror a sibling
+  endpoint out of habit.
+- Reusing a Pydantic model via inheritance (`SeriesObservationsResponse(SeriesResponse)`)
+  is a cheap, honest way to share a contract's core fields without
+  duplicating field declarations — appropriate specifically because the
+  new response genuinely *is* "a `SeriesResponse`, plus pagination," not
+  a coincidentally similar but conceptually different shape.
+- The strongest proof that a code path "doesn't call an external service"
+  isn't reading the code and confirming no import is used at runtime — it's
+  making that external service explode if touched, and watching the
+  request still succeed. Static inspection can miss an indirect call
+  through a shared helper; the exploding-mock approach can't.
+- Before adding an index, check what already exists and why — a unique
+  constraint already *is* an index in PostgreSQL, and the columns/order
+  that make it useful for uniqueness (leading column first) are often
+  exactly the columns/order a corresponding query needs too.

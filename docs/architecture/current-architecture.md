@@ -1,7 +1,7 @@
 # Current Architecture
 
 This document describes the system **as it exists right now**, after
-Increment 003. It is not a history — see [`../ENGINEERING_JOURNAL.md`](../ENGINEERING_JOURNAL.md)
+Increment 004. It is not a history — see [`../ENGINEERING_JOURNAL.md`](../ENGINEERING_JOURNAL.md)
 for how it got here, and [`../adr/`](../adr/) for why specific choices were
 made.
 
@@ -11,11 +11,11 @@ made.
 |---|---|---|
 | ASGI server | Uvicorn (process) | Runs the FastAPI app, handles HTTP connections |
 | Application | `app/main.py` | Creates the `FastAPI` app, mounts routers, defines `/health` |
-| Series route | `app/api/series.py` | HTTP layer for `/api/v1/series/{series_id}` and `.../sync`: request handling, exception → status code translation |
-| Economic data service | `app/services/economic_data.py` (`EconomicDataService`) | Use-case logic: fetch + normalize a series; orchestrate fetch-then-persist for sync |
+| Series route | `app/api/series.py` | HTTP layer for `/api/v1/series/{series_id}`, `.../sync`, and `.../observations`: request/query-parameter handling, exception → status code translation |
+| Economic data service | `app/services/economic_data.py` (`EconomicDataService`) | Use-case logic: fetch + normalize a series from FRED; orchestrate fetch-then-persist for sync; validate and coordinate a persisted-observations query |
 | FRED client | `app/clients/fred.py` (`FREDClient`) | All FRED-specific HTTP: request construction, timeout, FRED error → typed exception translation |
-| Series repository | `app/repositories/series_repository.py` (`SeriesRepository`) | All SQL for series/observations: upserts series metadata and observations within a caller-owned transaction |
-| Response models | `app/models/series.py` (`Observation`, `SeriesResponse`) | The application's own, provider-independent API response contract |
+| Series repository | `app/repositories/series_repository.py` (`SeriesRepository`) | All SQL for series/observations: upserts series metadata and observations within a caller-owned transaction; series lookup and filtered/ordered/paginated observation queries |
+| Response models | `app/models/series.py` (`Observation`, `SeriesResponse`, `PaginationMeta`, `SeriesObservationsResponse`) | The application's own, provider-independent API response contract |
 | ORM models | `app/db/models.py` (`EconomicSeries`, `EconomicObservation`) | The relational shape of persisted data |
 | DB engine/session | `app/db/session.py` | Lazily-created SQLAlchemy engine (connection pool) and `session_scope()` transaction boundary |
 | Configuration | `app/core/config.py` (`Settings`) | Reads `FRED_API_KEY`, `DATABASE_URL`, and the FRED request timeout from the environment |
@@ -31,9 +31,11 @@ graph TD
     App --> Health["GET /health<br/>app/main.py"]
     App --> GetRoute["GET /api/v1/series/{series_id}<br/>app/api/series.py"]
     App --> SyncRoute["POST /api/v1/series/{series_id}/sync<br/>app/api/series.py"]
+    App --> ObsRoute["GET /api/v1/series/{series_id}/observations<br/>app/api/series.py"]
 
     GetRoute --> Service["EconomicDataService<br/>app/services/economic_data.py"]
     SyncRoute --> Service
+    ObsRoute --> Service
 
     Service --> Client["FREDClient<br/>app/clients/fred.py"]
     Service --> Repo["SeriesRepository<br/>app/repositories/series_repository.py"]
@@ -44,10 +46,42 @@ graph TD
 
     Config["Settings<br/>app/core/config.py<br/>(FRED_API_KEY, DATABASE_URL, timeout)"] -.-> GetRoute
     Config -.-> SyncRoute
-    Models["Observation / SeriesResponse<br/>app/models/series.py"] -.-> Service
+    Config -.-> ObsRoute
+    Models["Observation / SeriesResponse /<br/>SeriesObservationsResponse<br/>app/models/series.py"] -.-> Service
     OrmModels["EconomicSeries / EconomicObservation<br/>app/db/models.py"] -.-> Repo
     Alembic["alembic/ migrations"] -.->|"defines schema for"| PG
 ```
+
+`GetRoute` and `SyncRoute` reach `FREDClient`; `ObsRoute` never does — it
+is wired only through `Service` to `Repo` to PostgreSQL. This is a real
+structural fact, not just a diagram simplification: `FREDClient` is never
+imported or constructed anywhere in `get_series_observations`'s call path.
+
+## Write path vs. read path
+
+Two distinct paths now exist over the same persisted data:
+
+```
+WRITE/SYNC PATH:
+  Client -> POST /api/v1/series/{id}/sync -> Route -> EconomicDataService
+    -> FREDClient -> FRED API
+    -> SeriesRepository -> PostgreSQL   (INSERT/UPDATE, one transaction)
+
+READ PATH (historical observations):
+  Client -> GET /api/v1/series/{id}/observations -> Route -> EconomicDataService
+    -> SeriesRepository -> PostgreSQL   (SELECT only)
+```
+
+`POST .../sync` is the only way data enters PostgreSQL.
+`GET .../observations` is the only way to read it back through this API.
+Neither path touches the other's external dependency: sync never reads
+observations back out of the database beyond what it needs to upsert, and
+the observations read never calls FRED.
+
+`GET /api/v1/series/{series_id}` (no `/observations` suffix) is a third,
+separate path, unchanged since Increment 002 — it still reads live from
+FRED and never touches PostgreSQL at all. See Response contract below for
+how its contract relates to `.../observations`'.
 
 ## Configuration boundary
 
@@ -120,7 +154,7 @@ deliberately (see [ADR-006](../adr/006-postgresql-persistence.md)).
 ## Response contract
 
 API consumers only ever receive `app/models/series.py`'s Pydantic models —
-never FRED's raw JSON and never a raw database row. Both
+never FRED's raw JSON and never a raw database row.
 `GET /api/v1/series/{series_id}` and `POST /api/v1/series/{series_id}/sync`
 return the same shape:
 
@@ -137,16 +171,45 @@ return the same shape:
 }
 ```
 
+`GET /api/v1/series/{series_id}/observations` returns
+`SeriesObservationsResponse`, which extends that same shape (via Pydantic
+inheritance, not field duplication) with pagination metadata:
+
+```json
+{
+  "series_id": "UNRATE",
+  "title": "Unemployment Rate",
+  "units": "Percent",
+  "source": "FRED",
+  "observations": [
+    { "date": "2024-01-01", "value": 3.7 }
+  ],
+  "pagination": {
+    "limit": 100,
+    "offset": 0,
+    "returned": 1,
+    "total": 720
+  }
+}
+```
+
 Notes on the current implementation:
-- `observations` is the 10 most recent data points (`DEFAULT_OBSERVATION_LIMIT`
-  in `app/services/economic_data.py`), ordered oldest → newest.
+- On `GET /api/v1/series/{series_id}` (FRED-backed), `observations` is the
+  10 most recent data points (`DEFAULT_OBSERVATION_LIMIT` in
+  `app/services/economic_data.py`), ordered oldest → newest, and is not
+  paginated. On `GET .../observations` (database-backed), `observations`
+  is one page — up to `limit`, offset by `offset`, ordered per `order` —
+  of whatever's actually persisted, with `pagination.total` reporting how
+  many rows matched before pagination.
 - `value` is `null` when FRED reports a missing observation (FRED's raw `"."`),
-  both in this response and as stored (`NULL`) in `economic_observations`.
+  both in these responses and as stored (`NULL`) in `economic_observations`.
 - `source` is currently always the literal string `"FRED"` — there is only
   one provider.
-- `GET` never touches the database — it is a pure, read-only pass-through
-  to FRED, unchanged since Increment 002. `POST .../sync` is the only
-  operation that writes.
+- `GET /api/v1/series/{series_id}` never touches the database — it is a
+  pure, read-only pass-through to FRED, unchanged since Increment 002.
+  `GET .../observations` never touches FRED — it is a pure, read-only
+  pass-through to PostgreSQL. `POST .../sync` is the only operation that
+  writes, and the only path that touches both.
 
 ## Health endpoint
 
@@ -169,10 +232,13 @@ route) only ever sees those typed exceptions or valid data.
 
 The following are intentionally absent — not overlooked:
 
-- **Database as a cache** — `GET /api/v1/series/{series_id}` does not read
-  from PostgreSQL; there is no database-first lookup, freshness policy, or
-  cache invalidation. The database is currently write-only from the
-  application's perspective, populated exclusively by `POST .../sync`.
+- **Database as a cache for the FRED-backed endpoint** —
+  `GET /api/v1/series/{series_id}` still does not read from PostgreSQL and
+  has no fallback/freshness logic; it answers strictly from FRED, as it
+  always has. `GET .../observations` reads the database, but only because
+  a client explicitly asked for persisted data — there is still no
+  automatic "serve from DB if fresh enough, else hit FRED" behavior
+  anywhere, and no cache invalidation.
 - **Automatic/background synchronization** — no scheduler, no background
   job, no Celery, no message queue. Sync only happens when a client calls
   `POST .../sync`.
@@ -204,8 +270,10 @@ The following are intentionally absent — not overlooked:
 
 This section is a pointer to intent only — nothing below exists in the
 codebase today. Per the project purpose, later increments are expected to
-add, in some order: database-backed reads with an explicit freshness
-policy, additional external data providers, an AI reasoning/tool-calling
-layer over the persisted data, and production infrastructure concerns
-(Docker, CI/CD, observability, cloud deployment). Each will get its own
-ADR(s) and journal entry when it happens, the same as Increments 001–003.
+add, in some order: a freshness policy connecting the FRED-backed and
+database-backed read paths (e.g. serving from PostgreSQL with an
+explicit staleness check, rather than two independent endpoints),
+additional external data providers, an AI reasoning/tool-calling layer
+over the persisted data, and production infrastructure concerns (Docker,
+CI/CD, observability, cloud deployment). Each will get its own ADR(s) and
+journal entry when it happens, the same as Increments 001–004.
