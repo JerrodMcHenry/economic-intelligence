@@ -14,6 +14,13 @@ dependencies = [
     "openai>=3.0",
 ]
 
+[project.optional-dependencies]
+# Dev/test-only -- never required at runtime, never installed in production.
+# Increment 010: the first committed automated test suite (previously all
+# verification was ad hoc, never repeatable). pytest is the only addition;
+# nothing here is imported by app/ at runtime.
+dev = ["pytest"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -25,3 +32,21 @@ build-backend = "setuptools.build_meta"
 # one is intended) -- unrelated to this increment, but newly blocking a
 # plain `pip install -e .`, so fixed here rather than worked around.
 include = ["app*"]
+
+[tool.pytest.ini_options]
+# Minimum config: tests/ is the only place pytest looks, run from repo
+# root. No markers, no coverage plugin, no fixture framework -- Increment
+# 010 tests pure domain logic only and needs nothing more than this.
+testpaths = ["tests"]
+# Testability blocker found during Increment 010 (see the journal): the
+# project's own editable install (`pip install -e .`) does not actually
+# make `import app` resolve outside of `python -m pytest`'s incidental
+# "cwd on sys.path" behavior -- confirmed directly: a plain `pytest`
+# invocation (the console-script entry point, which does not add cwd)
+# fails with `ModuleNotFoundError: No module named 'app'`. Rather than
+# touch the build/packaging configuration (`[tool.setuptools...]`,
+# `[build-system]`) to chase that unrelated pre-existing issue -- out of
+# scope for a test-foundation increment -- this repo root is added to
+# pytest's own import path, a test-runner-only setting untouched by, and
+# with zero effect on, application runtime behavior.
+pythonpath = ["."]

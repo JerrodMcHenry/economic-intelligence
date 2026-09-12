@@ -2306,3 +2306,861 @@ an "add AI" increment.
   more sophisticated (budget tracking, cost estimation, adaptive limits)
   would have been solving a problem this foundation increment doesn't
   have yet.
+
+---
+
+## Increment 009 — Economic Series Discovery & Grounding
+
+**Objective:** let a user speak in economic concepts ("inflation,"
+"unemployment," "real GDP") instead of memorized FRED identifiers, by
+adding a fourth AI tool, `search_series`, that discovers real, verified
+candidate series — and, just as importantly, enforcing in application
+code that the model can never use a series identifier it didn't get from
+a verified source. The tool surface is now exactly `search_series`,
+`get_observations`, `transform_series`, `analyze_series` — discovery plus
+the three read-only analysis tools from Increment 008, unchanged.
+
+### The usability problem raw FRED identifiers create
+
+Every AI capability before this increment required the user (or the
+model) to already know that "unemployment" means `UNRATE` and "the CPI"
+means `CPIAUCSL`. That's a real usability gap: the whole point of a
+natural-language interface is that the user shouldn't need to know the
+data provider's internal naming scheme. But closing that gap carelessly
+creates a worse problem than the one it solves — an LLM asked "what's the
+series ID for inflation" will confidently answer with *something*,
+correct or not, because generating a plausible-looking identifier is
+exactly the kind of task language models are good at even when they
+shouldn't be trusted to do it. This increment's entire design is shaped
+by that tension: make concepts usable, without ever letting the model's
+fluency substitute for verification.
+
+### Verified candidates vs. model invention — the core rule, made structural
+
+"The LLM may search for series. The LLM may select from verified series.
+The LLM must never invent a series identifier." The first two clauses are
+served by `search_series`; the third is enforced by `GroundingContext`
+(see below), not merely requested in a prompt. Every `SeriesCandidate`
+this increment can ever produce traces back to one of exactly two
+sources: a real row in `economic_series`, or a real FRED `series/search`
+HTTP response. There is no code path anywhere in
+`SeriesDiscoveryService`/`FREDClient.search_series` that constructs a
+candidate from the search query text itself — a query like "inflation"
+never becomes a candidate named "INFLATION" if nothing on either side
+actually reports back a series by that identifier.
+
+### Two conceptual planes, made concrete in code, not just in this journal
+
+- **Discovery plane** ("what series exist"): `SeriesDiscoveryService`
+  (`app/services/discovery.py`), which may read local PostgreSQL metadata
+  *and* FRED's catalog. Read-only on both sides.
+- **Analysis plane** ("what does the persisted data say"):
+  `EconomicDataService`/`AnalysisService`, unchanged since Increments
+  004/005/007, exclusively PostgreSQL.
+
+The boundary isn't just documentation — it's a real dependency fact:
+`SeriesDiscoveryService` never imports anything from `app.domain.*`
+(confirmed by inspection), and `EconomicDataService`/`AnalysisService`
+still never import `FREDClient` for anything except the pre-existing
+`get_series`/`sync_series` methods that were already FRED-backed before
+this increment and remain unreachable from the AI path (Increment 008's
+[ADR-014](adr/014-read-only-ai-tools.md)). `search_series` is the single,
+explicitly named exception allowed to reach FRED from the AI path — and
+even it is restricted to one FRED endpoint
+(`fred/series/search`) that returns metadata only; `FREDClient.search_series`
+shares all of the existing client's HTTP/timeout/error-handling
+machinery, and adds no new way to fetch observation values.
+
+### Local search: simple, deliberately not clever
+
+`SeriesRepository.search_series` is a case-insensitive `ILIKE` match
+against `series_id` OR `title` — no PostgreSQL full-text search
+infrastructure, no fuzzy-matching dependency, no embeddings. For a
+catalog of a handful of persisted series, a substring match answers the
+actual question ("does anything we have match this text") without adding
+infrastructure sized for a catalog this project doesn't have yet. The
+repository has no opinion about which match is economically
+"best" — that judgment belongs to the model, working from the metadata
+`SeriesDiscoveryService` hands it, not to a SQL query.
+
+### FRED catalog search: metadata only, verified directly against the real API
+
+`FREDClient.search_series` calls `fred/series/search` with
+`search_type=full_text`, `order_by=search_rank`, `sort_order=desc`, and a
+small bounded `limit` — verified directly against the real FRED API
+before writing any application code around it (not assumed from
+documentation): "unemployment" surfaces `UNRATE` as its top result,
+"real GDP" surfaces `GDPC1` exactly as this increment's own prompt
+example expects, and a zero-match query returns FRED's normal `200`
+empty-list response, not an error. One genuine, unplanned discovery from
+that verification: a bare "inflation" query does *not* surface `CPIAUCSL`
+in FRED's own top-5 full-text ranking (FRED ranks inflation-*indexed*
+Treasury securities higher) — a real fact about the provider's search
+quality, not a bug in this project's code, and left exactly as FRED
+reports it rather than "corrected" with a hardcoded boost (see Deferred
+decisions).
+
+### Candidate metadata: honest about what's actually persisted
+
+`EconomicSeries` (Increment 003's schema) persists `series_id`, `title`,
+`units`, and `source` -- nothing else. It has no `frequency`,
+`seasonal_adjustment`, `observation_start`/`observation_end`, or
+`popularity` columns. Rather than adding a migration to enrich local
+storage for this increment (explicitly out of scope), a `SeriesCandidate`
+simply reports `None` for whichever of those fields no source actually
+supplied — a local-only match has real `units` but `None` frequency/
+seasonal_adjustment/popularity/observation range; a FRED-only or merged
+match has all of them, straight from FRED's own response. Nothing is
+invented to fill the gap, and nothing pretends more is known locally than
+actually is.
+
+### Deduplication and merging: one candidate per series_id, richer wins
+
+A series present in both sources appears once. `SeriesDiscoveryService._merge`
+builds a `dict[series_id, SeriesCandidate]`: local matches seed it
+(`persisted=True`, `discovery_source="local"`); each FRED result either
+creates a new entry (`persisted=False`, `discovery_source="fred"`) or, if
+the `series_id` already exists locally, replaces that entry's metadata
+with FRED's richer version via `model_copy(update={...})` while forcing
+`discovery_source="local_and_fred"` — `persisted=True` is never lost in
+that merge, since the update never touches that field. Verified directly:
+searching "unemployment" returns exactly one `UNRATE` candidate,
+`persisted=True`, `discovery_source="local_and_fred"`, carrying FRED's
+`frequency`/`popularity`/observation range alongside the locally-known
+`units`.
+
+### Deterministic ranking: three plain comparison keys, no scoring model
+
+`_rank`'s sort key is `(not exact_id_match, not persisted, fred_search_rank_position)`
+— nothing more. An exact `series_id` match always surfaces first
+(tier 0); among the rest, a persisted (locally analyzable) candidate
+outranks a FRED-only one (tier 0 vs. 1 within the remaining group); ties
+within a tier keep FRED's own `search_rank` order, with local-only
+candidates (no FRED signal) sorting last within their tier. No machine
+learning, no embedding similarity, no LLM-generated relevance score —
+three deterministic, explainable comparisons, matching the "keep it
+simple, deterministic, documented" instruction directly.
+
+### No hardcoded concept → series aliases, and why that restraint matters here specifically
+
+A dictionary like `{"inflation": "CPIAUCSL", "gdp": "GDPC1"}` would have
+made the common cases feel instant, and was deliberately not built.
+"Inflation" alone is at least five real, different, non-interchangeable
+FRED measures (CPI, core CPI, PCE, core PCE, PPI); "GDP" is nominal vs.
+real vs. per-capita vs. growth-rate. An alias dictionary bakes in one
+answer to a question that genuinely has several defensible answers,
+silently, with no way for a user to know a choice was made on their
+behalf. `search_series` plus the model's own judgment over real metadata
+(units, frequency, persisted availability) is slower for the common case
+but never silently substitutes the wrong measure for the one actually
+asked about — and when the honest answer is "these are materially
+different measures," the model is instructed to say that rather than
+picking one arbitrarily (verified: a real ambiguous-measure request
+should surface multiple candidates rather than confidently naming one).
+
+### Grounding as an application-enforced boundary, not a prompt request
+
+`GroundingContext` (`app/services/ai_tools.py`) is the actual mechanism:
+a plain dataclass — `user_message: str`, `verified_ids: set[str]` — created
+fresh inside `AIService.query()` for every request (a local variable,
+never global, never written to PostgreSQL, no Redis/session
+infrastructure). It's threaded as an explicit fourth parameter into every
+`execute_tool` call for that request. Before `get_observations`/
+`transform_series`/`analyze_series` executes, `execute_tool` extracts the
+series identifier(s) from that tool's *validated* arguments (via a small
+per-tool `extract_series_ids` function in `_TOOL_HANDLERS`) and checks
+each one against `grounding.is_grounded(...)`. Any identifier that fails
+is never passed to `EconomicDataService`/`AnalysisService` at all — the
+tool call is refused with a structured `ungrounded_series` error before
+the handler (and the real database lookup inside it) ever runs. This was
+verified directly, not just reasoned about: a script called
+`execute_tool("get_observations", {"series_id": "MADEUP123"}, ...)`
+directly and confirmed the result was `{"ok": false, "error": {"type":
+"ungrounded_series", ...}}`, never reaching `EconomicDataService`.
+
+A subtlety worth naming precisely: grounding answers "is this identifier
+safe to *reference*," which is a different question from "does this
+identifier *exist*." A `search_series` result for a non-persisted FRED
+series (e.g. `GDPC1`) is grounded — the model is allowed to mention and
+reference it — but `transform_series({"series_id": "GDPC1", ...})` still
+fails, now with `series_not_found` (Increment 004's existing, unmodified
+check), because grounding was never meant to replace the persisted-data
+check; it's an *additional*, earlier gate answering a different question.
+
+### Request-scoped state: a local variable, not new infrastructure
+
+The task explicitly asked for "the smallest clean mechanism for
+request-scoped grounding state" and explicitly ruled out globals, Redis,
+and PostgreSQL persistence. A `GroundingContext` instance's entire
+lifetime is the body of one `AIService.query()` call — created at the top
+of the method, passed down the call stack, and garbage-collected when the
+method returns. No new architecture was needed because request-scoped
+state has an obvious home in a language with function-local variables:
+the function that already owns "this request," `query()`, is where its
+state should live.
+
+### Explicit user-provided identifiers: checked against the message text, not extracted from it
+
+The task explicitly warned against "a brittle regex that treats every
+uppercase word as a FRED ID." This increment does not extract candidate
+identifiers from the user's message at all. Instead,
+`GroundingContext.is_grounded(series_id)` checks whether *a specific
+identifier the model has already proposed* appears as a case-insensitive
+whole word in the user's own message
+(`re.search(rf"\b{re.escape(series_id)}\b", ..., re.IGNORECASE)`). This
+is a meaningfully different (and safer) operation than scanning free text
+for identifier-shaped tokens: it never guesses candidates from the
+message, so a vague concept word like "gdp" in "what about gdp trends"
+does not accidentally ground the specific identifier `GDPC1` (verified
+directly — that exact case was tested and correctly rejected as
+ungrounded). A user who types "Show me UNRATE since 2020" gets it for
+free, because the model proposing `series_id: "UNRATE"` and the user
+having typed "UNRATE" are the same string, checked once, safely.
+
+### No auto-sync — verified live, not just by inspection
+
+`GDPC1`, discovered as a verified but non-persisted candidate during real
+end-to-end testing (see Verification), was never synced, and the
+database's row counts and `UNRATE`'s `updated_at` timestamp were
+confirmed unchanged immediately afterward — the same timestamp recorded
+since Increment 003, now also surviving a real conversation that
+discussed a non-persisted series by name. No handler in this increment
+calls `sync_series`, constructs a write-capable service, or fetches FRED
+observations for a discovered-but-unpersisted series; the model's only
+available response to "the data I found isn't persisted" is to say so,
+which it did, unprompted by any special-cased instruction beyond the
+system prompt's general "say so plainly instead of guessing."
+
+### Graceful degradation: FRED unavailable, database unavailable, malformed FRED entries
+
+Three distinct failure shapes, each handled at the layer that actually
+owns the concern:
+
+- **FRED unreachable/rejected/timed out during search** —
+  `SeriesDiscoveryService.search` catches `FREDError` (the shared base
+  class already used throughout `FREDClient`) around the FRED call only,
+  setting `external_search_available=False` and returning whatever local
+  results exist. Verified with both a real timeout (unroutable host) and
+  a real rejected-key request against the live FRED API — both degraded
+  cleanly, local `UNRATE` still returned.
+- **Database unavailable during a `search_series` call** — not
+  special-cased; propagates to `execute_tool`'s existing
+  `OperationalError`/`SQLAlchemyError` handling (unchanged from Increment
+  008), the same structured-error treatment every other tool already gets.
+- **A malformed FRED search result** (missing `id`) — `_merge` skips it
+  (`if not series_id: continue`) rather than fabricating a blank-identifier
+  candidate or crashing.
+
+### AI instruction changes
+
+The system instruction gained a second paragraph: don't invent
+identifiers (an invented one will be rejected regardless, but the model
+should not attempt it), use `search_series` first for a named concept,
+only pass an identifier from a `search_series` result or the user's own
+words, say plainly when a discovered series isn't persisted rather than
+substituting a different one, and prefer the candidate that actually
+matches the user's concept over simply the most popular one — explaining
+ambiguity rather than picking arbitrarily when it's real. This is
+architecture-first, instruction-second, matching Increment 008's existing
+stance: the instruction guides good behavior; `GroundingContext` is what
+actually prevents bad behavior from working.
+
+### Verification performed
+
+Against isolated dispatcher tests, real FRED requests, real database
+queries, and real OpenAI requests (no `.env` ever read):
+
+- **Local discovery**: exact `series_id` match, title substring match,
+  and both in lowercase, all correctly returned `persisted=True`;
+  metadata FRED doesn't get asked for stayed `None` for a local-only
+  match, as designed.
+- **FRED discovery**: real requests for "unemployment," "real GDP," and
+  "inflation" against the live FRED API — the first two matched this
+  increment's own examples exactly (`UNRATE`, `GDPC1` as top results);
+  `limit` was respected and a request for more than 10 was rejected by
+  Pydantic before any network call.
+- **Injection safety**: a tool call supplying extra `url`/`api_key` fields
+  had them silently dropped by Pydantic (`SearchSeriesArgs` has no such
+  fields) — never forwarded anywhere, confirming the model cannot control
+  the FRED hostname, endpoint, or credential.
+- **Merging/deduplication**: `UNRATE` (present in both sources) returned
+  exactly once, `persisted=True`, `discovery_source="local_and_fred"`,
+  carrying FRED's frequency/popularity/observation-range metadata.
+- **Grounding**: a model-invented identifier (`MADEUP123`) was rejected
+  with `ungrounded_series` *before* reaching `EconomicDataService`;
+  the same for one ungrounded side of an `analyze_series` call, never
+  reaching `AnalysisService`; a `search_series` call followed by
+  `get_observations`/`transform_series` for a returned candidate
+  succeeded; an explicit user-typed identifier (`"Show me UNRATE..."`,
+  including a lowercase variant) succeeded without any search call; a
+  vague concept word ("gdp") correctly did *not* ground a specific,
+  unrelated identifier (`GDPC1`); a genuinely nonexistent identifier
+  typed by the user (`"Show me BOGUS999..."`) passed grounding (the user
+  really did say it) but still failed safely at the existing
+  `series_not_found` check, never fabricating a result for it.
+- **Real end-to-end conversations** (real OpenAI + real FRED + real
+  database, `OPENAI_MODEL` supplied as a non-secret override): "search
+  for unemployment data and show me the recent observations" correctly
+  called `search_series` then `get_observations(UNRATE)` in 2 rounds;
+  "what is the correlation between the consumer price index and the
+  unemployment rate" correctly called two searches then `analyze_series`,
+  reporting the exact known correlation (`-0.80`, matching
+  `-0.8030258377001954`); "how has real GDP changed" correctly searched,
+  found `GDPC1` as `persisted=False`, and explained the limitation
+  without attempting analysis or synchronization.
+- **No mutation, no auto-sync, proven live**: `economic_series`/
+  `economic_observations` row counts and `UNRATE`'s `updated_at`
+  timestamp were identical before and after this session's entire batch
+  of real AI conversations (including the ones that discovered and
+  discussed `GDPC1`) — the same counts and timestamp recorded since
+  Increment 003.
+- Confirmed via `grep`/`git status` that no domain math is duplicated
+  anywhere in the new code, no concept-alias dictionary exists, no
+  module-level/global grounding state exists, no schema migration was
+  added, no new dependency was added, and no secret value appears in any
+  changed file.
+
+### An honest, reproducible limitation found during verification
+
+The bare word "inflation," combined with a date-range request (e.g. "How
+has inflation moved relative to unemployment since 2022?"), reliably
+exceeded `MAX_TOOL_ROUNDS=4` and returned a `503` — reproduced twice, not
+a flake. The root cause is upstream and understood precisely: FRED's own
+full-text search ranks inflation-*indexed* Treasury securities above
+`CPIAUCSL` for the literal word "inflation" (confirmed directly against
+the real API — see the FRED catalog search section above), so the model
+spends extra search rounds refining its query before it can proceed to
+`analyze_series`, and a two-concept request with a date range leaves less
+round budget to spare. The *identical* request phrased as "the consumer
+price index" — exactly the kind of refinement `search_series`'s own tool
+description already asks the model to make — succeeded in 2 rounds with
+the exactly correct result. This is not a grounding or dispatcher bug (both
+were independently verified correct in isolation); it's a real interaction
+between one ambiguous natural-language term, FRED's actual search
+ranking, and a deliberately small round budget. Recorded here rather than
+quietly worked around, per this project's standing practice of reporting
+what verification actually finds.
+
+### Deferred decisions
+
+- **FRED search-ranking quirks for specific terms** (e.g. "inflation" not
+  surfacing CPI) are not corrected or special-cased — doing so for one
+  term would be exactly the hardcoded-alias behavior this increment
+  deliberately avoided elsewhere; if this becomes a recurring usability
+  problem, the right fix is likely a search-refinement strategy (e.g. the
+  model retrying with a narrower phrase, which it already does
+  successfully when instructed generally), not a per-term correction.
+- **`MAX_TOOL_ROUNDS` tuning** — left at Increment 008's value of `4`.
+  The "inflation" case above is a real data point that a two-concept,
+  date-ranged discovery-plus-analysis request can be tight against that
+  budget; not changed here because one observed case isn't enough
+  evidence to pick a new number responsibly, and a larger round budget
+  has its own cost (more provider round-trips per request).
+- **User-approved ingestion of a discovered-but-unpersisted series** —
+  named explicitly in the task as a separate future design decision, not
+  attempted here.
+- **PostgreSQL full-text search / fuzzy matching for local discovery** —
+  deferred until the local catalog is large enough that substring
+  matching genuinely stops being sufficient; not the case yet.
+
+### Reusable engineering lessons
+
+- "The model must never invent an X" is only as real as the code path
+  that would let it happen if it tried. Writing `GroundingContext` and
+  then actually calling `execute_tool` with a fabricated identifier
+  directly (not just trusting the system instruction) was what turned
+  "we told it not to" into "we verified it cannot."
+- A security/correctness check on *which identifier* a tool may act on is
+  a different, additional layer from validating *the shape* of a tool's
+  arguments (Increment 008) or checking *whether the target exists*
+  (Increment 004's `SeriesNotFoundError`) — all three matter, none
+  substitutes for the others, and conflating them (e.g. assuming
+  "it validated" or "it exists" means "it was safe to reference") would
+  have left a real gap.
+- When a task warns against a specific brittle pattern ("don't extract
+  candidate IDs with a regex over free text"), the fix isn't necessarily
+  "don't use regex at all" — it's understanding *why* that specific
+  pattern is brittle (it guesses candidates) and finding the safe version
+  of the underlying need (checking one already-proposed candidate against
+  the text, never generating candidates from it).
+- Verifying a real upstream API's actual behavior (FRED's search ranking
+  for a specific term) during testing surfaced a real, useful fact this
+  project wouldn't have known from documentation alone — and the honest
+  response to an inconvenient discovery like that is to document it
+  precisely and explain why it isn't being papered over, not to quietly
+  adjust the test case until it passes.
+
+### Post-implementation correction: target request exhausted MAX_TOOL_ROUNDS
+
+Increment 009's implementation above passed every check it was written to
+check, but its own target usability example — "How has inflation moved
+relative to unemployment since 2022?" — reproducibly exhausted
+`MAX_TOOL_ROUNDS=4` and returned 503 before commit. This section
+documents the diagnosis and the correction actually made, without
+rewriting the history above.
+
+**Diagnostic gate.** Before touching any code, a read-only diagnosis
+reproduced the failure against the real configured environment
+(`search_series`/`get_observations` called directly through
+`execute_tool`, bypassing nothing) and traced every round. Round 1
+correctly issued two parallel `search_series` calls (for "inflation" and
+"unemployment") — proving the four-layer architecture already supports
+efficient concept discovery with no code change. The failure was
+entirely in round 2 onward: FRED's top-5 "inflation" results are all
+Treasury/breakeven-inflation instruments, none persisted locally, and
+the canonical `CPIAUCSL` doesn't appear in that top 5 at all. Rather than
+using the `persisted:false` field already present in the round-1 result
+to avoid a wasted call, or refining the search once with a narrower term,
+the model spent one round per remaining candidate calling
+`get_observations` on each in turn, learning only from the resulting
+`series_not_found` error each time, until the round budget ran out.
+
+A broader discovery check across five concepts ("inflation," "real GDP,"
+"federal funds rate," "nonfarm payrolls," "unemployment") showed this
+was not an inflation-specific quirk: four of the five returned zero
+persisted candidates in their top-5 FRED results. The failure mode was
+general and would recur for most economic concepts whose canonical
+series isn't already persisted — confirming a term-specific patch (or
+simply raising `MAX_TOOL_ROUNDS`) would have hidden the symptom for
+"inflation" while leaving the same defect in place everywhere else.
+
+**Root cause.** Not retrieval (candidates were real and relevant), not
+candidate metadata (`persisted` was accurate and already present), not
+grounding, not the tool-loop/round-counting mechanics, not a hardcoded
+alias gap — all of those worked exactly as designed. The gap was that
+neither the `search_series` tool description nor `SYSTEM_INSTRUCTIONS`
+told the model what to *do* with `persisted:false` before it acted:
+treat the field as authoritative and skip straight to a refined search,
+rather than treating the candidate list as a queue to try one at a time
+via execution.
+
+**Retrieval vs. semantic-selection distinction.** The implementation
+already correctly kept these separate — `search_series` never claims a
+top result is "the" answer. The model's *observed behavior* is the one
+place the distinction broke down in practice, and that's the one place
+the fix landed: the `search_series` tool description and
+`SYSTEM_INSTRUCTIONS` now say explicitly that search results are
+verified candidates for evaluation, not an answer, and that retrieval
+ranking is not semantic truth.
+
+**Approved correction (three changes, no architecture change):**
+
+1. `app/services/ai_tools.py` — `search_series`'s tool description now
+   states explicitly: results are verified candidates, not one
+   authoritative answer; retrieval ranking is not semantic truth;
+   inspect metadata before selecting; `persisted:true` means locally
+   analyzable now, `persisted:false` means verified-but-not-yet-usable
+   and must not be spent on an analytical tool call to discover that;
+   persisted status may only break a tie among candidates that already
+   fit the concept, never override semantic fit.
+2. `app/services/ai.py` — `SYSTEM_INSTRUCTIONS` gained a concise general
+   strategy: check `persisted` before attempting an analytical tool;
+   never call an analytical tool merely to discover unavailability the
+   `persisted` field already answers; if no candidate is both a good fit
+   and persisted, refine the query *once* with a more specific
+   description of the same concept, then work only with that result;
+   otherwise state the limitation honestly. No concept names, no
+   alias table — the strategy is generic across any economic concept.
+3. `app/models/ai.py` / `app/models/analysis.py` — `SearchSeriesArgs`,
+   `GetObservationsArgs`, `TransformSeriesArgs`, `PipelineRequest`,
+   `PipelineSeriesSpec`, and `TransformationSpec` (the last three shared
+   with the AI `analyze_series` tool and the existing
+   `POST /analysis/pipeline` endpoint) now set
+   `model_config = ConfigDict(extra="forbid")`. Previously an unexpected
+   field in a model-generated tool call was silently dropped (Pydantic
+   v2's default `extra="ignore"`); it is now rejected through the
+   existing `invalid_arguments` structured error path — no new
+   exception handling needed, since `execute_tool` already wraps
+   validation in `try/except ValidationError`. Unrelated to the
+   round-exhaustion bug; approved as a second, independent hardening.
+
+`MAX_TOOL_ROUNDS` stayed at 4 throughout — raising it would only have
+delayed the same failure for a slightly larger candidate pool, and would
+have hidden genuinely wasteful behavior rather than fixing it. No
+concept → series alias table was added anywhere; the correction is a
+strategy ("refine the query once, and check `persisted` first"), never a
+mapping from a specific word to a specific identifier.
+
+**Verification results — before/after.** Re-running the diagnostic
+reproduction after the correction:
+
+- The named target request ("How has inflation moved relative to
+  unemployment since 2022?"), run three times, now converges within
+  `MAX_TOOL_ROUNDS=4` every time (previously: did not converge even
+  within an extended 8-round diagnostic ceiling). Each run made at most
+  one wasted analytical attempt against a `persisted:false` candidate
+  (`T10YIE`) before refining the search once (to "consumer price index"
+  or "CPI") and reaching `CPIAUCSL`.
+- Deterministic checks (tool contract shape, fail-closed argument
+  rejection for all four tools and every nested model, grounding/
+  persisted-check separation, no global mutable state, request-scoped
+  grounding) all passed — 30/30.
+- The correction is a real, measured improvement but **not a complete,
+  architecturally-guaranteed fix**: re-running the same reproduction for
+  other concepts found the identical serial-trial-and-error pattern
+  still occurring for "real GDP," "federal funds rate," and one phrasing
+  of the ambiguity test ("Compare inflation with unemployment," without
+  a date qualifier) — each still exceeded `MAX_TOOL_ROUNDS` by
+  serially attempting 3-4 non-persisted candidates before the round
+  budget ran out, exactly the pattern the correction targeted. This is
+  the expected residual risk of an instruction-level (not code-level)
+  correction: a system instruction changes model behavior probabilistically,
+  not deterministically, and the application layer has no code-level
+  mechanism that *forces* a refine-once strategy — it can only forbid
+  unsafe outcomes (grounding, persisted-check, argument validation),
+  never guarantee an efficient path to a safe one. Recorded here plainly
+  rather than overstated as fully resolved; see the diagnosis report for
+  the full per-concept trace.
+- A second, unrelated, pre-existing limitation surfaced during
+  verification: even where a search correctly finds a persisted
+  candidate (`UNRATE`), `get_observations` for `2022+` (and other tested
+  ranges) sometimes returns zero observations — the locally synced data
+  for that series does not yet cover the ranges these target questions
+  ask about. This is a data-completeness gap, not a tool-calling
+  architecture defect, and was left out of scope for this correction.
+
+**Reusable engineering lesson.** A metadata field being present and
+accurate (`persisted`) is not the same as it being *acted on* — an LLM
+tool-use loop will use a field to justify its own after-the-fact
+reasoning much more reliably than it will use that same field
+*prospectively* to skip an action, unless the instruction says so
+explicitly. And a prompt-level fix to a model *behavior* problem can
+reduce a failure's frequency substantially without eliminating it
+outright — verifying that distinction empirically, per concept, rather
+than trusting the named example's improvement to generalize, was what
+surfaced the residual failures above.
+
+### Second correction: deterministic execution eligibility (ADR-017)
+
+The prompt-level correction above was a real, measured improvement, but
+live re-verification (repeated runs across six economic-concept
+questions) showed it remained probabilistic: for several concepts --
+real GDP, the federal funds rate, one ambiguity-test phrasing, and even
+the named target question in some runs -- the model still requested
+`get_observations`/`transform_series` against `persisted: false`
+candidates serially, still exhausting `MAX_TOOL_ROUNDS=4`. The
+conclusion drawn from that evidence: **prompt instructions are not a
+reliable enforcement mechanism for execution safety.** "Remember not to
+execute against persisted:false" is a fact the application already knows
+with certainty the instant a `search_series` result returns -- asking an
+inherently probabilistic component (the model) to carry that fact
+forward correctly, unprompted, every time, across an unbounded range of
+concepts, was asking wording to do a code boundary's job.
+
+**Semantic-vs-deterministic responsibility boundary.** The correction
+keeps the model responsible for everything genuinely probabilistic:
+understanding intent, searching concepts, reasoning over verified
+candidate metadata, choosing which verified candidate best fits the
+user's meaning (including a `persisted: false` one, if that's honestly
+the right answer), and explaining real ambiguity. It moves one narrow,
+purely factual question out of the model's hands entirely: *may this
+already-selected, already-verified series actually execute against the
+local analytical dataset right now?* That's never a semantic judgment,
+so it's no longer left as one.
+
+**The invariant moved from instruction to code.** `GroundingContext`
+(`app/services/ai_tools.py`) now tracks two things per series id, not
+one: whether it's verified (unchanged from ADR-015: a `search_series`
+result this request, or the user's own literal text), and, separately,
+whether it's `persisted` -- authoritative from `search_series`'s own
+result when the id came from a search, or resolved via a direct,
+read-only `SeriesRepository.get_series_by_series_id` lookup (the same
+local check `EconomicDataService`/`AnalysisService` already perform
+internally) for an explicitly user-typed id that was never searched.
+Neither piece of state has a path for the model to set directly -- no
+tool argument carries a `persisted`/`verified` field, and the discovery
+side of `GroundingContext` is populated only by `execute_tool` itself,
+after a real search has actually returned.
+
+`execute_tool` now runs two independent, deterministic checks for every
+series a tool call references, before the underlying service handler
+runs for any of them:
+
+1. Grounded (ADR-015, unchanged) -- otherwise `ungrounded_series`.
+2. Persisted (new, ADR-017) -- otherwise a new `series_not_persisted`
+   error, structured exactly like every other tool error, naming the
+   unavailable identifier(s), explicitly stating the determination is
+   authoritative so the model shouldn't retry it.
+
+For `analyze_series` (two series), both checks run for both series
+before either is authorized -- `AnalysisService.pipeline` is never
+invoked at all if either series fails either check, never partially for
+one series while the other is still being resolved.
+
+**Verification.** Proven two ways, deliberately kept separate:
+
+- *Direct, with mocks*: `EconomicDataService.get_observations`/
+  `get_transformed_observations` and `AnalysisService.pipeline` were
+  patched and confirmed **never called** when the gate should block --
+  not inferred from the tool result looking right, but from the actual
+  service method's call count. 18/18 checks passed, covering both
+  single- and two-series tools, both persisted:false and ungrounded
+  cases, and the trust boundary itself (no tool-argument field can set
+  `persisted`/`verified`; only `search_series`'s own successful result
+  populates discovery state; explicit user mention grounds but never
+  implies persisted; a fabricated id is blocked the same way a real,
+  unpersisted one is).
+- *Live, against the real model*: re-ran the six required questions
+  (including repeats of the named target question). **Application
+  behavior was 100% -- every single blocked-execution attempt across
+  every run was deterministically stopped before any service call, with
+  zero exceptions observed.** Model behavior (round efficiency) was
+  measured honestly and separately: it did **not** reliably improve over
+  the prompt-only correction -- several concepts, including the named
+  target question in most repeats, still exhausted `MAX_TOOL_ROUNDS` via
+  repeated (sometimes literally repeated, not just similar) blocked
+  attempts. This is reported as a known, explicit limitation, not
+  papered over: the deterministic gate guarantees *safety*, not
+  *efficiency*, and conflating the two would be the wrong lesson to draw
+  from this result. Whether round-efficiency is worth a *separate*,
+  future orchestration change is left as an open question for later,
+  not decided here.
+- Regression: 31/31 deterministic tool-contract/fail-closed checks and
+  9/9 HTTP-level checks (health, FRED GET, sync, observations,
+  transformations, compare, `POST /analysis/pipeline` with both
+  legitimate and deliberately-invalid bodies) all passed -- including
+  confirming the shared, `extra="forbid"`-hardened `PipelineRequest`
+  still accepts every legitimate HTTP body it did before.
+
+**Reusable engineering lesson.** When a metadata fact is both available
+*and accurate*, but a model still doesn't act on it reliably even after
+being told to, the fix is not a better sentence -- it's recognizing that
+the fact was never actually a judgment call in the first place, and
+moving it to the one place a fact like that belongs: code that runs
+before the consequence, not wording that asks nicely beforehand. Safety
+and efficiency are different properties and can (and, here, did) move in
+different directions from the same change -- measuring both honestly,
+separately, rather than letting one good number stand in for the other,
+is what kept this correction from being reported as more complete than
+it actually is.
+
+### Third correction attempt: dynamic tool availability (ADR-018) -- partial result
+
+A dedicated orchestration design gate (before touching code) compared six
+structural options for reducing wasted rounds, given the now-established
+conclusion that prompt wording cannot guarantee execution-safety *or*
+efficiency. The approved design: shape *which tools, and which
+`series_id` values, are even offered* to each model inference after the
+first, built fresh every round from this request's own
+`GroundingContext` state -- `get_observations`/`transform_series`/
+`analyze_series`'s `series_id` (both sides, for `analyze_series`)
+constrained via a JSON-schema `enum` to exactly the ids currently known
+persisted; omitted entirely when that set is empty. A second, narrower
+mechanism -- a bounded discovery-round budget (`MAX_DISCOVERY_ROUNDS=2`)
+-- caps `search_series` itself, so search-thrashing couldn't quietly
+replace analytical-thrashing as the new failure mode. Round 1 keeps all
+four tools unrestricted, preserving the explicit-ID fast path ("Show me
+UNRATE" needs no prior search). `execute_tool`'s deterministic gate
+(ADR-017) was left completely unchanged, as the frozen, unconditional
+safety backstop underneath this new efficiency layer.
+
+**Implementation**: `app/services/ai_tools.py` gained
+`GroundingContext.known_persisted_ids()` (the one view of discovery
+state anything outside the class gets) and `build_tool_schemas` (pure:
+`GroundingContext` state in, an independent, deep-copied tool-schema
+list out -- no I/O, no mutation of the module-level base schemas or of
+`GroundingContext`). `app/services/ai.py` gained `MAX_DISCOVERY_ROUNDS`,
+a pure `_round_had_successful_search` helper (the exact, documented rule
+for what counts: a tool-bearing round with at least one `search_series`
+call that returned `ok: true` -- multiple parallel searches in one round
+still count as one; `invalid_arguments`/database-failure searches don't
+count at all), and a rewritten `query()` loop that rebuilds the tool list
+every round from current `GroundingContext`/discovery-budget state.
+
+**Unit verification**: 31/31 -- tool-builder correctness (all four tools
+round 1; correct enum construction for both single- and two-series
+tools; empty-persisted-set omission; exhausted-discovery-budget
+omission; base-schema immutability; independent builds share no mutable
+state), discovery-budget semantics (parallel searches count once,
+malformed/failed searches don't count, analytical calls don't count),
+the explicit-ID fast path (unchanged, still works, still deterministically
+blocks a genuinely unavailable explicit id), and -- critically -- a
+direct proof that the deterministic gate still blocks a persisted:false
+id *even when that id is absent from the dynamic schema*, with the
+underlying service's call count staying zero: schema shaping is
+optimization, never the security boundary.
+
+**Live acceptance result: the primary gate (zero
+`ToolRoundLimitExceededError` across 28 required live trials) was NOT
+met.** 16 of 28 runs still exceeded `MAX_TOOL_ROUNDS=4`. Root cause,
+traced precisely from safe per-round tool traces: in 58 of 97 (roughly
+60%) round-2-or-later `get_observations`/`transform_series` calls, the
+model supplied a `series_id` that was **not present** in that round's
+offered `enum` -- it continued referencing ids from its memory of an
+earlier `search_series` result rather than the narrower set actually
+declared that round. This is the accepted, documented risk of a
+non-`strict` JSON-schema `enum` under OpenAI function calling (`strict:
+false` was an explicit, deliberate constraint for this design, to avoid
+a larger schema-restructuring migration) -- it is a *strong hint*, not
+an *enforced* constraint, and this model did not reliably honor it once
+a plausible-looking id was already sitting in its own conversation
+history. The discovery-round budget, by contrast, worked exactly as
+designed in every case it was exercised (7 runs reached 2 successful
+discovery rounds; `search_series` was correctly absent from the tool
+list immediately afterward in all 7) -- the failure is isolated
+specifically to the analytical-tool enum-narrowing mechanism, not to
+`build_tool_schemas`/the discovery budget as a whole.
+
+**Safety was not compromised even once.** Every one of the 58
+enum-violating calls was still caught by `execute_tool`'s unchanged
+deterministic gate and returned `series_not_persisted` -- the underlying
+`EconomicDataService`/`AnalysisService` methods were never invoked for
+any of them. This is precisely the property ADR-017 exists to guarantee
+regardless of what the efficiency layer above it does or fails to do.
+
+Per the explicit stop condition for this gate, no further architecture
+change (e.g. a `strict: true` migration, which was explicitly out of
+scope for this design) was attempted. The result is reported exactly as
+measured, and the decision of whether to accept this efficiency
+limitation, revert this layer, or approve a further change is left to
+the next review -- not decided unilaterally here.
+
+**Reusable engineering lesson.** A declared JSON-schema constraint
+communicated to a tool-calling model is not the same kind of guarantee
+as a constraint enforced in application code, even though both are
+"structural" in the sense of not being prose -- `strict: false` function
+calling treats a schema as strong guidance the model can and does
+deviate from when its own prior context suggests a different value, at
+a rate (roughly 60% here) far higher than "rare." Where a earlier
+correction's assumption ("the model will very likely respect an enum
+built from ids it just saw") was not empirically tested before being
+adopted as the basis for an acceptance-gated design, this is the
+direct, humbling result of actually measuring it instead of assuming
+it -- and exactly why every correction in this project has been
+verified against the real environment rather than accepted on
+plausibility alone.
+
+## Increment 010 — Deterministic Core Test Foundation
+
+### Why this reset occurred
+
+Three consecutive corrections to the autonomous AI tool-calling loop
+(prompt wording, a deterministic execution gate, dynamic tool-schema
+shaping) each fixed a real problem but exposed a deeper one: a
+probabilistic component (the model) was load-bearing for product
+*correctness and availability*, not just wording. The last of those
+corrections measured a ~60% rate of the model ignoring its own offered
+tool schema — conclusive evidence that no amount of prompt or schema
+engineering was going to make an LLM behave like a deterministic
+workflow engine. The product direction changed in response: Economic
+Intelligence is an economic intelligence platform with optional AI
+capabilities, not an AI agent that happens to access economic data.
+Facts are sourced, calculations are deterministic, AI is interpretive —
+and no probabilistic component may be required for the correctness,
+reproducibility, availability, or integrity of the core engine.
+
+### Autonomous AI orchestration is frozen
+
+`AIService.query()`'s multi-round orchestration, `build_tool_schemas`'s
+dynamic shaping, `MAX_TOOL_ROUNDS`, `MAX_DISCOVERY_ROUNDS`, and
+model-driven tool sequencing are not being improved further. Nothing
+about them was touched in this increment — confirmed directly: `git
+diff` shows zero changes to `app/services/ai.py`, `app/services/ai_tools.py`,
+or any other production file besides `pyproject.toml` (dev-only test
+config). ADR-015 through ADR-018 and the corrections documented above
+remain as accurate historical evidence of what was tried and what
+failed; the deterministic execution-gate concepts from ADR-017 remain
+correct and valuable, and are exactly the kind of code this new test
+foundation exists to protect and eventually extend coverage to.
+
+### Why repeatable tests now precede further architecture changes
+
+Every verification across all nine increments and every correction in
+this project, without exception, was an ad hoc script run once against
+a live environment and never committed. That was adequate for
+diagnosing a specific live-model behavior question, but it cannot
+protect a *deterministic* engine's correctness over time — there was,
+until this increment, no way to know in thirty seconds whether a change
+anywhere in `app/domain/*` silently altered a calculation. That gap is
+now closed for the two pure domain modules; extending the same
+treatment to the rest of the deterministic core (repositories, services,
+API routes) is the next work, not this increment's.
+
+### Test boundaries
+
+**In scope, and covered**: `app/domain/transformations.py`
+(`absolute_change`, `percent_change`, `moving_average`) and
+`app/domain/analysis.py` (`align_series`, `calculate_spread`,
+`count_usable_pairs`, `pearson_correlation`) — golden-value tests with
+independently hand-derived expected results (never obtained by calling
+the implementation and asserting on its own output), determinism proofs
+(same input + same operation = same output, asserted by calling each
+function twice), input-non-mutation proofs (a pre-call snapshot compared
+against the original argument after the call), and narrow contract
+tests for the three Pydantic models these functions actually consume/
+return (`Observation`, `TransformedObservation`, `ComparisonObservation`).
+A small architectural-independence guard (`ast`-based import inspection,
+no execution) asserts the domain layer imports nothing from `openai`,
+`app.services.ai`/`app.services.ai_tools`, `app.clients.fred`,
+`sqlalchemy`, `fastapi`, or `httpx` — and, more strictly, that every
+import in the domain layer is either the standard library or
+`app.models.*`.
+
+**Explicitly out of scope for this increment** (deferred, not
+forgotten): repository/integration tests against a real database, API
+tests via `TestClient`, FRED-client tests, any AI/tool-loop test,
+end-to-end tests. The audit that preceded this increment names these as
+the next increments once this foundation is in place.
+
+### Test command
+
+```
+pytest
+```
+or
+```
+python -m pytest
+```
+run from the repository root. Both now work identically — see the
+discovered inconsistency below for why that wasn't true on the first
+attempt.
+
+### Final results
+
+56 tests, 56 passed, 0 failed, ~0.06-0.09s per run, across four
+consecutive full runs plus a fifth run instrumented to directly confirm
+zero `openai`/`sqlalchemy`/`httpx`/`fastapi`/`psycopg` modules were
+loaded at any point during test collection or execution — not inferred
+from the absence of an error, but observed directly via `sys.modules`
+before and after the run. Fully offline; no database, no FRED, no
+OpenAI, confirmed both by code inspection (nothing in `tests/` imports
+any of them) and by that direct runtime check.
+
+**No production bug was discovered.** Every hand-derived expected value
+(including every Pearson correlation figure, computed independently
+from the textbook formula, never by running the code first) matched the
+implementation's actual output on the first attempt, for every
+documented edge case in both domain modules' own docstrings.
+
+### Discovered inconsistency (infrastructure, not a domain-logic bug)
+
+The project's own editable install (`pip install -e .` via
+`__editable__.economic_intelligence-*.pth`) does not actually make
+`import app` resolve outside of an incidental effect: `python -m
+pytest`'s well-known behavior of adding the current working directory
+to `sys.path` was masking this — confirmed directly by running `python
+-c "import app"` from `/tmp` (fails) versus from the repo root (appears
+to work, but only because cwd happens to equal the repo root, not
+because the editable install itself resolves anything). The bare
+`pytest` console-script entry point does not add cwd to `sys.path` and
+failed outright with `ModuleNotFoundError: No module named 'app'` before
+this was addressed. Fixed with the smallest available lever: a
+`pythonpath = ["."]` entry under `[tool.pytest.ini_options]` in
+`pyproject.toml` -- a pytest-only setting with zero effect on
+application runtime behavior, deliberately chosen over touching
+`[build-system]`/`[tool.setuptools.packages.find]` to actually repair
+the editable install, which is a separate, pre-existing packaging issue
+out of this increment's scope. Recorded here for whoever picks that up
+later.
+
+### Documentation/config changes this increment
+
+`pyproject.toml`: added `[project.optional-dependencies] dev = ["pytest"]`
+(dev-only, never a runtime dependency) and `[tool.pytest.ini_options]`
+(`testpaths`, `pythonpath`). No `app/` file was changed. No ADR was
+created — the architecture-freeze decision is already thoroughly
+documented across ADR-015 through ADR-018 and the corrections above;
+**a short, dedicated ADR formally recording "autonomous orchestration is
+frozen, deterministic-core-first is the standing architecture" as its
+own first-class decision is recommended for a future increment**, but
+was not created here per this increment's own narrow scope.
