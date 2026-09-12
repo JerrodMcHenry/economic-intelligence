@@ -1,7 +1,7 @@
 # Current Architecture
 
 This document describes the system **as it exists right now**, after
-Increment 007. It is not a history — see [`../ENGINEERING_JOURNAL.md`](../ENGINEERING_JOURNAL.md)
+Increment 008. It is not a history — see [`../ENGINEERING_JOURNAL.md`](../ENGINEERING_JOURNAL.md)
 for how it got here, and [`../adr/`](../adr/) for why specific choices were
 made.
 
@@ -13,16 +13,19 @@ made.
 | Application | `app/main.py` | Creates the `FastAPI` app, mounts routers, defines `/health` |
 | Series route | `app/api/series.py` | HTTP layer for `/api/v1/series/{series_id}`, `.../sync`, `.../observations`, and `.../transform`: request/query-parameter handling, exception → status code translation |
 | Analysis route | `app/api/analysis.py` | HTTP layer for `/api/v1/analysis/compare` and `.../pipeline`: request/body validation, exception → status code translation |
+| AI route | `app/api/ai.py` | HTTP layer for `/api/v1/ai/query`: request validation, `AIService` failures → status code translation |
 | Economic data service | `app/services/economic_data.py` (`EconomicDataService`) | Single-series use-case logic: fetch + normalize a series from FRED; orchestrate fetch-then-persist for sync; validate and coordinate a persisted-observations query; validate and orchestrate a transformation (including boundary-context retrieval) |
 | Analysis service | `app/services/analysis.py` (`AnalysisService`) | Multi-series use-case logic: look up two persisted series, retrieve and date-filter each independently, optionally transform each side (pipeline only), delegate alignment/spread/correlation to the analysis domain module. No FRED dependency at all. |
-| FRED client | `app/clients/fred.py` (`FREDClient`) | All FRED-specific HTTP: request construction, timeout, FRED error → typed exception translation |
-| Series repository | `app/repositories/series_repository.py` (`SeriesRepository`) | All SQL for series/observations: upserts series metadata and observations within a caller-owned transaction; series lookup; filtered/ordered/paginated observation queries; unpaginated range queries and preceding-context queries. Reused as-is by every consumer added since Increment 005 — no analysis- or pipeline-specific repository methods were ever needed. |
-| Transformation engine | `app/domain/transformations.py` (`absolute_change`, `percent_change`, `moving_average`) | Pure, deterministic math over one series' observation list — no FastAPI, SQLAlchemy, FRED, environment, or I/O of any kind. Unmodified since Increment 005; reused as-is by the pipeline. |
-| Analysis engine | `app/domain/analysis.py` (`align_series`, `calculate_spread`, `count_usable_pairs`, `pearson_correlation`) | Pure, deterministic math over two series' observation lists — same no-I/O discipline as the transformation engine. Unmodified since Increment 006; reused as-is by the pipeline. |
-| Response models | `app/models/series.py` (`Observation`, `SeriesSummary`, `SeriesResponse`, `PaginationMeta`, `SeriesObservationsResponse`, `TransformedObservation`, `TransformationMeta`, `SeriesTransformResponse`), `app/models/analysis.py` (`ComparisonObservation`, `SeriesComparisonResponse`, `TransformationSpec`, `PipelineSeriesSpec`, `PipelineRequest`, `PipelineSeriesSummary`, `PipelineResponse`) | The application's own, provider-independent API response contract |
+| AI service | `app/services/ai.py` (`AIService`) | Owns the OpenAI Responses API boundary and the bounded tool-calling loop (max 4 rounds). No transformation/analysis math, no direct database access — delegates every tool call to `app.services.ai_tools`. |
+| AI tool boundary | `app/services/ai_tools.py` | The explicit tool dispatcher: three tools (`get_observations`, `transform_series`, `analyze_series`), each validated (Pydantic) then executed via the existing `EconomicDataService`/`AnalysisService` methods. Read-only; no `FREDClient` reachable from here. |
+| FRED client | `app/clients/fred.py` (`FREDClient`) | All FRED-specific HTTP: request construction, timeout, FRED error → typed exception translation. Never imported by the AI path. |
+| Series repository | `app/repositories/series_repository.py` (`SeriesRepository`) | All SQL for series/observations: upserts series metadata and observations within a caller-owned transaction; series lookup; filtered/ordered/paginated observation queries; unpaginated range queries and preceding-context queries. Reused as-is by every consumer added since Increment 005 (including, transitively, the AI tools) — no analysis-, pipeline-, or AI-specific repository methods were ever needed. |
+| Transformation engine | `app/domain/transformations.py` (`absolute_change`, `percent_change`, `moving_average`) | Pure, deterministic math over one series' observation list — no FastAPI, SQLAlchemy, FRED, environment, or I/O of any kind. Unmodified since Increment 005; reused as-is by the pipeline and, transitively, the AI tools. |
+| Analysis engine | `app/domain/analysis.py` (`align_series`, `calculate_spread`, `count_usable_pairs`, `pearson_correlation`) | Pure, deterministic math over two series' observation lists — same no-I/O discipline as the transformation engine. Unmodified since Increment 006; reused as-is by the pipeline and, transitively, the AI tools. |
+| Response models | `app/models/series.py`, `app/models/analysis.py` (see prior increments), `app/models/ai.py` (`AIQueryRequest`, `AIQueryResponse`, `ToolCallRecord`, `GetObservationsArgs`, `TransformSeriesArgs`) | The application's own, provider-independent API response contract; tool argument models double as the AI path's validation boundary |
 | ORM models | `app/db/models.py` (`EconomicSeries`, `EconomicObservation`) | The relational shape of persisted data |
 | DB engine/session | `app/db/session.py` | Lazily-created SQLAlchemy engine (connection pool) and `session_scope()` transaction boundary |
-| Configuration | `app/core/config.py` (`Settings`) | Reads `FRED_API_KEY`, `DATABASE_URL`, and the FRED request timeout from the environment |
+| Configuration | `app/core/config.py` (`Settings`) | Reads `FRED_API_KEY`, `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, and request timeouts from the environment |
 | Schema migrations | `alembic/` | Version-controlled schema history, applied explicitly via `alembic upgrade head` |
 
 ## Architecture diagram
@@ -39,6 +42,7 @@ graph TD
     App --> TransformRoute["GET /api/v1/series/{series_id}/transform<br/>app/api/series.py"]
     App --> CompareRoute["GET /api/v1/analysis/compare<br/>app/api/analysis.py"]
     App --> PipelineRoute["POST /api/v1/analysis/pipeline<br/>app/api/analysis.py"]
+    App --> AIRoute["POST /api/v1/ai/query<br/>app/api/ai.py"]
 
     GetRoute --> Service["EconomicDataService<br/>app/services/economic_data.py"]
     SyncRoute --> Service
@@ -46,6 +50,7 @@ graph TD
     TransformRoute --> Service
     CompareRoute --> AnalysisSvc["AnalysisService<br/>app/services/analysis.py"]
     PipelineRoute --> AnalysisSvc
+    AIRoute --> AISvc["AIService<br/>app/services/ai.py"]
 
     Service --> Client["FREDClient<br/>app/clients/fred.py"]
     Service --> Repo["SeriesRepository<br/>app/repositories/series_repository.py"]
@@ -54,38 +59,50 @@ graph TD
     AnalysisSvc --> Engine
     AnalysisSvc --> AnalysisEngine["Analysis engine<br/>app/domain/analysis.py<br/>(pure functions)"]
 
+    AISvc -->|"OpenAI Responses API"| OpenAI[("OpenAI<br/>api.openai.com")]
+    AISvc --> ToolDispatch["Tool dispatcher<br/>app/services/ai_tools.py"]
+    ToolDispatch --> Service
+    ToolDispatch --> AnalysisSvc
+
     Client -->|"httpx, timeout=10s"| FRED[("FRED REST API<br/>api.stlouisfed.org")]
     Repo -->|"session_scope():<br/>BEGIN ... COMMIT/ROLLBACK"| Orm["SQLAlchemy Engine<br/>app/db/session.py"]
     Orm --> PG[("PostgreSQL<br/>economic_intelligence")]
 
-    Config["Settings<br/>app/core/config.py<br/>(FRED_API_KEY, DATABASE_URL, timeout)"] -.-> GetRoute
+    Config["Settings<br/>app/core/config.py<br/>(FRED_API_KEY, DATABASE_URL, OPENAI_API_KEY,<br/>OPENAI_MODEL, timeouts)"] -.-> GetRoute
     Config -.-> SyncRoute
     Config -.-> ObsRoute
     Config -.-> TransformRoute
     Config -.-> CompareRoute
     Config -.-> PipelineRoute
+    Config -.-> AIRoute
     Models["Observation / SeriesResponse /<br/>SeriesObservationsResponse /<br/>SeriesTransformResponse<br/>app/models/series.py"] -.-> Service
     AnalysisModels["SeriesSummary (shared) / SeriesComparisonResponse /<br/>PipelineRequest / PipelineResponse<br/>app/models/analysis.py"] -.-> AnalysisSvc
+    AIModels["AIQueryRequest / AIQueryResponse /<br/>GetObservationsArgs / TransformSeriesArgs<br/>app/models/ai.py"] -.-> ToolDispatch
     OrmModels["EconomicSeries / EconomicObservation<br/>app/db/models.py"] -.-> Repo
     Alembic["alembic/ migrations"] -.->|"defines schema for"| PG
 ```
 
 `GetRoute` and `SyncRoute` reach `FREDClient`; `ObsRoute`, `TransformRoute`,
-`CompareRoute`, and `PipelineRoute` never do — all four are wired only
-through a service to `Repo` to PostgreSQL. This is a real structural
-fact, not just a diagram simplification: `FREDClient` is never imported
-or constructed anywhere in `get_series_observations`'s,
-`get_series_transform`'s, `compare_series`'s, or `run_pipeline`'s call
-path. `AnalysisService` doesn't even carry an optional `FREDClient` slot
-the way `EconomicDataService` does — it has no FRED-backed method at all,
-even though (new in Increment 007) it now calls `Engine` (the
+`CompareRoute`, `PipelineRoute`, and `AIRoute` never do — all five are
+wired only through a service (or, for AI, a service plus the tool
+dispatcher) to `Repo` to PostgreSQL. This is a real structural fact, not
+just a diagram simplification: `FREDClient` is never imported or
+constructed anywhere in `get_series_observations`'s,
+`get_series_transform`'s, `compare_series`'s, `run_pipeline`'s, or
+`query_ai`'s call path. `AnalysisService` doesn't even carry an optional
+`FREDClient` slot the way `EconomicDataService` does — it has no
+FRED-backed method at all, even though it calls `Engine` (the
 transformation module) as well as `AnalysisEngine` directly, reusing both
-domain modules unmodified. `Engine` and `AnalysisEngine` themselves have
-no edge to `Repo`, `Orm`, `PG`, or `Client` at all — they only ever
-receive plain observation data already fetched by a service; neither can
-reach PostgreSQL or FRED even indirectly.
+domain modules unmodified. `AISvc` has no edge to `FRED`, `Repo`, or `PG`
+at all — its only outbound edge besides `OpenAI` is to `ToolDispatch`,
+which itself only ever calls into the two existing services, never
+`app.domain.*` directly and never `FREDClient`. `Engine` and
+`AnalysisEngine` themselves have no edge to `Repo`, `Orm`, `PG`, `Client`,
+or `AISvc`/`ToolDispatch` at all — they only ever receive plain
+observation data already fetched by a service; none of them can reach
+PostgreSQL, FRED, or OpenAI even indirectly.
 
-## Five paths over the same persisted data
+## Six paths over the same persisted data
 
 ```
 WRITE/SYNC PATH:
@@ -112,29 +129,40 @@ COMPOSABLE PIPELINE PATH:
     -> SeriesRepository -> PostgreSQL   (SELECT only, per series: requested range + preceding context, independently)
     -> Transformation engine (pure, in-process; per series, only if requested)
     -> Analysis engine (pure, in-process; exact-date alignment of the FINAL values, then spread/correlation)
+
+AI TOOL-CALLING PATH:
+  Client -> POST /api/v1/ai/query -> Route -> AIService
+    -> OpenAI Responses API   (native tool calling; up to MAX_TOOL_ROUNDS=4 rounds)
+    -> Tool dispatcher (app/services/ai_tools.py; validates arguments, never trusts the model)
+      -> EconomicDataService / AnalysisService -> SeriesRepository -> PostgreSQL   (SELECT only)
+    -> OpenAI Responses API (tool results fed back)
+    -> final natural-language answer
 ```
 
 `POST .../sync` is the only way data enters PostgreSQL.
-`GET .../observations`, `GET .../transform`, `GET /analysis/compare`, and
-`POST /analysis/pipeline` are the only ways to read it back through this
-API — the first returns raw persisted values for one series, the second
-returns values computed from one series' history, the third returns
-values computed by comparing two series' raw histories, and the fourth
-returns values computed by comparing two series' *optionally transformed*
-histories. No path touches another path's external dependency: sync
-never reads more than it needs to upsert; the four read paths never call
-FRED; and none of them ever writes anything back to PostgreSQL — none of
-their computed values (raw comparisons, single-series transformations, or
-pipeline results) are stored anywhere (see Data model below). Neither
-`/analysis/compare` nor `/analysis/pipeline` needed any analysis-specific
-repository method — both call the same `SeriesRepository` methods
-Increments 004/005 already built, `/pipeline` simply calling them per
-series exactly as `.../transform` already does for one.
+`GET .../observations`, `GET .../transform`, `GET /analysis/compare`,
+`POST /analysis/pipeline`, and `POST /ai/query` are the only ways to read
+it back through this API — the first returns raw persisted values for one
+series, the second returns values computed from one series' history, the
+third returns values computed by comparing two series' raw histories, the
+fourth returns values computed by comparing two series' *optionally
+transformed* histories, and the fifth lets an LLM choose among the first
+four kinds of read (via three coarse tools) and explain the result in
+natural language. No path touches another path's external dependency:
+sync never reads more than it needs to upsert; the five read paths never
+call FRED; and none of them ever writes anything back to PostgreSQL —
+none of their computed values (raw comparisons, single-series
+transformations, pipeline results, or AI tool results) are stored
+anywhere (see Data model below). `/analysis/compare`, `/analysis/pipeline`,
+and `/ai/query`'s tools needed no analysis- or AI-specific repository
+method between them — all call the same `SeriesRepository` methods
+Increments 004/005 already built.
 
-`GET /api/v1/series/{series_id}` (no suffix) is a sixth, separate path,
+`GET /api/v1/series/{series_id}` (no suffix) is a seventh, separate path,
 unchanged since Increment 002 — it still reads live from FRED and never
-touches PostgreSQL at all. See Response contract below for how its
-contract relates to the other five.
+touches PostgreSQL at all, and is not reachable from the AI path at all
+(see Read-only AI tools below). See Response contract below for how its
+contract relates to the other five read paths.
 
 ## Configuration boundary
 
@@ -385,6 +413,30 @@ upstream/malformed), never through raw `httpx` exceptions or FRED's raw
 error payload. Everything above the client (`EconomicDataService`, the
 route) only ever sees those typed exceptions or valid data.
 
+## Read-only AI tools: the second external-provider boundary
+
+`AIService` (`app/services/ai.py`) is the only code that knows how to
+talk to OpenAI — its base URL, request shape, and exception types are
+never referenced anywhere else. Its counterpart on the *tool* side is
+`app/services/ai_tools.py`: the only code that decides which application
+capability a model-requested tool name maps to. Three properties hold
+structurally, not just by convention, and were each verified directly
+(see the journal):
+
+- **No FRED reachability.** Neither `app/services/ai.py` nor
+  `app/services/ai_tools.py` imports `FREDClient`; a series that isn't
+  already persisted produces a `series_not_found` tool error, never a
+  fetch attempt.
+- **No write capability.** All three tools
+  (`get_observations`/`transform_series`/`analyze_series`) call only
+  read-only methods on `EconomicDataService`/`AnalysisService`;
+  `sync_series` and `get_series` (FRED-backed) are not exposed as tools
+  at all (see [ADR-014](../adr/014-read-only-ai-tools.md)).
+- **No duplicated math.** Neither AI module imports anything from
+  `app.domain.*` directly — every number a tool can return comes from the
+  same, unmodified `EconomicDataService`/`AnalysisService` methods every
+  HTTP endpoint already uses.
+
 ## What is deliberately NOT part of this architecture yet
 
 The following are intentionally absent — not overlooked:
@@ -402,8 +454,18 @@ The following are intentionally absent — not overlooked:
 - **Multiple data providers** — FRED is the only source. `EconomicDataService`
   is structured so a second provider could be added behind it later, but
   no such abstraction (registry, plugin interface, etc.) exists yet.
-- **AI/LLM functionality** — no reasoning layer, tool calling, RAG, or
-  embeddings.
+- **AI conversation memory, streaming, or series discovery** — `POST /ai/query`
+  takes one message and returns one response; no chat history, no
+  conversation IDs, no WebSockets/streaming, and no semantic search over
+  available series. If the model can't determine a series identifier
+  from the message, it says so rather than guessing or searching.
+- **RAG, embeddings, or a vector database** — nothing in the AI path
+  retrieves unstructured documents; every tool result comes from the
+  same structured, relational data every other endpoint already serves.
+- **Write-capable AI tools** — see the new "Read-only AI tools" section
+  above and [ADR-014](../adr/014-read-only-ai-tools.md); `sync_series`
+  and any future write operation are deliberately unreachable from
+  natural language.
 - **Authentication/authorization** — the API is unauthenticated; anyone who
   can reach it can call it.
 - **Async I/O** — both `FREDClient` and the database session are
@@ -465,8 +527,10 @@ database-backed read paths (e.g. serving from PostgreSQL with an
 explicit staleness check, rather than two independent endpoints),
 additional transformations, frequency-aware alignment, or a pagination
 strategy for derived/comparison/pipeline data if a real need emerges,
-additional external data providers, an AI reasoning/tool-calling layer
-over the persisted and derived data, and production infrastructure
-concerns (Docker, CI/CD, observability, cloud deployment). Each will get
-its own ADR(s) and journal entry when it happens, the same as Increments
-001–007.
+additional external data providers, conversation memory/streaming and
+semantic series discovery for the AI path, a well-scoped and explicitly
+confirmed write-capable AI action (see
+[ADR-014](../adr/014-read-only-ai-tools.md)'s "Revisit When"), and
+production infrastructure concerns (Docker, CI/CD, observability, cloud
+deployment). Each will get its own ADR(s) and journal entry when it
+happens, the same as Increments 001–008.

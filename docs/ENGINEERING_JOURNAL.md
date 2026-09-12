@@ -1978,3 +1978,331 @@ since Increment 006):
   explicitly, and set a concrete condition ("if a third consumer appears")
   for revisiting it, rather than either silently duplicating without
   comment or over-engineering a shared abstraction for two call sites.
+
+---
+
+## Increment 008 — LLM Tool-Calling Foundation
+
+**Objective:** answer natural-language questions about persisted economic
+data by having an LLM call our own deterministic engine — never by having
+the LLM compute an answer itself. `POST /api/v1/ai/query` accepts one
+message, lets OpenAI's native tool calling invoke up to three
+application-level tools over Increments 004–007's existing capabilities,
+and returns the model's final answer alongside a record of which tools
+ran. This is a foundation, not an agent: one request, one message, no
+memory, no autonomy beyond a small bounded tool loop.
+
+### Why AI is introduced now, not earlier
+
+Every increment before this one built something the AI would otherwise
+have had to fake. An LLM asked "what's the correlation between UNRATE and
+CPIAUCSL" has no reliable way to answer correctly on its own — it would be
+guessing, or worse, confidently wrong. Increments 004–007 turned "get
+persisted observations," "transform a series," and "compare two series"
+into deterministic, already-verified operations; Increment 008's entire
+job is to let an LLM *reach* those operations, not to reimplement or
+improve on them. Building an AI layer before the deterministic engine
+existed would have meant building on top of nothing — either the model
+would be inventing numbers, or this increment would have had to build the
+engine and the AI layer at once, conflating two very different kinds of
+correctness (mathematical determinism vs. natural-language usefulness)
+in one change.
+
+### Division of responsibility: the model explains, the engine calculates
+
+This is the architectural spine of the whole increment, restated everywhere
+it matters (the system instructions, this journal, the ADR): **the model
+never computes an economic value.** Every number in a response — a raw
+observation, a percentage-point change, a correlation coefficient — comes
+from a tool call into code that existed and was verified in an earlier
+increment. The model's job is entirely on the language side: deciding
+*which* tool answers the question, supplying arguments, and turning a
+structured JSON result into readable prose. If a user asks for a moving
+average, the model calls `transform_series`; it does not receive ten raw
+numbers and average them in its own reasoning. This is not a suggestion
+in the system prompt alone — it's enforced architecturally, because the
+model is never given raw enough data to compute the value some other way
+without the tool (e.g. `get_observations` returns real values, but
+nothing stops a model from doing arithmetic on them instead of calling
+`transform_series` — the system instruction is the actual guard against
+*that* specific failure mode, which is why it says so explicitly rather
+than assuming architecture alone prevents it).
+
+### Native OpenAI tool calling, not an agent framework
+
+The OpenAI Python SDK's Responses API (`client.responses.create`) was used
+directly — `instructions`, `input`, `tools`, `previous_response_id`, and
+reading `response.output` for `function_call` items are the entire
+integration surface. No LangChain, LangGraph, LlamaIndex, Semantic
+Kernel, or custom agent framework was introduced. For exactly three
+fixed, known tools and a request/response cycle with a small bounded
+number of rounds, an agent framework would add a layer of indirection
+(its own tool-registration API, its own execution loop, its own
+exception types) over something the underlying SDK already does directly
+and simply. See [ADR-013](adr/013-native-openai-tool-calling.md) for the
+fuller reasoning, including what would justify revisiting this.
+
+One practical note from actually building against the installed SDK: the
+OpenAI Python package has moved through major version generations fast
+enough (this project installed `openai` 3.13.0; the Responses API's core
+shape — `instructions`/`input`/`tools`/`previous_response_id`/`output`/
+`output_text` — has stayed stable across that churn) that verifying the
+exact API surface by installing the real package and inspecting its types
+directly (`inspect.signature`, `model_fields`, reading generated
+TypedDicts) was more reliable than trusting any single remembered version
+of the API. That verification step is recorded here because it's a
+reusable practice, not just incidental to this increment.
+
+### Three coarse application-level tools, not one per domain function
+
+The tool surface is deliberately coarse: `get_observations`,
+`transform_series`, `analyze_series` — one per *use case*, not one per
+underlying function. `EconomicDataService` alone has four public methods
+(`get_series`, `sync_series`, `get_observations`,
+`get_transformed_observations`); only two of those are exposed as tools
+at all, and neither `get_series` (FRED-backed) nor `sync_series`
+(FRED-backed and mutating) is reachable by the model, on purpose — see
+the read-only section below. `analyze_series` maps onto one method,
+`AnalysisService.pipeline`, chosen deliberately over exposing
+`AnalysisService.compare` as a separate fourth tool, since `pipeline` is
+a strict superset of what `compare` does (raw-only comparison is just a
+pipeline request with no transformation on either side) — one tool
+covering both cases is simpler for the model to reason about than two
+overlapping ones. Coarse, use-case-shaped tools also make the read-only
+guarantee easier to state and verify: three tools to audit, not a dozen
+domain functions each individually re-litigated for safety.
+
+### Tool schemas, hand-written, not auto-generated from Pydantic
+
+Each tool's JSON schema (name, description, parameters) is hand-written
+in `app/services/ai_tools.py`, not derived from the Pydantic argument
+models via `model_json_schema()`. This was a deliberate simplicity choice
+for exactly three tools: a hand-written schema is fully readable in one
+place, side-by-side with the Pydantic model it must stay consistent
+with, without needing to reason about how Pydantic's schema generator
+represents `X | None` fields (`anyOf` unions), nested models (`$defs`/
+`$ref`), or OpenAI's stricter schema requirements when `strict: true` is
+requested (every property effectively required, not just the ones a
+caller must supply). This project uses `strict: False` for all three
+tools — deliberately, because the schema shown to the model is not the
+actual safety boundary; the Pydantic validation in `execute_tool` is (see
+next section), so there was no correctness reason to fight `strict`
+mode's stiffer requirements for schemas the model only uses as a guide.
+
+### Tool argument validation: never trust the model
+
+Every tool call's arguments go through `ArgsModel.model_validate(raw_arguments)`
+(`GetObservationsArgs`, `TransformSeriesArgs`, or `PipelineRequest`
+reused directly for `analyze_series`) before any application code runs.
+A `pydantic.ValidationError` here — a missing required field, a `window`
+outside `[2, 365]`, an unrecognized `transformation`/`analysis` enum
+value, a wrong type — becomes a structured `{"ok": false, "error":
+{"type": "invalid_arguments", ...}}` result, never an exception that
+reaches application code with unvalidated data. This is the actual
+security/correctness boundary named in the task: the JSON schema shown to
+the model is a *hint*, not an enforcement mechanism — a model can, in
+principle, emit anything as tool-call arguments (malformed JSON,
+extra/missing fields, wrong types), and this project's safety depends
+entirely on validating that against the same Pydantic models the rest of
+the application already trusts, not on the model behaving.
+
+### The tool dispatcher: an explicit dict, not reflection
+
+`app/services/ai_tools.py`'s `_TOOL_HANDLERS` is a plain
+`dict[str, tuple[ArgsModel, handler]]` — three entries, checked by a
+single `.get(name)`. No `getattr`/dynamic import/plugin registry exists
+anywhere in the AI path. For three fixed tools, a dict lookup is the
+entire "dispatch" problem; building a registry or plugin system for three
+entries would be solving a scaling problem this project doesn't have.
+
+### Tool result contract: JSON-serializable, never a leaked internal
+
+Every tool handler returns `response.model_dump(mode="json")` — the same
+Pydantic response model the equivalent HTTP endpoint would return, plain
+dict/list/str/float/None, `date` values already converted to ISO
+strings. No SQLAlchemy ORM object, no `Session`, no exception instance,
+and no raw traceback ever crosses into a tool result or gets
+`json.dumps`'d back to the model. Expected failures (an unknown tool
+name, arguments that don't validate, a nonexistent persisted series, a
+bad date range, an invalid transformation window, a database outage) all
+become the same small structured shape:
+`{"ok": false, "error": {"type": "...", "message": "..."}}` — a fixed,
+non-secret message string per error type, never `str()` of the raw
+exception, and never a raw OpenAI/database error body.
+
+### The tool loop and its round limit
+
+`AIService.query` is a `while True` loop: send the message, check
+`response.output` for `function_call` items, and if there are none, stop
+and return the model's final text. If there are tool calls, execute each
+one (multiple in the same round if the model requested several at once —
+verified directly, see below), feed every result back via
+`function_call_output` items keyed to `previous_response_id`, and let the
+model continue. `MAX_TOOL_ROUNDS = 4` counts rounds, not individual calls
+within a round — if the model still wants to call tools after 4 rounds,
+`ToolRoundLimitExceededError` stops the loop deliberately rather than
+letting it run indefinitely, and the route turns that into a `503` rather
+than hanging the request. This is a bounded request/tool/response cycle,
+not autonomous planning: nothing here lets the model decide to keep
+going past a fixed, small ceiling this project controls.
+
+### Read-only, end to end
+
+No tool in this increment can sync, write, delete, run a migration, or
+execute arbitrary SQL — `get_observations` and `transform_series` call
+only the read methods already used by the existing `GET` endpoints;
+`analyze_series` calls `AnalysisService.pipeline`, itself read-only since
+Increment 007. `AIService`/`app.services.ai_tools` import no
+`FREDClient` at all (confirmed by inspection — the only "FREDClient"
+string anywhere in that module is in a docstring explaining that none is
+constructed), so there is no code path by which the AI layer can reach
+FRED, sync a series, or trigger a refresh — a series that isn't already
+persisted is a `series_not_found` tool error, not an invitation to fetch
+it. This was proven directly, not just reasoned about (see Verification).
+See [ADR-014](adr/014-read-only-ai-tools.md) for why this is a durable
+policy for this increment, not an incidental property of what happened to
+get built.
+
+### Provider/model configuration
+
+`OPENAI_API_KEY` and `OPENAI_MODEL` follow the exact pattern
+`FRED_API_KEY`/`DATABASE_URL` already established: read once in
+`app/core/config.py` via `os.environ.get(...)`, `None` if unset, checked
+at the point of use (the route returns `503` if either is missing) rather
+than failing application startup. No model name is hardcoded anywhere in
+application logic — `AIService` reads `settings.openai_model` and passes
+it to every `responses.create` call; changing models is a configuration
+change, never a code change. `openai_timeout_seconds` (a fixed constant,
+`30.0`, mirroring `fred_timeout_seconds`) is passed explicitly to the
+`OpenAI` client constructor, continuing this project's standing rule that
+every outbound external call has an explicit timeout.
+
+### Failure boundaries
+
+| Condition | Where caught | Result |
+|---|---|---|
+| `OPENAI_API_KEY`/`OPENAI_MODEL` missing | Route, before constructing `AIService` | `503`, generic message |
+| OpenAI rejects the API key | `AIService._create_response`, `openai.AuthenticationError` | `503`, generic message |
+| OpenAI unreachable/timed out | `openai.APITimeoutError`/`APIConnectionError` | `503`, generic message |
+| OpenAI returns another error status | `openai.APIStatusError` | `503`, generic message |
+| Unknown tool name / invalid arguments | `execute_tool`, before any handler runs | Structured tool error, loop continues |
+| Series not persisted / bad date range / bad window | `execute_tool`, from the existing service exceptions | Structured tool error, loop continues |
+| Database unavailable during a tool call | `execute_tool`, `sqlalchemy.exc.OperationalError` | Structured tool error, loop continues |
+| Tool-round limit exceeded | `AIService.query`, `ToolRoundLimitExceededError` | `503`, generic message |
+| Anything genuinely unexpected | Not caught anywhere in the AI path | FastAPI's default `500` |
+
+The last row is deliberate, not an omission: this project's established
+discipline (every route since Increment 003) is to map only the
+exceptions that can realistically occur, and let a truly unanticipated
+exception surface loudly as a `500` rather than being absorbed into a
+catch-all that would hide a real bug behind a vague AI-sounding apology.
+
+### Verification performed
+
+Against isolated tool-dispatcher tests, a mocked tool-calling loop (no
+network dependency), and — since a real `OPENAI_API_KEY` was already
+configured — real requests through the actual OpenAI API:
+
+- **Tool dispatch** (mocked OpenAI client, real database): `get_observations`,
+  `transform_series`, and `analyze_series` each verified to call through
+  to the real, unmodified `EconomicDataService`/`AnalysisService` methods
+  — `analyze_series`'s correlation result matched the exact value
+  (`-0.8030258377001954`) already established in Increments 006/007,
+  confirming zero drift from reusing the same code.
+- **Validation before execution**: an unknown tool name, a `limit` outside
+  its bounds, a missing required field, and a `moving_average` missing
+  `window` (caught by the reused `InvalidWindowError`, not a duplicate
+  check) all produced the correct structured error, and none reached a
+  handler.
+- **Mocked tool loop**: a no-tool response, a single-tool round, parallel
+  tool calls within one round, a tool result correctly fed back via
+  `function_call_output` producing a final answer, `tools_used` matching
+  exactly what was called and with what arguments, malformed tool-call
+  JSON, an unknown tool name mid-loop, and the round limit being enforced
+  (a client that always requests another tool call was stopped exactly at
+  round 4, not run indefinitely) — all verified without a network call.
+- **Provider failure paths** (mocked `openai` exceptions): missing API
+  key, `AuthenticationError`, `APITimeoutError`, and `APIConnectionError`
+  each produced the correct generic `503`, with no OpenAI response body
+  or exception detail included.
+- **Real end-to-end requests** (real OpenAI API, `OPENAI_MODEL` supplied
+  as a non-secret environment override, `OPENAI_API_KEY` never read or
+  displayed): a "say hello, use no tools" prompt returned an answer with
+  `tools_used: []`; "how has UNRATE changed, use absolute_change" correctly
+  called `transform_series` and returned a table whose values matched the
+  deterministic engine's known output exactly (e.g. `+0.1` for
+  2026-02-01); "correlate UNRATE and CPIAUCSL" correctly called
+  `analyze_series` and reported `-0.80` (matching `-0.8030...` rounded),
+  explicitly framed as correlation, not causation; "what's the current
+  price of gold" (data this system doesn't have) correctly triggered no
+  tool call and an honest "I don't have access to that" answer rather
+  than an invented number.
+- **No PostgreSQL mutation, proven live**: `economic_series`/
+  `economic_observations` row counts and `UNRATE`'s `updated_at`
+  timestamp were unchanged after this session's real tool-calling
+  requests — the same counts and the same timestamp recorded since
+  Increment 003, now also surviving real LLM-driven tool calls, not just
+  direct HTTP calls to the deterministic endpoints.
+- **No FRED reachability, no duplicate math**: confirmed via direct
+  inspection that no file in the AI path imports `FREDClient` or any
+  `app.domain.*` function directly — every number the AI path can produce
+  comes through `EconomicDataService`/`AnalysisService`, unmodified.
+- Confirmed no schema migration, no dependency beyond `openai` itself
+  (plus an unrelated, pre-existing `pyproject.toml` packaging fix — see
+  below), and no secret value in any changed file or `.env.example`.
+
+### An unrelated packaging fix, made along the way
+
+Installing the new `openai` dependency exposed a latent, pre-existing
+issue: a newer `setuptools` refuses `pip install -e .` because flat-layout
+auto-discovery finds both `app/` and `alembic/` as candidate top-level
+packages and won't guess which is intended. Confirmed via `git stash`
+that this failure predates this increment's changes entirely — it was
+simply never triggered until a fresh dependency install pulled in a
+newer `setuptools`. Fixed with a two-line `[tool.setuptools.packages.find]`
+addition scoping discovery to `app*`. Recorded here rather than silently
+folded into the dependency-bump diff, since a reader of the `pyproject.toml`
+diff should know why an unrelated-looking build-system stanza appeared in
+an "add AI" increment.
+
+### Deferred decisions
+
+- **Auto-generating tool schemas from Pydantic models** — deferred; see
+  the schema section above. Worth revisiting if the tool surface grows
+  enough that hand-maintaining schema/model consistency becomes real
+  effort.
+- **A native `max_tool_calls` parameter** — the installed SDK exposes one
+  directly on `responses.create`. Not used here in favor of this
+  project's own explicit round-counting loop, which the task specifically
+  asked for and which this project fully controls and tests; revisit if
+  the provider-native limit offers a real advantage (e.g. enforcing the
+  cap even against a provider-side bug in this project's own loop logic)
+  once both approaches can be compared directly.
+- **Conversation memory, streaming, series discovery/search** — all
+  explicitly out of scope per the task; genuinely separate, larger design
+  problems each deserving their own increment.
+
+### Reusable engineering lessons
+
+- When adding an LLM to a system that already has a deterministic core,
+  the design question worth spending the most care on isn't "what can the
+  model do" — it's "what can the model *not* do," made structurally true
+  rather than merely requested in a prompt. The system instruction here
+  tells the model to use tools for calculations; the actual guarantee
+  that persisted values are never invented comes from what data the model
+  is and isn't given access to, not from the instruction being followed.
+- Verifying a fast-moving external SDK's actual current shape by
+  installing it and introspecting its real types beats trusting a
+  remembered API from training data — especially for a provider SDK that
+  has visibly moved through several major versions.
+- "Never trust model-generated input" is the same engineering discipline
+  as "never trust user-generated input," applied to a new kind of caller.
+  The Pydantic validation boundary that already protected every HTTP
+  endpoint in this project needed no new concept to extend to tool
+  arguments — only the recognition that an LLM's tool call is exactly as
+  untrusted as an HTTP request body, arguably more so.
+- A bounded loop with a small, explicit, tested ceiling is a simple and
+  sufficient safeguard against runaway behavior — reaching for something
+  more sophisticated (budget tracking, cost estimation, adaptive limits)
+  would have been solving a problem this foundation increment doesn't
+  have yet.

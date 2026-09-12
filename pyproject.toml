@@ -11,8 +11,17 @@ dependencies = [
     "sqlalchemy>=2.0",
     "alembic",
     "psycopg[binary]",
+    "openai>=3.0",
 ]
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+# Scope package discovery to the actual application package. Without this,
+# newer setuptools versions refuse to build (flat-layout auto-discovery
+# finds both app/ and alembic/ as top-level packages and won't guess which
+# one is intended) -- unrelated to this increment, but newly blocking a
+# plain `pip install -e .`, so fixed here rather than worked around.
+include = ["app*"]

@@ -22,5 +22,12 @@ class Settings:
 
     database_url: str | None = os.environ.get("DATABASE_URL")
 
+    # No hardcoded default: the model is not baked into architecture, so an
+    # unset OPENAI_MODEL means AI features are simply not configured, the
+    # same way an unset FRED_API_KEY/DATABASE_URL disables their features.
+    openai_api_key: str | None = os.environ.get("OPENAI_API_KEY")
+    openai_model: str | None = os.environ.get("OPENAI_MODEL")
+    openai_timeout_seconds: float = 30.0
+
 
 settings = Settings()

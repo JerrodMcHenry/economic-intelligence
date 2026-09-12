@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.api.ai import router as ai_router
 from app.api.analysis import router as analysis_router
 from app.api.series import router as series_router
 
@@ -10,6 +11,7 @@ app = FastAPI(
 
 app.include_router(series_router, prefix="/api/v1")
 app.include_router(analysis_router, prefix="/api/v1")
+app.include_router(ai_router, prefix="/api/v1")
 
 
 @app.get("/health")

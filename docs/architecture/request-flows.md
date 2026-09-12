@@ -18,6 +18,10 @@ component picture.
 - Flow 12 — Composable Pipeline: raw/raw and mixed transformed composition — new in Increment 007
 - Flow 13 — Composable Pipeline: boundary context with a `start_date` — new in Increment 007
 - Flow 14 — Composable Pipeline Failure/Validation Scenarios — new in Increment 007
+- Flow 15 — AI Query: no tool needed — new in Increment 008
+- Flow 16 — AI Query: single-tool round (`get_observations`/`transform_series`) — new in Increment 008
+- Flow 17 — AI Query: two-series tool call (`analyze_series`) — new in Increment 008
+- Flow 18 — AI Query Failure Scenarios: invalid tool arguments, missing series, provider failure, tool-round limit — new in Increment 008
 
 ## Flow 1 — Health Check
 
@@ -684,3 +688,149 @@ window-applicability rule maps to the *same* status code (`400`) via the
 `.../transform` endpoint's identical rule (Flow 9) — not a new,
 differently-coded validation path for what is conceptually the same
 check.
+
+## Flow 15 — AI Query: no tool needed
+
+The simplest case: the model can answer without touching persisted data
+at all (e.g. small talk, or a question this system's data genuinely can't
+answer).
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/ai.py)
+    participant S as AIService
+    participant AI as OpenAI Responses API
+
+    C->>R: POST /ai/query {"message": "What's the current price of gold?"}
+    R->>R: OPENAI_API_KEY/MODEL and DATABASE_URL present?
+    R->>S: query(message, session)
+    S->>AI: responses.create(instructions=SYSTEM_INSTRUCTIONS, input=[user message], tools=[...])
+    AI-->>S: response.output has no function_call items
+    Note over S: loop's first check finds nothing to execute -- exits immediately
+    S-->>R: AIQueryResult(answer="I don't have access to that...", tools_used=[])
+    R-->>C: 200 {"answer": "...", "tools_used": []}
+```
+
+Verified with a real request: asked about gold prices (data this system
+has no series for), the model correctly declined to invent a number and
+called no tool.
+
+## Flow 16 — AI Query: single-tool round
+
+A request needing one persisted-data lookup or transformation.
+`get_observations` and `transform_series` follow the identical shape;
+this shows `transform_series`.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route
+    participant S as AIService
+    participant AI as OpenAI Responses API
+    participant D as Tool dispatcher<br/>(app/services/ai_tools.py)
+    participant ED as EconomicDataService
+
+    C->>R: POST /ai/query {"message": "How has UNRATE changed? Use absolute_change."}
+    R->>S: query(message, session)
+    S->>AI: responses.create(instructions=..., input=[user message], tools=[...])
+    AI-->>S: response.output = [function_call: transform_series({"series_id":"UNRATE","transformation":"absolute_change"})]
+    Note over S: round 1 of MAX_TOOL_ROUNDS=4
+    S->>S: parse call.arguments as JSON
+    S->>D: execute_tool("transform_series", {...}, session)
+    D->>D: TransformSeriesArgs.model_validate(...) -- structural validation
+    D->>ED: get_transformed_observations("UNRATE", session, "absolute_change", ...)
+    ED-->>D: SeriesTransformResponse (same result GET .../transform would return)
+    D-->>S: {"ok": true, "result": {...}}
+    S->>S: tools_used.append({"transform_series", {...}})
+    S->>AI: responses.create(input=[function_call_output], previous_response_id=...)
+    AI-->>S: response.output = [message] -- no more function_call items
+    S-->>R: AIQueryResult(answer="...", tools_used=[transform_series call])
+    R-->>C: 200 {"answer": "The unemployment rate...", "tools_used": [...]}
+```
+
+Verified with a real request and real OpenAI response: the model called
+`transform_series` with exactly these arguments, and the returned table's
+values matched the deterministic `absolute_change` engine's known output
+exactly (e.g. `+0.1` for 2026-02-01).
+
+## Flow 17 — AI Query: two-series tool call
+
+`analyze_series` maps directly onto `AnalysisService.pipeline` — the
+exact same code path as `POST /analysis/pipeline` (Flow 12), just invoked
+by the model instead of a direct HTTP call.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route
+    participant S as AIService
+    participant AI as OpenAI Responses API
+    participant D as Tool dispatcher
+    participant AS as AnalysisService
+
+    C->>R: POST /ai/query {"message": "Correlate UNRATE and CPIAUCSL."}
+    R->>S: query(message, session)
+    S->>AI: responses.create(...)
+    AI-->>S: function_call: analyze_series({"series_a":{"series_id":"UNRATE"},<br/>"series_b":{"series_id":"CPIAUCSL"},"analysis":"correlation"})
+    S->>D: execute_tool("analyze_series", {...}, session)
+    D->>D: PipelineRequest.model_validate(...) -- the SAME model /analysis/pipeline uses
+    D->>AS: pipeline(request, session)
+    Note over AS: identical to Flow 12 -- align, then Pearson correlation
+    AS-->>D: PipelineResponse {correlation: -0.803...}
+    D-->>S: {"ok": true, "result": {...}}
+    S->>AI: responses.create(input=[function_call_output], previous_response_id=...)
+    AI-->>S: final message: "The correlation is approximately -0.80..."
+    S-->>R: AIQueryResult(answer="...", tools_used=[analyze_series call])
+    R-->>C: 200 JSON
+```
+
+Verified with a real request: the model reported "-0.80" (matching
+`-0.8030258377001954` rounded) and explicitly noted the relationship
+without claiming causation, per the system instruction.
+
+## Flow 18 — AI Query Failure Scenarios
+
+| Scenario | Where it's caught | Result |
+|---|---|---|
+| `OPENAI_API_KEY`/`OPENAI_MODEL` not configured | Route, before `AIService` is constructed | `503` |
+| `DATABASE_URL` not configured | Route, before `AIService` is constructed | `503` |
+| OpenAI rejects the API key | `AIService._create_response`, `AuthenticationError` | `503`, generic message |
+| OpenAI unreachable/timed out | `AIService._create_response`, `APITimeoutError`/`APIConnectionError` | `503`, generic message |
+| Model requests an unknown tool name | `execute_tool` returns `{"ok": false, "error": {"type": "unknown_tool", ...}}` | Loop continues; model sees the error and can respond accordingly |
+| Model's tool arguments don't validate (or aren't valid JSON at all) | `execute_tool` / `AIService._parse_arguments` | Loop continues; same structured error shape |
+| Series in a tool call isn't persisted | `execute_tool` catches `SeriesNotFoundError` | Loop continues; structured `series_not_found` error |
+| Database unavailable during a tool call | `execute_tool` catches `OperationalError` | Loop continues; structured `database_unavailable` error |
+| Model keeps requesting tools past `MAX_TOOL_ROUNDS` | `AIService.query`, `ToolRoundLimitExceededError` | `503` |
+| Anything genuinely unexpected | Not caught in the AI path | FastAPI's default `500` |
+
+The middle four rows never end the request — they hand the model a
+structured error it can react to (apologize, try different arguments, or
+explain the limitation), which is why `POST /ai/query` can still return
+`200` even when a tool call inside it failed. Verified directly:
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route
+    participant S as AIService
+    participant AI as OpenAI Responses API
+    participant D as Tool dispatcher
+
+    C->>R: POST /ai/query {"message": "Show me NOTPERSISTED"}
+    R->>S: query(...)
+    S->>AI: responses.create(...)
+    AI-->>S: function_call: get_observations({"series_id": "NOTPERSISTED"})
+    S->>D: execute_tool("get_observations", {...}, session)
+    D->>D: EconomicDataService.get_observations(...) raises SeriesNotFoundError
+    D-->>S: {"ok": false, "error": {"type": "series_not_found", "message": "Series 'NOTPERSISTED' is not persisted."}}
+    S->>AI: responses.create(input=[function_call_output], previous_response_id=...)
+    AI-->>S: final message: "That series isn't available in our persisted data."
+    S-->>R: AIQueryResult(answer="...", tools_used=[get_observations call])
+    R-->>C: 200 {"answer": "...", "tools_used": [...]}  -- not an error response
+```
+
+Also verified: a client that always requests another tool call was
+stopped exactly at round 4 (`ToolRoundLimitExceededError`), never running
+indefinitely; the round counter counts *rounds* (one round may contain
+several parallel tool calls, verified separately), not individual calls.
