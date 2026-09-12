@@ -70,6 +70,66 @@ class SeriesRepository:
 
         return list(observations), total
 
+    def get_observations_in_range(
+        self,
+        economic_series_id: int,
+        start_date: date | None,
+        end_date: date | None,
+    ) -> list[EconomicObservation]:
+        """Return ALL observations for a series matching the optional date
+        filters, in ascending chronological order -- unpaginated.
+
+        Used by the transformation endpoint, which needs the complete
+        requested range at once (a transformation can't be computed
+        correctly one page at a time -- see app.services.economic_data).
+        """
+        conditions = [EconomicObservation.economic_series_id == economic_series_id]
+        if start_date is not None:
+            conditions.append(EconomicObservation.observation_date >= start_date)
+        if end_date is not None:
+            conditions.append(EconomicObservation.observation_date <= end_date)
+
+        observations = (
+            self._session.execute(
+                select(EconomicObservation).where(*conditions).order_by(EconomicObservation.observation_date.asc())
+            )
+            .scalars()
+            .all()
+        )
+        return list(observations)
+
+    def get_preceding_observations(
+        self,
+        economic_series_id: int,
+        before_date: date,
+        count: int,
+    ) -> list[EconomicObservation]:
+        """Return up to `count` observations for a series strictly before
+        `before_date` -- the `count` most recent such observations,
+        returned in ascending chronological order so they can be
+        prepended directly to a later range.
+
+        Used to give the transformation engine enough leading context
+        (e.g. the one prior observation a change calculation needs, or a
+        moving average's `window - 1` prior points) to compute correct
+        values at the start of a date-filtered request, without that
+        context itself appearing in the response.
+        """
+        rows = (
+            self._session.execute(
+                select(EconomicObservation)
+                .where(
+                    EconomicObservation.economic_series_id == economic_series_id,
+                    EconomicObservation.observation_date < before_date,
+                )
+                .order_by(EconomicObservation.observation_date.desc())
+                .limit(count)
+            )
+            .scalars()
+            .all()
+        )
+        return list(reversed(rows))
+
     def save_series(self, data: SeriesResponse) -> EconomicSeries:
         """Upsert series metadata and its observations.
 

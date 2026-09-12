@@ -20,8 +20,13 @@ from app.clients.fred import (
 )
 from app.core.config import settings
 from app.db.session import session_scope
-from app.models.series import SeriesObservationsResponse, SeriesResponse
-from app.services.economic_data import EconomicDataService, InvalidDateRangeError, SeriesNotFoundError
+from app.models.series import SeriesObservationsResponse, SeriesResponse, SeriesTransformResponse, TransformationType
+from app.services.economic_data import (
+    EconomicDataService,
+    InvalidDateRangeError,
+    InvalidWindowError,
+    SeriesNotFoundError,
+)
 
 router = APIRouter(prefix="/series", tags=["series"])
 
@@ -130,6 +135,51 @@ def get_series_observations(
             )
     except InvalidDateRangeError:
         raise HTTPException(status_code=400, detail="start_date must not be after end_date.")
+    except SeriesNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Series '{series_id}' was not found.")
+    except OperationalError:
+        raise HTTPException(status_code=503, detail="Database is currently unavailable.")
+    except SQLAlchemyError:
+        raise HTTPException(status_code=500, detail="Database error while reading series data.")
+
+
+@router.get("/{series_id}/transform", response_model=SeriesTransformResponse)
+def get_series_transform(
+    series_id: str,
+    transformation: TransformationType = Query(...),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    window: int | None = Query(default=None, ge=2, le=365),
+) -> SeriesTransformResponse:
+    """Compute a derived series over persisted historical observations.
+
+    Database-only: never calls FRED, never syncs, never mutates data, and
+    never persists the derived result -- it's recomputed on every call
+    from raw observations already in PostgreSQL. Not paginated (see
+    EconomicDataService.get_transformed_observations for why).
+    """
+    if not settings.database_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Database is not configured on this server.",
+        )
+
+    service = EconomicDataService()
+
+    try:
+        with session_scope() as session:
+            return service.get_transformed_observations(
+                series_id,
+                session,
+                transformation=transformation,
+                start_date=start_date,
+                end_date=end_date,
+                window=window,
+            )
+    except InvalidDateRangeError:
+        raise HTTPException(status_code=400, detail="start_date must not be after end_date.")
+    except InvalidWindowError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except SeriesNotFoundError:
         raise HTTPException(status_code=404, detail=f"Series '{series_id}' was not found.")
     except OperationalError:

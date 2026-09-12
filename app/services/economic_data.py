@@ -13,7 +13,16 @@ from typing import Literal
 from sqlalchemy.orm import Session
 
 from app.clients.fred import FREDClient, FREDUpstreamError
-from app.models.series import Observation, PaginationMeta, SeriesObservationsResponse, SeriesResponse
+from app.domain.transformations import absolute_change, moving_average, percent_change
+from app.models.series import (
+    Observation,
+    PaginationMeta,
+    SeriesObservationsResponse,
+    SeriesResponse,
+    SeriesTransformResponse,
+    TransformationMeta,
+    TransformationType,
+)
 from app.repositories.series_repository import SeriesRepository
 
 DEFAULT_OBSERVATION_LIMIT = 10
@@ -25,6 +34,11 @@ class SeriesNotFoundError(Exception):
 
 class InvalidDateRangeError(Exception):
     """Raised when start_date is after end_date."""
+
+
+class InvalidWindowError(Exception):
+    """Raised when `window` is missing for moving_average, or supplied
+    for a transformation that doesn't use it."""
 
 
 class EconomicDataService:
@@ -108,6 +122,85 @@ class EconomicDataService:
             source=series.source,
             observations=[Observation(date=obs.observation_date, value=obs.value) for obs in observations],
             pagination=PaginationMeta(limit=limit, offset=offset, returned=len(observations), total=total),
+        )
+
+    def get_transformed_observations(
+        self,
+        series_id: str,
+        session: Session,
+        transformation: TransformationType,
+        start_date: date | None,
+        end_date: date | None,
+        window: int | None,
+    ) -> SeriesTransformResponse:
+        """Compute a derived series (absolute_change/percent_change/moving_average)
+        over persisted historical observations.
+
+        Database-only: never calls FRED, never syncs, never mutates data,
+        and never persists the derived result -- it's recomputed from raw
+        observations on every call. Not paginated: a transformation needs
+        its full requested range (plus leading context, see below) to
+        compute correctly; slicing that into pages would risk splitting a
+        calculation across a page boundary.
+
+        Raises `InvalidDateRangeError` if start_date is after end_date,
+        `InvalidWindowError` if `window` is missing/inapplicable for the
+        requested `transformation`, and `SeriesNotFoundError` if the
+        series isn't persisted.
+        """
+        if start_date is not None and end_date is not None and start_date > end_date:
+            raise InvalidDateRangeError("start_date must not be after end_date.")
+
+        if transformation == "moving_average":
+            if window is None:
+                raise InvalidWindowError("window is required when transformation=moving_average.")
+            context_size = window - 1
+        else:
+            if window is not None:
+                raise InvalidWindowError(f"window is not applicable to transformation={transformation}.")
+            context_size = 1  # absolute_change/percent_change need one preceding point
+
+        repo = SeriesRepository(session)
+        series = repo.get_series_by_series_id(series_id)
+        if series is None:
+            raise SeriesNotFoundError(f"Series '{series_id}' is not persisted.")
+
+        requested = repo.get_observations_in_range(series.id, start_date, end_date)
+
+        # Only fetch leading context when start_date actually truncates the
+        # series' history -- with no start_date, `requested` already starts
+        # at the beginning, so there's nothing earlier to borrow from.
+        context = (
+            repo.get_preceding_observations(series.id, before_date=start_date, count=context_size)
+            if start_date is not None
+            else []
+        )
+
+        combined = [
+            Observation(date=obs.observation_date, value=obs.value) for obs in (context + requested)
+        ]
+
+        if transformation == "absolute_change":
+            transformed = absolute_change(combined)
+        elif transformation == "percent_change":
+            transformed = percent_change(combined)
+        else:
+            transformed = moving_average(combined, window)
+
+        # Context observations were only needed to compute correct values
+        # at the start of the requested range -- trim them back out so the
+        # response contains exactly the requested dates, nothing more.
+        output = transformed[len(context) :]
+
+        return SeriesTransformResponse(
+            series_id=series.series_id,
+            title=series.title,
+            units=series.units,
+            source=series.source,
+            transformation=TransformationMeta(
+                type=transformation, window=window if transformation == "moving_average" else None
+            ),
+            observations=output,
         )
 
 

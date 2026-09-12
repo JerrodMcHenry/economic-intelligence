@@ -4,6 +4,7 @@ Deliberately decoupled from FRED's raw response shape.
 """
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -36,3 +37,40 @@ class SeriesObservationsResponse(SeriesResponse):
     """
 
     pagination: PaginationMeta
+
+
+TransformationType = Literal["absolute_change", "percent_change", "moving_average"]
+
+
+class TransformedObservation(BaseModel):
+    """One dated point of a derived series: the source value alongside
+    the computed transformed value (null where the transformation engine
+    could not compute one -- see app.domain.transformations)."""
+
+    date: date
+    original_value: float | None
+    value: float | None
+
+
+class TransformationMeta(BaseModel):
+    type: TransformationType
+    window: int | None = None
+
+
+class SeriesTransformResponse(BaseModel):
+    """Response contract for GET /series/{series_id}/transform.
+
+    Not built on SeriesResponse: its `observations` are TransformedObservation
+    (original_value + value), a genuinely different shape from SeriesResponse's
+    plain Observation, so overriding that field via inheritance would be
+    more confusing than reusing it. series_id/title/units/source are
+    duplicated here as plain fields rather than restructuring the existing
+    models to share a common base.
+    """
+
+    series_id: str
+    title: str
+    units: str
+    source: str = "FRED"
+    transformation: TransformationMeta
+    observations: list[TransformedObservation]

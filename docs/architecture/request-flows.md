@@ -11,6 +11,8 @@ component picture.
 - Flow 5 — Sync Failure Scenarios, including transaction rollback — new in Increment 003
 - Flow 6 — Historical Observations Query (`GET .../observations`, PostgreSQL-only) — new in Increment 004
 - Flow 7 — Observations Query Failure Scenarios — new in Increment 004
+- Flow 8 — Transformation Query (`GET .../transform`, PostgreSQL-only + boundary context) — new in Increment 005
+- Flow 9 — Transformation Failure Scenarios — new in Increment 005
 
 ## Flow 1 — Health Check
 
@@ -371,5 +373,100 @@ sequenceDiagram
     Repo-->>S: ([], 0)
     S-->>R: SeriesObservationsResponse(observations=[], pagination.total=0)
     R-->>C: 200 {"observations": [], "pagination": {"total": 0, "returned": 0, ...}}
+    end
+```
+
+## Flow 8 — Transformation Query (with boundary-context retrieval)
+
+`GET /api/v1/series/{series_id}/transform` reads only from PostgreSQL,
+same as Flow 6 — `FREDClient` never appears here either. The distinctive
+part of this flow is fetching enough *preceding* context to compute
+correct values at the start of the requested range, then trimming that
+context back out before responding.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/series.py)
+    participant S as EconomicDataService
+    participant Repo as SeriesRepository
+    participant Eng as Transformation engine<br/>(app/domain/transformations.py)
+    participant DB as PostgreSQL
+
+    C->>R: GET .../UNRATE/transform?transformation=percent_change&start_date=2026-02-01
+    Note over R: FastAPI/Pydantic validate transformation (Literal),<br/>window bounds (2-365 if given), and date syntax
+    R->>R: database_url present?
+    R->>S: get_transformed_observations("UNRATE", session, transformation, start_date, end_date, window)
+    S->>S: start_date > end_date? window required/inapplicable for this transformation?
+    S->>Repo: get_series_by_series_id("UNRATE")
+    Repo->>DB: SELECT economic_series WHERE series_id = 'UNRATE'
+    DB-->>Repo: series row
+    Repo-->>S: EconomicSeries
+    S->>Repo: get_observations_in_range(series.id, start_date, end_date)
+    Repo->>DB: SELECT * WHERE economic_series_id = ? AND observation_date >= '2026-02-01' ORDER BY observation_date
+    DB-->>Repo: requested-range rows
+    Repo-->>S: requested
+    Note over S: start_date given and context_size > 0 -->> fetch leading context
+    S->>Repo: get_preceding_observations(series.id, before_date=start_date, count=context_size)
+    Repo->>DB: SELECT * WHERE economic_series_id = ? AND observation_date < '2026-02-01' ORDER BY observation_date DESC LIMIT context_size
+    DB-->>Repo: up to context_size preceding rows (most recent first)
+    Repo-->>S: context (reversed back to ascending)
+    S->>S: combined = context + requested  (one continuous ascending list)
+    S->>Eng: percent_change(combined)
+    Note over Eng: pure function -- no DB, no HTTP, no FRED;<br/>processes the list positionally, unaware<br/>any of it is "context"
+    Eng-->>S: transformed (one result per input point, same length as combined)
+    S->>S: output = transformed[len(context):]  (drop the context-only leading results)
+    S-->>R: SeriesTransformResponse(transformation, observations=output)
+    R-->>C: 200 JSON -- only dates >= 2026-02-01, but the first one's<br/>value is computed correctly against the point before it
+```
+
+The count query/page query symmetry from Flow 6 doesn't apply here —
+`.../transform` has no `total`/pagination metadata at all (see Flow 9's
+table and the journal for why).
+
+## Flow 9 — Transformation Failure Scenarios
+
+| Scenario | Where it's caught | HTTP status |
+|---|---|---|
+| Malformed `window`/date syntax, or an unrecognized `transformation` value | FastAPI/Pydantic, before the route body runs | `422` |
+| `start_date` after `end_date` | `InvalidDateRangeError` from the service | `400` |
+| `transformation=moving_average` with no `window` | `InvalidWindowError` from the service | `400` |
+| `window` supplied for `absolute_change`/`percent_change` | `InvalidWindowError` from the service | `400` |
+| Series not persisted in PostgreSQL | `SeriesNotFoundError` from the service | `404` |
+| `DATABASE_URL` not configured | Checked in the route before a session is opened | `503` |
+| Database unreachable | `sqlalchemy.exc.OperationalError` | `503` |
+| Any other database-layer failure | `sqlalchemy.exc.SQLAlchemyError` (base class) | `500` |
+
+As with Flow 7, there is no `IntegrityError` branch: this endpoint never
+writes. `window`'s numeric bounds (`2`–`365`) are enforced structurally by
+FastAPI whenever a value is supplied at all; whether a value is *allowed*
+to be supplied depends on `transformation`, which FastAPI can't know on
+its own — that cross-field decision is exactly what `InvalidWindowError`
+exists for:
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route
+    participant S as EconomicDataService
+
+    rect rgb(248, 113, 113)
+    Note over C,S: moving_average requested, but window omitted
+    C->>R: GET .../UNRATE/transform?transformation=moving_average
+    R->>S: get_transformed_observations(..., transformation="moving_average", window=None)
+    S->>S: transformation == "moving_average" and window is None
+    S->>S: raise InvalidWindowError("window is required when transformation=moving_average.")
+    S-->>R: (exception propagates)
+    R-->>C: 400 {"detail": "window is required when transformation=moving_average."}
+    end
+
+    rect rgb(248, 113, 113)
+    Note over C,S: window supplied for a transformation that doesn't use one
+    C->>R: GET .../UNRATE/transform?transformation=absolute_change&window=3
+    R->>S: get_transformed_observations(..., transformation="absolute_change", window=3)
+    S->>S: transformation != "moving_average" and window is not None
+    S->>S: raise InvalidWindowError("window is not applicable to transformation=absolute_change.")
+    S-->>R: (exception propagates)
+    R-->>C: 400 {"detail": "window is not applicable to transformation=absolute_change."}
     end
 ```

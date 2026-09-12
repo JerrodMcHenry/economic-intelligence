@@ -1028,3 +1028,314 @@ Against the real running application and real local PostgreSQL:
   constraint already *is* an index in PostgreSQL, and the columns/order
   that make it useful for uniqueness (leading column first) are often
   exactly the columns/order a corresponding query needs too.
+
+---
+
+## Increment 005 — Economic Transformation Engine
+
+**Objective:** compute deterministic derived series — `absolute_change`,
+`percent_change`, `moving_average` — over the historical observations
+Increment 004 made queryable, via a new
+`GET /api/v1/series/{series_id}/transform` endpoint. Explicitly not in
+scope: any transformation more sophisticated than these three (YoY,
+CAGR, volatility, z-scores, interpolation), persisting the derived
+values, or paginating the transformed output.
+
+### Why transformation follows persistence and querying, in that order
+
+Each increment so far has depended on the previous one actually working:
+Increment 003 had nothing to query without Increment 002's normalized
+data; Increment 004 had nothing to read without Increment 003's
+persistence. Transformation has the same dependency — a derived value is
+only as meaningful as the raw values it's derived from, and those raw
+values had to be reliably gettable (Increment 004) before it was worth
+building anything that computes over them. This increment adds no new
+data; it adds a new way of *looking at* data that already exists.
+
+### Raw data vs. derived data — and why derived data is never stored
+
+`economic_observations` holds what FRED actually reported — call it raw,
+source-of-truth data. `absolute_change`, `percent_change`, and
+`moving_average` results are *derived*: fully and deterministically
+reproducible from the raw observations plus a transformation name (and a
+window, for moving averages). Nothing about a derived value carries
+information the raw data didn't already contain.
+
+That reproducibility is exactly why nothing is persisted here — no
+`economic_transformed_observations` table, no derived-value cache. Storing
+a value that can be recomputed exactly from data already on hand buys
+nothing but costs real things: an invalidation question (when a
+`sync` updates the raw data, does the stored derived value silently go
+stale?), a versioning question (if the transformation logic itself
+changes, are old derived rows wrong now?), and duplicate storage for no
+informational gain. Recomputing on every request is cheap at this data
+volume and sidesteps all three problems entirely — this project doesn't
+need that optimization yet, and won't build for it before it's needed.
+
+### Pure functions, and why purity is enforced structurally, not by convention
+
+`app/domain/transformations.py` holds `absolute_change`, `percent_change`,
+and `moving_average` — three functions that take a list of observations
+(plus, for moving averages, a window size) and return a list of results,
+with **no import of FastAPI, SQLAlchemy, `httpx`/FRED, `os.environ`, or
+logging**, and no mutation of anything outside the function call. Given
+the same input, they always produce the same output — verified directly
+(see Verification below) by calling each function twice on identical
+input and asserting byte-identical results.
+
+This isn't just a style preference. A function with no I/O and no hidden
+state is trivially testable without a database, a running server, or
+mocked HTTP calls — the entire pure-function test suite for this
+increment runs in well under a second, no PostgreSQL connection needed.
+Keeping this module in its own package (`app/domain/`, distinct from
+`app/services/`, which *does* coordinate I/O) makes "this code has no side
+effects" a structural fact checkable by `grep`, not a claim that has to be
+trusted.
+
+### `absolute_change`: percentage-point change, not percent change
+
+```
+change[t] = value[t] - value[t-1]
+```
+
+For a *percentage-valued* series like `UNRATE` (values are already a
+percent, e.g. `4.1`), `absolute_change` produces a change measured in
+**percentage points** (4.1 → 4.3 is "+0.2 percentage points"), which is a
+genuinely different quantity from a *percent change* (a 4.9% relative
+increase). Conflating the two is a classic, easy-to-make error in
+economic data work — an unemployment rate moving from 4.0 to 4.2 is "up
+0.2 points," not "up 5%," even though `percent_change` of the same two
+numbers *is* 5%. This project deliberately exposes both, under distinct
+names, so a caller has to choose the one they actually mean rather than
+one function silently being asked to answer both questions.
+
+The first observation in any requested range has no predecessor and is
+always `null` — not zero, not skipped. A `null` current or previous
+*source* value also produces a `null` result; the function never looks
+further back to find an earlier non-null value to substitute.
+
+### `percent_change`: the formula, and why division by zero never happens
+
+```
+((current - previous) / previous) * 100
+```
+
+Same first-observation and missing-value alignment as `absolute_change`,
+plus one more explicit rule: when the previous value is exactly `0`, the
+result is `null` — never a `ZeroDivisionError`, never `inf`/`-inf`, never
+a substituted `0`. This is checked *before* the division is attempted
+(`previous_value == 0`), not caught after the fact, so there's no reliance
+on exception handling to paper over what is really a "this transformation
+isn't meaningful here" case, distinct from "an actual bug occurred."
+
+### `moving_average`: simple moving average, and its window semantics
+
+A plain, equally-weighted average of the trailing `window` values ending
+at each point. A result is `null` until at least `window` observations
+have been seen (so the first `window - 1` results in any given input list
+are `null` by construction — not a special case, just what "not enough
+history yet" means positionally), and `null` for any window that contains
+even one `null` source value — never silently computed from just the
+non-null values in that window, which would quietly change what the
+average actually represents. `window` is bounded to `[2, 365]`
+(`2` because a 1-point "moving average" isn't averaging anything; `365`
+as a generous but finite upper bound rather than an unbounded integer).
+
+### Chronological order is guaranteed by the service, not assumed by the engine
+
+Every transformation function's docstring states its precondition
+plainly: `observations` must already be in ascending chronological order.
+The functions themselves do not sort — sorting is the *service's* job
+(`EconomicDataService.get_transformed_observations`), which always
+requests data from the repository in ascending order before handing it to
+the transformation engine. This split matters: a pure function that
+silently re-sorted its input would be hiding a correctness dependency
+(what if the caller's "chronological" assumption were ever wrong?) instead
+of surfacing it. Keeping the ordering *requirement* explicit and the
+ordering *guarantee* in one clearly-responsible place (the service) is
+more honest than either assuming order everywhere or re-sorting
+defensively everywhere.
+
+### The boundary-context problem, and how it's solved without turning the repository into a transformation engine
+
+This was the increment's real design problem. Given persisted data:
+
+```
+Jan  100
+Feb  105
+Mar  110
+```
+
+a request for `percent_change` with `start_date=Feb` should return Feb's
+change computed against Jan (`5.0`), **not** `null` just because Jan falls
+outside the requested output range. The caller asked for observations
+*starting* Feb — they didn't ask for the calculation to pretend history
+before Feb doesn't exist.
+
+The fix keeps each layer's existing responsibility intact rather than
+inventing a new one:
+
+1. **Repository** (`get_preceding_observations`): a small, honest,
+   database-specific capability — "give me the `N` observations for this
+   series immediately before this date, ascending" — with no idea it's
+   feeding a transformation. This is exactly the kind of "database-specific
+   retrieval" the repository was already responsible for; it isn't a new
+   category of responsibility, just a new query shape.
+2. **Service** (`get_transformed_observations`): decides *how much*
+   context is needed (`1` for the change transformations — only the
+   immediately preceding point matters; `window - 1` for a moving
+   average) and requests it only when `start_date` actually truncates the
+   series' history. It concatenates `context + requested` into one
+   continuous ascending list, hands the *whole* thing to the transformation
+   engine, and afterward slices off exactly `len(context)` leading results
+   before building the response.
+3. **Transformation engine**: never told about "context" at all. It just
+   processes a continuous list positionally — the same function, the same
+   logic, whether the list happens to include borrowed leading history or
+   not. This is what "without turning the repository into a transformation
+   engine" (and without teaching the engine about request boundaries)
+   actually means in code: neither layer had to learn a new concept to
+   solve this — the service is the one place that already knows both "what
+   the caller asked for" and "what the math needs," so it's the natural
+   (and only) place to reconcile the two.
+
+The same mechanism handles "insufficient history exists" for free: if
+fewer than the needed context observations exist before `start_date`,
+`get_preceding_observations` just returns however many *do* exist (its
+`LIMIT` is a maximum, not a requirement), and the transformation engine's
+own "not enough points yet" logic (`index + 1 < window`, or `index == 0`)
+produces the correct `null`s from wherever the combined list actually
+starts — no special-casing needed anywhere for a short or missing history.
+
+### Why the transform endpoint is not paginated
+
+`limit`/`offset` were deliberately left off this endpoint, even though
+the sibling `.../observations` endpoint has them. The reason is the same
+boundary-context problem, one level up: if page 2 of a `percent_change`
+result started at some arbitrary offset, computing its first value
+correctly would require the *last* raw observation from page 1 — meaning
+pagination on *derived* data can't be implemented by simply paginating the
+underlying query the way it can for raw, context-free rows. Solving that
+properly (consistent derived-data pagination with correct boundaries) is
+a real design problem of its own, deliberately deferred rather than
+solved partially or incorrectly under this increment's scope. For now,
+`transform` always returns its full requested range in one response.
+
+### Numerical behavior: no rounding, no `Decimal`
+
+Transformed values are plain Python `float` arithmetic — no rounding was
+introduced, and `Decimal` was not adopted. This matches the existing data
+model exactly: `economic_observations.value` is already `double precision`
+(`float` in Python), established back in Increment 003 — using `Decimal`
+here would mean converting at the boundary for no benefit yet, since the
+source data was never exact-decimal to begin with. Floating-point noise
+(e.g. `-0.10000000000000053` instead of an exact `-0.1`) is visible in
+real responses and is expected, ordinary `float` behavior, not a bug. If
+a future increment introduces something genuinely precision-sensitive
+(e.g. a financial calculation where exact decimal arithmetic matters),
+that's the point to revisit `Decimal` deliberately — not here, and not as
+an unrequested "improvement" bolted onto this increment.
+
+### Architecture boundaries, restated for this increment
+
+```
+Route            (app/api/series.py)        HTTP/query boundary, primitive
+                                             validation via FastAPI, exception
+                                             -> status mapping
+Service          (economic_data.py)         cross-field validation (date range,
+                                             window applicability), boundary-
+                                             context orchestration, calls the
+                                             transformation engine
+Repository       (series_repository.py)     database-specific retrieval only
+                                             (full range, preceding context)
+Transformation   (domain/transformations.py) pure math only
+```
+
+No SQL in the route or the transformation engine; no math in the route,
+repository, or a SQL query; no HTTP/FastAPI concept anywhere below the
+route. Each boundary from prior increments held without needing to bend.
+
+### Verification performed
+
+Against both isolated pure-function tests and the real running
+application/database:
+
+- **Pure-function correctness**: every example in this increment's spec
+  reproduced exactly — `4.0, 4.2, 4.1` → `null, 0.2, -0.1`;
+  `100, 105` → `null, 5.0`; a zero previous value → `null`;
+  `10, 20, 30, 40` with `window=3` → `null, null, 20, 30`; a
+  shorter-than-window dataset → all `null`; a `null` inside a moving-average
+  window → `null` for every window it touches.
+- **Determinism**: each function called twice on identical input,
+  results compared field-by-field, confirmed identical.
+- **API integration**: all three transformations exercised through the
+  real endpoint against real persisted `UNRATE` data — correct shapes,
+  correct first-`null` behavior, correct floating-point results.
+- **Boundary context, proven by exact-value comparison** (not just "it
+  didn't crash"): the unfiltered `percent_change`/`moving_average`
+  response was computed first, then re-requested with a `start_date` that
+  should require preceding context — the value at the boundary date
+  matched the unfiltered computation byte-for-byte, and the
+  context-only dates (before `start_date`) were confirmed absent from the
+  response.
+- **No FRED dependency**: `FREDClient` patched to raise on instantiation;
+  all three transformation types still returned `200` normally.
+- **No PostgreSQL mutation**: `economic_series`/`economic_observations`
+  row counts, and the series' `updated_at` timestamp, compared before and
+  after several transform requests — byte-identical; nothing changed.
+- **Validation/error behavior**: nonexistent series → `404`;
+  `start_date > end_date` → `400`; invalid `transformation` value → `422`
+  (FastAPI's own `Literal` validation); `moving_average` without `window`
+  → `400` (cross-field, service-level); `window` outside `[2, 365]` → `422`
+  (FastAPI's own bounds validation); `window` supplied to
+  `absolute_change`/`percent_change` → `400` (cross-field, service-level).
+- **Database failures**: unreachable `DATABASE_URL` → `503`, no
+  connection string in the response or server log; a mocked generic
+  `SQLAlchemyError` → `500`, generic message only.
+- Confirmed via `grep`/`git status` that no secret value appears in any
+  changed file, and `.env` was never read or displayed at any point in
+  this increment — only existence/ignore/variable-name checks and
+  behavior through the running application were used.
+- Confirmed no new Alembic migration was created and no new dependency
+  was added, by inspecting `alembic/versions/` and `git diff pyproject.toml`.
+
+### Deferred decisions
+
+- **Transformation-aware pagination** — explicitly deferred; see "Why the
+  transform endpoint is not paginated" above.
+- **`Decimal`/exact-precision arithmetic** — deferred until a genuinely
+  precision-sensitive calculation actually requires it.
+- **A registry/dispatch table for transformation names** — the route and
+  service currently branch on `transformation` with plain `if`/`elif`
+  (three cases). A dict-based dispatch (`{"absolute_change": absolute_change, ...}`)
+  would look "cleaner" but is unnecessary machinery for three fixed,
+  known cases — worth reconsidering only if the number of transformations
+  grows enough that repeated `if`/`elif` blocks become a real readability
+  problem, not preemptively.
+
+### Reusable engineering lessons
+
+- "Pure" is easiest to keep honest when it's enforced by *what a module is
+  allowed to import*, not just by what its functions happen to do today —
+  a dedicated package with a stated, checkable import restriction (no
+  FastAPI/SQLAlchemy/FRED) is harder to accidentally violate later than an
+  unenforced convention.
+- A "boundary context" problem (needing data outside a requested range to
+  correctly compute values *inside* it) doesn't require inventing a new
+  architectural layer — it's usually solvable by having the layer that
+  already knows both "what was requested" and "what the computation needs"
+  (here, the service) fetch a little extra, compute over the extended set,
+  and trim before returning. The temptation to push this into the
+  repository (which would need to learn about transformations) or the
+  transformation engine (which would need to learn about requests) is
+  worth resisting.
+- The clearest proof that a boundary calculation is correct isn't
+  "it returned a non-null value" — it's comparing the filtered result
+  against the equivalent slice of an unfiltered computation and confirming
+  they match exactly. A boundary bug can easily produce *a* number without
+  producing the *right* number.
+- When a domain has two similarly-named but semantically different
+  quantities (percentage-point change vs. percent change), exposing both
+  under clearly distinct names is safer than trying to guess which one a
+  caller "really" wants, or worse, only implementing one and letting
+  people misuse it for the other.
