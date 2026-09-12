@@ -1,15 +1,16 @@
 """Response contract for cross-series (multi-series) analysis.
 
 Distinct from `app/models/series.py`, which covers single-series
-contracts. `SeriesSummary` is reused from there rather than duplicated.
+contracts. `SeriesSummary` and `TransformationType`/`TransformationMeta`
+are reused from there rather than duplicated.
 """
 
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app.models.series import SeriesSummary
+from app.models.series import SeriesSummary, TransformationMeta, TransformationType
 
 AnalysisType = Literal["aligned", "spread", "correlation"]
 
@@ -47,3 +48,62 @@ class SeriesComparisonResponse(BaseModel):
     usable_pairs: int
     correlation: float | None = None
     observations: list[ComparisonObservation] = []
+
+
+class TransformationSpec(BaseModel):
+    """A requested transformation for one side of a pipeline request.
+
+    Only structural validation lives here (`window`'s numeric bounds,
+    applied by Pydantic whenever a value is supplied at all). Whether
+    `window` is *required* (moving_average) or *inapplicable* (the other
+    two types) is a cross-field rule, not a shape rule -- it's enforced by
+    `AnalysisService` raising the same `InvalidWindowError` (-> 400)
+    already established for the single-series transform endpoint in
+    Increment 005, rather than a second, differently-coded validation
+    path for the identical rule.
+    """
+
+    type: TransformationType
+    window: int | None = Field(default=None, ge=2, le=365)
+
+
+class PipelineSeriesSpec(BaseModel):
+    """One side of a pipeline request: which persisted series, and
+    optionally what to transform it by before analysis. Absent/null
+    `transformation` means "use raw persisted observations"."""
+
+    series_id: str
+    transformation: TransformationSpec | None = None
+
+
+class PipelineRequest(BaseModel):
+    """Request body for POST /api/v1/analysis/pipeline."""
+
+    series_a: PipelineSeriesSpec
+    series_b: PipelineSeriesSpec
+    analysis: AnalysisType
+    start_date: date | None = None
+    end_date: date | None = None
+
+
+class PipelineSeriesSummary(SeriesSummary):
+    """`SeriesSummary` plus which transformation (if any) was applied to
+    this side of a pipeline request -- kept as its own model rather than
+    added onto `SeriesSummary` itself, so `GET /analysis/compare`'s
+    existing response (which never transforms) doesn't gain an always-null
+    field it has no use for."""
+
+    transformation: TransformationMeta | None = None
+
+
+class PipelineResponse(SeriesComparisonResponse):
+    """Response contract for POST /api/v1/analysis/pipeline.
+
+    Reuses everything from `SeriesComparisonResponse` (analysis,
+    matching_pairs, usable_pairs, correlation, observations) and narrows
+    `series_a`/`series_b` to `PipelineSeriesSummary` so each side can
+    report the transformation actually applied to it.
+    """
+
+    series_a: PipelineSeriesSummary
+    series_b: PipelineSeriesSummary

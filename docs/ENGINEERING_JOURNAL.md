@@ -1668,3 +1668,313 @@ series to compare — no test-only application code was added for this):
   add `AnalysisRepository`-shaped new methods was worth resisting here;
   the two methods Increment 004/005 already built were series-agnostic
   enough to need nothing new.
+
+---
+
+## Increment 007 — Composable Analysis Pipeline
+
+**Objective:** prove that the capabilities built across Increments
+004–006 — persisted retrieval, single-series transformation, and
+multi-series analysis — actually *compose*, by adding a structured
+endpoint, `POST /api/v1/analysis/pipeline`, that lets a caller optionally
+transform each side of a two-series comparison before it's aligned and
+analyzed. No new mathematics, no new statistics, no AI — this increment
+is entirely about correct composition of what already exists.
+
+### Why composition follows the primitives, not more math
+
+Increments 005 and 006 each ended with an explicit, named boundary:
+Increment 005 (`ADR-010`) never lets its transformation engine touch
+another series; Increment 006's journal names "transformation
+composition" as future work, deliberately deferred until "plain
+multi-series semantics are stable and proven correct on their own." This
+increment is that deferred work, now that both primitives it depends on
+have shipped, been verified independently, and been documented. Building
+a pipeline before either primitive existed would have meant guessing at
+an interface neither one had proven yet; building it now means wiring
+together two things already known to work correctly on their own — the
+actual engineering question this increment answers is narrower and more
+concrete than "add more analytical power": it's "do these two already-
+correct pieces still produce correct answers when chained."
+
+### A structured request, not more query parameters
+
+`GET /api/v1/analysis/compare` (Increment 006) already has five query
+parameters; adding "and optionally transform each side, with its own
+type and window" to that as more `?series_a_transformation=...&series_a_window=...`
+query parameters would have made an already-parameter-heavy `GET`
+request meaningfully harder to read and validate. A JSON request body —
+`POST /api/v1/analysis/pipeline` — lets each side's specification
+(`series_id` + optional `transformation`) nest naturally, and lets
+Pydantic validate the whole structure (including per-side `window`
+bounds) the same way it already validates every other request body in
+this project.
+
+### Why `POST` for a read-only computation
+
+`POST` here means "execute this structured analysis specification,"
+never "create a resource." Nothing is written to PostgreSQL by this
+endpoint (verified directly — see Verification below) — `POST` is simply
+the correct HTTP method for a request that carries a non-trivial
+structured body the client is submitting for processing, which `GET`
+(no standard body) can't express cleanly. This is a deliberate, narrow
+use of `POST` for its request-shape properties, not a signal that the
+endpoint mutates anything; its docstring and this journal both say so
+explicitly, and the verification suite proves it rather than just
+asserting it.
+
+### Order of operations, and why it's a correctness requirement, not a style preference
+
+The pipeline executes, in this exact order:
+
+```
+1. validate the whole request (date range, each side's transformation) -- no DB access yet
+2. load both persisted series' metadata
+3-6. per series, independently: retrieve requested range -> retrieve
+     preceding context (if start_date given) -> transform -> trim context back out
+7. exact-date align the two FINAL (possibly transformed) series
+8. perform the requested analysis (aligned/spread/correlation)
+9. build the response
+```
+
+Two orderings would have been *actively wrong*, not just less elegant:
+
+- **Filtering the output range before transforming.** If a `start_date`
+  filter were applied before a transformation ran, the transformation
+  would never see the immediately preceding persisted observation it
+  needs — exactly the bug this project has guarded against since
+  Increment 005's boundary-context work. Filter-then-transform silently
+  produces `null` (or a wrong value) for the first requested point of any
+  transformed series whenever `start_date` is set, with no error to
+  signal it.
+- **Aligning before transforming.** `align_series` only sees two series'
+  *final* values — if it ran on raw values and the transformation ran
+  afterward independently on each already-aligned side, a transformation
+  like `moving_average` would be computing its window from a date-
+  intersected (and therefore potentially gappy) series instead of the
+  real, complete persisted history, changing what "the preceding N-1
+  points" even means.
+
+Transforming before aligning, with context fetched before transforming
+and trimmed before aligning, is the only ordering that lets each series'
+transformation see its own real, undisturbed history while still
+guaranteeing the final Pearson/spread/aligned-pairs math operates on
+values that actually correspond to the same calendar dates.
+
+### Retrieving context before transforming (again), now on both sides independently
+
+The context-retrieval mechanics are unchanged from Increment 005:
+`SeriesRepository.get_observations_in_range` for the requested range,
+`get_preceding_observations` for up to 1 (`absolute_change`/
+`percent_change`) or `window - 1` (`moving_average`) immediately
+preceding persisted points when `start_date` narrows the range. This
+increment calls those same two repository methods per series, once for
+`series_a` and once (independently) for `series_b` — there is no
+interaction between the two sides until step 7, so nothing about running
+this per-series step twice (rather than "batching" both series' retrieval
+before either one's transform runs) changes the result: the two sides
+never share state before alignment, so per-series sequencing and
+per-step-batched sequencing are equivalent here.
+
+One deliberate implementation choice worth naming plainly: the
+retrieve-context-transform-trim sequence is *re-expressed* inside
+`AnalysisService._resolve_observations` rather than extracted into a
+function shared with `EconomicDataService.get_transformed_observations`,
+which contains the same shape of logic for the single-series transform
+endpoint. Sharing it would have meant either introducing cross-service
+coupling (one service calling into the other) or a new standalone
+utility module outside either service — both a larger architectural
+change than this increment's scope, and each carries a real risk of
+touching Increment 005's already-working, already-verified code for
+stylistic reasons alone (explicitly discouraged for this increment). The
+modest duplication (roughly fifteen lines of orchestration, not math) was
+judged the smaller cost; see Deferred decisions below.
+
+### Raw + transformed composition
+
+Each side is independently raw (no `transformation` in its
+`PipelineSeriesSpec`) or transformed (one of the three Increment
+005 types). All five combinations named in the spec were verified
+directly against real persisted data: raw+raw reproduces Increment 006's
+`/compare` endpoint's own results exactly (confirmed by comparing the
+same correlation coefficient from both endpoints); percent_change+raw,
+raw+moving_average, percent_change+absolute_change, and
+moving_average+moving_average(different windows) all produce the
+expected values, verified by hand-checking specific numbers (e.g. a
+3-point moving average computed from the exact three persisted values it
+should average).
+
+### What the analysis engine actually receives: the final value, nothing about how it got there
+
+When `series_a` specifies `percent_change`, `align_series`,
+`calculate_spread`, and `pearson_correlation` all receive plain
+`Observation(date, value)` objects where `value` *is* the percent-change
+result — not the original persisted value, and not a `TransformedObservation`
+carrying both. `app/domain/analysis.py` was not modified at all for this
+increment (confirmed via `git status`): it has no idea a transformation
+happened, because from its perspective nothing did — it's still just
+given two lists of dated numbers, exactly the contract it had before this
+increment existed. The original/source value survives only in the
+response's per-side `transformation` metadata (which transformation, if
+any, and its window) — never inside the aligned/spread `observations`,
+which show only the final, already-transformed number the analysis
+actually operated on.
+
+### Exact-date alignment, unchanged
+
+`align_series` (Increment 006, [ADR-011](adr/011-exact-date-alignment.md))
+runs after both sides' transformation and trimming, over whatever dates
+the final series happen to have. Two transformed series can easily have
+*fewer* common dates than their raw counterparts (e.g. a `moving_average`
+side's first `window - 1` points are `null` rather than absent — they're
+still present as dates, so this specifically doesn't shrink the aligned
+set; but two series of genuinely different lengths after transformation
+still align by whatever dates both actually contain) — this is normal,
+expected behavior, not a special case the pipeline needs to handle:
+`align_series` was written to do exactly the right thing regardless of
+*why* two date sets differ.
+
+### Missing-value semantics: unchanged, on purpose
+
+Nothing in the pipeline reinterprets what `null` means at either the
+transformation layer or the alignment/analysis layer. A transformation's
+own missing-value rules (Increment 005: no predecessor, a missing source
+value, division by zero, or insufficient window history all produce
+`null`) apply exactly as before, now simply feeding into `align_series`,
+which applies its own unchanged rule (a matched date's value may still be
+`null`; `usable_pairs`/`pearson_correlation` exclude it, never
+substitute). The pipeline orchestrates two already-correct policies in
+sequence; it does not add a third one on top.
+
+### Why no pagination, no persistence, no FRED, no frequency handling
+
+All four are direct, narrower restatements of principles already
+established:
+
+- **No pagination** — same reasoning as Increments 005/006: a
+  correlation or aligned-pair count describes a population, and slicing
+  that population into pages would change what's being measured at each
+  boundary. The pipeline's combination of two independently-transformed
+  series makes this *more* true, not less — there's no sensible way to
+  define "page 2" of a two-series, two-transformation comparison.
+- **No persistence** — the pipeline's result is exactly as reproducible
+  from persisted raw data plus a request body as any single-series
+  transformation or comparison; the reasoning in
+  [ADR-010](adr/010-pure-transformation-engine.md) applies unchanged.
+- **No FRED** — the pipeline operates exclusively on data `POST .../sync`
+  already put in PostgreSQL; a nonexistent persisted series is a `404`,
+  never an automatic sync attempt. Verified directly (see below).
+- **No frequency handling** — comparing a monthly and a quarterly series
+  (or any two series with different native reporting frequencies) after
+  transformation still requires an *exact* date match; no resampling,
+  interpolation, or period-label matching (e.g. treating "Q1 2025" and
+  "2025-01-01" as equivalent) was introduced. This is the same boundary
+  [ADR-011](adr/011-exact-date-alignment.md) already drew, restated here
+  because it would have been easy to quietly cross it while composing
+  transformations with alignment.
+
+### Service orchestration vs. domain computation
+
+Zero changes to either pure domain module
+(`app/domain/transformations.py`, `app/domain/analysis.py`) were needed
+or made — confirmed directly via `git status`. `AnalysisService.pipeline`
+imports and calls the exact same six pure functions
+(`absolute_change`, `percent_change`, `moving_average`, `align_series`,
+`calculate_spread`/`pearson_correlation`/`count_usable_pairs`) that
+already existed; the entire new code is orchestration — deciding *when*
+to call each one and *how* to assemble their outputs into a response —
+never a re-implementation of *what* any of them compute. This is the
+clearest structural proof that Increments 005 and 006's math needed no
+changes to be composed: if the pipeline had required editing either
+domain module, that would have been a sign the original design was not
+actually reusable, not just an inconvenience.
+
+### Verification performed
+
+Against both targeted correctness checks and the real running
+application/database (`UNRATE`/`CPIAUCSL`, the same two series persisted
+since Increment 006):
+
+- **Regression**: `/health`, the FRED-backed `GET`, `POST /sync`, the
+  single-series observations and transform endpoints, and Increment 006's
+  `GET /compare` all confirmed unchanged and working.
+- **Raw+raw**: `aligned`/`spread`/`correlation` through the pipeline
+  reproduce Increment 006's `/compare` endpoint's results exactly for the
+  same inputs — the same correlation coefficient came back from both
+  endpoints, to full float precision.
+- **Mixed composition**: all five example combinations named in this
+  increment's spec verified against real data, including hand-checked
+  arithmetic for a 3-point moving average.
+- **Boundary context, proven by exact-value comparison** (the same
+  technique used in Increment 005): for `percent_change`, `absolute_change`,
+  and `moving_average(window=4)`, a pipeline request with `start_date` set
+  produced a first value that matched the equivalent unfiltered
+  single-series `.../transform` computation to full float precision, and
+  the context-only preceding dates were confirmed absent from the
+  pipeline's output.
+- **Analysis semantics over final values**: `matching_pairs`/`usable_pairs`
+  confirmed to reflect the *post-transformation* aligned set, not the raw
+  one (e.g. a `percent_change` side's null first value correctly reduced
+  `usable_pairs` below `matching_pairs`).
+- **Zero exact-date matches and undefined correlation**: both produced
+  the same `200`-with-`null`/empty-counts behavior established in
+  Increment 006, unchanged.
+- **Validation**: malformed body, an unsupported transformation type, and
+  an unsupported analysis type all → `422` via Pydantic/FastAPI structural
+  validation; `window` outside `[2, 365]` → `422` (Pydantic `Field`
+  bounds); `moving_average` missing `window`, and `window` supplied to
+  `absolute_change`/`percent_change` → `400`, via the same
+  `InvalidWindowError` (reused, not reimplemented) Increment 005
+  established for the identical rule; `start_date > end_date` → `400`;
+  a nonexistent `series_a`/`series_b` → `404`, each correctly named.
+- **No FRED dependency**: `FREDClient` patched to raise on instantiation;
+  pipeline requests with and without transformations both still returned
+  `200` normally.
+- **No PostgreSQL mutation**: row counts and `UNRATE`'s `updated_at`
+  timestamp compared before/after several pipeline requests (including
+  transformed ones) — identical, matching the same timestamp recorded
+  since Increment 003's verification.
+- **Database failures**: unreachable `DATABASE_URL` → `503`, no
+  connection string leaked; a mocked generic `SQLAlchemyError` → `500`.
+- Confirmed via `git status` that `app/repositories/`, `app/domain/`,
+  `alembic/`, and `pyproject.toml` are completely untouched by this
+  increment, and that no secret value appears in any changed file.
+
+### Deferred decisions
+
+- **Shared context-retrieval orchestration between `EconomicDataService`
+  and `AnalysisService`.** The modest duplication described above (the
+  retrieve-context-transform-trim sequence, re-expressed rather than
+  extracted) is a real, acknowledged tradeoff, made deliberately to avoid
+  touching Increment 005's working code. If a third consumer of this
+  exact sequence emerges, that's the point to extract a shared helper —
+  two occurrences are a coincidence worth tolerating; three would be a
+  pattern worth naming.
+- **Frequency-aware composition** (comparing series of different native
+  reporting frequencies) — explicitly deferred, per
+  [ADR-011](adr/011-exact-date-alignment.md) and this increment's own
+  "no frequency handling" boundary.
+- **Pipeline result pagination** — deferred for the same population-
+  integrity reason as Increments 005/006.
+
+### Reusable engineering lessons
+
+- The strongest evidence that two independently-built capabilities are
+  actually composable isn't that they *can* be wired together — it's that
+  wiring them together requires editing neither one. Confirming
+  `app/domain/transformations.py` and `app/domain/analysis.py` needed
+  zero changes for this increment is the real proof Increments 005 and
+  006 were each designed at the right level of reusability.
+- An ordering requirement that exists to prevent a *silent* wrong answer
+  (filter-then-transform producing a quietly incorrect first value, not a
+  crash) deserves more explicit documentation than an ordering requirement
+  that would simply fail loudly if violated — a silent correctness bug is
+  the more dangerous kind precisely because nothing signals it happened.
+- Not every duplication is worth eliminating immediately. Extracting a
+  shared abstraction to avoid ~15 lines of orchestration duplication,
+  at the cost of coupling two independently-evolving services or
+  modifying already-verified working code, was correctly judged not
+  worth it *yet* — the honest move was to duplicate, name the tradeoff
+  explicitly, and set a concrete condition ("if a third consumer appears")
+  for revisiting it, rather than either silently duplicating without
+  comment or over-engineering a shared abstraction for two call sites.

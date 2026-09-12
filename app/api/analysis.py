@@ -15,9 +15,9 @@ from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from app.core.config import settings
 from app.db.session import session_scope
-from app.models.analysis import AnalysisType, SeriesComparisonResponse
+from app.models.analysis import AnalysisType, PipelineRequest, PipelineResponse, SeriesComparisonResponse
 from app.services.analysis import AnalysisService
-from app.services.economic_data import InvalidDateRangeError, SeriesNotFoundError
+from app.services.economic_data import InvalidDateRangeError, InvalidWindowError, SeriesNotFoundError
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -59,6 +59,41 @@ def compare_series(
             )
     except InvalidDateRangeError:
         raise HTTPException(status_code=400, detail="start_date must not be after end_date.")
+    except SeriesNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except OperationalError:
+        raise HTTPException(status_code=503, detail="Database is currently unavailable.")
+    except SQLAlchemyError:
+        raise HTTPException(status_code=500, detail="Database error while reading series data.")
+
+
+@router.post("/pipeline", response_model=PipelineResponse)
+def run_pipeline(request: PipelineRequest) -> PipelineResponse:
+    """Execute a structured two-series analysis pipeline: each series may
+    independently be transformed (absolute_change/percent_change/
+    moving_average) or left raw, then the results are exact-date aligned
+    and the requested analysis (aligned/spread/correlation) is performed.
+
+    Computational only: POST is used because the caller submits a
+    structured analysis specification, not because anything is created or
+    stored -- this endpoint never calls FRED, never mutates PostgreSQL,
+    and never persists any intermediate or final result.
+    """
+    if not settings.database_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Database is not configured on this server.",
+        )
+
+    service = AnalysisService()
+
+    try:
+        with session_scope() as session:
+            return service.pipeline(request, session)
+    except InvalidDateRangeError:
+        raise HTTPException(status_code=400, detail="start_date must not be after end_date.")
+    except InvalidWindowError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except SeriesNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except OperationalError:

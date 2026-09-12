@@ -15,6 +15,9 @@ component picture.
 - Flow 9 — Transformation Failure Scenarios — new in Increment 005
 - Flow 10 — Multi-Series Analysis Query (`GET /analysis/compare`, PostgreSQL-only) — new in Increment 006
 - Flow 11 — Multi-Series Analysis Failure Scenarios, including undefined correlation — new in Increment 006
+- Flow 12 — Composable Pipeline: raw/raw and mixed transformed composition — new in Increment 007
+- Flow 13 — Composable Pipeline: boundary context with a `start_date` — new in Increment 007
+- Flow 14 — Composable Pipeline Failure/Validation Scenarios — new in Increment 007
 
 ## Flow 1 — Health Check
 
@@ -574,3 +577,110 @@ sequenceDiagram
     R-->>C: 200 {"matching_pairs": 1, "usable_pairs": 1, "correlation": null}
     end
 ```
+
+## Flow 12 — Composable Pipeline (raw/raw and mixed transformed composition)
+
+`POST /api/v1/analysis/pipeline` reads only from PostgreSQL; `FREDClient`
+never appears here either. Each side is resolved independently (raw
+persisted values, or transformed via the exact same pure functions
+`.../transform` uses) *before* the two sides are aligned.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/analysis.py)
+    participant S as AnalysisService
+    participant Repo as SeriesRepository
+    participant TEng as Transformation engine<br/>(app/domain/transformations.py)
+    participant AEng as Analysis engine<br/>(app/domain/analysis.py)
+    participant DB as PostgreSQL
+
+    C->>R: POST /analysis/pipeline<br/>{series_a: {CPIAUCSL, percent_change}, series_b: {UNRATE}, analysis: correlation}
+    Note over R: Pydantic validates the whole body structurally<br/>(transformation type, window bounds if given, analysis type)
+    R->>R: database_url present?
+    R->>S: pipeline(request, session)
+    S->>S: (1) validate: start_date<=end_date; each side's transformation applicability
+    S->>Repo: (2) get_series_by_series_id("CPIAUCSL"), get_series_by_series_id("UNRATE")
+    Repo->>DB: SELECT economic_series WHERE series_id IN (...)
+    DB-->>Repo: both series rows
+    Note over S,DB: (3)-(6) per series, independently
+    S->>Repo: get_observations_in_range(series_a.id, ...)
+    Repo->>DB: SELECT * WHERE economic_series_id = ? ORDER BY observation_date
+    DB-->>Repo: series A's requested-range observations
+    S->>TEng: percent_change(observations_a)
+    Note over TEng: pure -- no DB, no HTTP, no FRED;<br/>receives plain Observation(date, value)
+    TEng-->>S: series A's FINAL values (percent_change results)
+    S->>Repo: get_observations_in_range(series_b.id, ...)
+    Repo->>DB: SELECT * WHERE economic_series_id = ? ORDER BY observation_date
+    DB-->>Repo: series B's observations (no transformation requested -- used as-is)
+    S->>AEng: (7) align_series(final_a, final_b)
+    Note over AEng: exact-date inner join over the FINAL values --<br/>unaware either side was ever transformed
+    AEng-->>S: aligned pairs
+    S->>AEng: (8) pearson_correlation(aligned)
+    AEng-->>S: correlation
+    S->>S: (9) build PipelineResponse (series_a.transformation = {percent_change, null})
+    S-->>R: PipelineResponse
+    R-->>C: 200 JSON
+```
+
+Raw+raw through this endpoint reproduces `GET /analysis/compare`'s result
+exactly for the same series/analysis/dates — verified directly by
+comparing the returned correlation coefficient from both endpoints to
+full float precision.
+
+## Flow 13 — Composable Pipeline: boundary context with `start_date`
+
+The critical ordering: context is fetched *before* transforming, and
+trimmed *before* aligning — never the reverse.
+
+```mermaid
+sequenceDiagram
+    participant S as AnalysisService
+    participant Repo as SeriesRepository
+    participant TEng as Transformation engine
+    participant AEng as Analysis engine
+
+    Note over S: request: series_a = percent_change(CPIAUCSL), start_date = Feb
+    S->>Repo: get_observations_in_range(series_a.id, start_date=Feb, end_date=None)
+    Repo-->>S: [Feb, Mar, ...]  (requested range only)
+    Note over S: start_date given -> fetch 1 preceding point (percent_change's context_size)
+    S->>Repo: get_preceding_observations(series_a.id, before_date=Feb, count=1)
+    Repo-->>S: [Jan]  (context; strictly before Feb)
+    S->>S: combined = [Jan] + [Feb, Mar, ...]
+    S->>TEng: percent_change(combined)
+    TEng-->>S: [Jan: null, Feb: 5.0, Mar: ...]  (Feb correctly computed against Jan)
+    S->>S: output = transformed[1:]  -- drop Jan (the context), keep Feb onward
+    Note over S: output = [Feb: 5.0, Mar: ...] -- Jan never reaches alignment
+    S->>AEng: align_series(output, series_b's final values)
+    Note over AEng: only Feb onward can possibly appear in the aligned result --<br/>Jan was never a candidate, by construction
+```
+
+This was verified by exact-value comparison (the same technique used in
+Increment 005): the pipeline's Feb value for `percent_change(CPIAUCSL)`
+with `start_date=Feb` matched the unfiltered single-series
+`GET .../transform` computation for Feb exactly, and Jan was confirmed
+absent from the pipeline's `observations`. The same check was repeated
+for `absolute_change` and for `moving_average(window=4)` (which needs 3
+preceding points, not 1) with matching results.
+
+## Flow 14 — Composable Pipeline Failure/Validation Scenarios
+
+| Scenario | Where it's caught | HTTP status |
+|---|---|---|
+| Malformed request body, unsupported `transformation.type`, or unsupported `analysis` | FastAPI/Pydantic, before the route body runs | `422` |
+| `transformation.window` outside `[2, 365]` | FastAPI/Pydantic (`TransformationSpec.window`'s `Field(ge=2, le=365)`) | `422` |
+| `start_date` after `end_date` | `InvalidDateRangeError` from the service | `400` |
+| `type=moving_average` with no `window` | `InvalidWindowError` from the service (reused from Increment 005) | `400` |
+| `window` supplied for `absolute_change`/`percent_change` | `InvalidWindowError` from the service (reused from Increment 005) | `400` |
+| `series_a`/`series_b` not persisted | `SeriesNotFoundError` from the service, naming the missing one | `404` |
+| `DATABASE_URL` not configured | Checked in the route before a session is opened | `503` |
+| Database unreachable | `sqlalchemy.exc.OperationalError` | `503` |
+| Any other database-layer failure | `sqlalchemy.exc.SQLAlchemyError` (base class) | `500` |
+
+As with every other read-only endpoint in this project, there is no
+`IntegrityError` branch — this endpoint never writes. Note that the
+window-applicability rule maps to the *same* status code (`400`) via the
+*same* exception class (`InvalidWindowError`) as the single-series
+`.../transform` endpoint's identical rule (Flow 9) — not a new,
+differently-coded validation path for what is conceptually the same
+check.

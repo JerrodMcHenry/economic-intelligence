@@ -1,7 +1,7 @@
 # Current Architecture
 
 This document describes the system **as it exists right now**, after
-Increment 006. It is not a history — see [`../ENGINEERING_JOURNAL.md`](../ENGINEERING_JOURNAL.md)
+Increment 007. It is not a history — see [`../ENGINEERING_JOURNAL.md`](../ENGINEERING_JOURNAL.md)
 for how it got here, and [`../adr/`](../adr/) for why specific choices were
 made.
 
@@ -12,14 +12,14 @@ made.
 | ASGI server | Uvicorn (process) | Runs the FastAPI app, handles HTTP connections |
 | Application | `app/main.py` | Creates the `FastAPI` app, mounts routers, defines `/health` |
 | Series route | `app/api/series.py` | HTTP layer for `/api/v1/series/{series_id}`, `.../sync`, `.../observations`, and `.../transform`: request/query-parameter handling, exception → status code translation |
-| Analysis route | `app/api/analysis.py` | HTTP layer for `/api/v1/analysis/compare`: request/query-parameter handling, exception → status code translation |
+| Analysis route | `app/api/analysis.py` | HTTP layer for `/api/v1/analysis/compare` and `.../pipeline`: request/body validation, exception → status code translation |
 | Economic data service | `app/services/economic_data.py` (`EconomicDataService`) | Single-series use-case logic: fetch + normalize a series from FRED; orchestrate fetch-then-persist for sync; validate and coordinate a persisted-observations query; validate and orchestrate a transformation (including boundary-context retrieval) |
-| Analysis service | `app/services/analysis.py` (`AnalysisService`) | Multi-series use-case logic: look up two persisted series, retrieve and date-filter each independently, delegate alignment/spread/correlation to the analysis domain module. No FRED dependency at all. |
+| Analysis service | `app/services/analysis.py` (`AnalysisService`) | Multi-series use-case logic: look up two persisted series, retrieve and date-filter each independently, optionally transform each side (pipeline only), delegate alignment/spread/correlation to the analysis domain module. No FRED dependency at all. |
 | FRED client | `app/clients/fred.py` (`FREDClient`) | All FRED-specific HTTP: request construction, timeout, FRED error → typed exception translation |
-| Series repository | `app/repositories/series_repository.py` (`SeriesRepository`) | All SQL for series/observations: upserts series metadata and observations within a caller-owned transaction; series lookup; filtered/ordered/paginated observation queries; unpaginated range queries and preceding-context queries. Reused as-is by both services — no analysis-specific repository methods were needed. |
-| Transformation engine | `app/domain/transformations.py` (`absolute_change`, `percent_change`, `moving_average`) | Pure, deterministic math over one series' observation list — no FastAPI, SQLAlchemy, FRED, environment, or I/O of any kind |
-| Analysis engine | `app/domain/analysis.py` (`align_series`, `calculate_spread`, `count_usable_pairs`, `pearson_correlation`) | Pure, deterministic math over two series' observation lists — same no-I/O discipline as the transformation engine |
-| Response models | `app/models/series.py` (`Observation`, `SeriesSummary`, `SeriesResponse`, `PaginationMeta`, `SeriesObservationsResponse`, `TransformedObservation`, `TransformationMeta`, `SeriesTransformResponse`), `app/models/analysis.py` (`ComparisonObservation`, `SeriesComparisonResponse`) | The application's own, provider-independent API response contract |
+| Series repository | `app/repositories/series_repository.py` (`SeriesRepository`) | All SQL for series/observations: upserts series metadata and observations within a caller-owned transaction; series lookup; filtered/ordered/paginated observation queries; unpaginated range queries and preceding-context queries. Reused as-is by every consumer added since Increment 005 — no analysis- or pipeline-specific repository methods were ever needed. |
+| Transformation engine | `app/domain/transformations.py` (`absolute_change`, `percent_change`, `moving_average`) | Pure, deterministic math over one series' observation list — no FastAPI, SQLAlchemy, FRED, environment, or I/O of any kind. Unmodified since Increment 005; reused as-is by the pipeline. |
+| Analysis engine | `app/domain/analysis.py` (`align_series`, `calculate_spread`, `count_usable_pairs`, `pearson_correlation`) | Pure, deterministic math over two series' observation lists — same no-I/O discipline as the transformation engine. Unmodified since Increment 006; reused as-is by the pipeline. |
+| Response models | `app/models/series.py` (`Observation`, `SeriesSummary`, `SeriesResponse`, `PaginationMeta`, `SeriesObservationsResponse`, `TransformedObservation`, `TransformationMeta`, `SeriesTransformResponse`), `app/models/analysis.py` (`ComparisonObservation`, `SeriesComparisonResponse`, `TransformationSpec`, `PipelineSeriesSpec`, `PipelineRequest`, `PipelineSeriesSummary`, `PipelineResponse`) | The application's own, provider-independent API response contract |
 | ORM models | `app/db/models.py` (`EconomicSeries`, `EconomicObservation`) | The relational shape of persisted data |
 | DB engine/session | `app/db/session.py` | Lazily-created SQLAlchemy engine (connection pool) and `session_scope()` transaction boundary |
 | Configuration | `app/core/config.py` (`Settings`) | Reads `FRED_API_KEY`, `DATABASE_URL`, and the FRED request timeout from the environment |
@@ -38,17 +38,20 @@ graph TD
     App --> ObsRoute["GET /api/v1/series/{series_id}/observations<br/>app/api/series.py"]
     App --> TransformRoute["GET /api/v1/series/{series_id}/transform<br/>app/api/series.py"]
     App --> CompareRoute["GET /api/v1/analysis/compare<br/>app/api/analysis.py"]
+    App --> PipelineRoute["POST /api/v1/analysis/pipeline<br/>app/api/analysis.py"]
 
     GetRoute --> Service["EconomicDataService<br/>app/services/economic_data.py"]
     SyncRoute --> Service
     ObsRoute --> Service
     TransformRoute --> Service
     CompareRoute --> AnalysisSvc["AnalysisService<br/>app/services/analysis.py"]
+    PipelineRoute --> AnalysisSvc
 
     Service --> Client["FREDClient<br/>app/clients/fred.py"]
     Service --> Repo["SeriesRepository<br/>app/repositories/series_repository.py"]
     Service --> Engine["Transformation engine<br/>app/domain/transformations.py<br/>(pure functions)"]
     AnalysisSvc --> Repo
+    AnalysisSvc --> Engine
     AnalysisSvc --> AnalysisEngine["Analysis engine<br/>app/domain/analysis.py<br/>(pure functions)"]
 
     Client -->|"httpx, timeout=10s"| FRED[("FRED REST API<br/>api.stlouisfed.org")]
@@ -60,25 +63,29 @@ graph TD
     Config -.-> ObsRoute
     Config -.-> TransformRoute
     Config -.-> CompareRoute
+    Config -.-> PipelineRoute
     Models["Observation / SeriesResponse /<br/>SeriesObservationsResponse /<br/>SeriesTransformResponse<br/>app/models/series.py"] -.-> Service
-    AnalysisModels["SeriesSummary (shared) /<br/>SeriesComparisonResponse<br/>app/models/analysis.py"] -.-> AnalysisSvc
+    AnalysisModels["SeriesSummary (shared) / SeriesComparisonResponse /<br/>PipelineRequest / PipelineResponse<br/>app/models/analysis.py"] -.-> AnalysisSvc
     OrmModels["EconomicSeries / EconomicObservation<br/>app/db/models.py"] -.-> Repo
     Alembic["alembic/ migrations"] -.->|"defines schema for"| PG
 ```
 
 `GetRoute` and `SyncRoute` reach `FREDClient`; `ObsRoute`, `TransformRoute`,
-and `CompareRoute` never do — all three are wired only through a service
-to `Repo` to PostgreSQL. This is a real structural fact, not just a
-diagram simplification: `FREDClient` is never imported or constructed
-anywhere in `get_series_observations`'s, `get_series_transform`'s, or
-`compare_series`'s call path. `AnalysisService` doesn't even carry an
-optional `FREDClient` slot the way `EconomicDataService` does — it has no
-FRED-backed method at all. `Engine` and `AnalysisEngine` (the two domain
-modules) have no edge to `Repo`, `Orm`, `PG`, or `Client` at all — they
-only ever receive plain observation data already fetched by a service;
-neither can reach PostgreSQL or FRED even indirectly.
+`CompareRoute`, and `PipelineRoute` never do — all four are wired only
+through a service to `Repo` to PostgreSQL. This is a real structural
+fact, not just a diagram simplification: `FREDClient` is never imported
+or constructed anywhere in `get_series_observations`'s,
+`get_series_transform`'s, `compare_series`'s, or `run_pipeline`'s call
+path. `AnalysisService` doesn't even carry an optional `FREDClient` slot
+the way `EconomicDataService` does — it has no FRED-backed method at all,
+even though (new in Increment 007) it now calls `Engine` (the
+transformation module) as well as `AnalysisEngine` directly, reusing both
+domain modules unmodified. `Engine` and `AnalysisEngine` themselves have
+no edge to `Repo`, `Orm`, `PG`, or `Client` at all — they only ever
+receive plain observation data already fetched by a service; neither can
+reach PostgreSQL or FRED even indirectly.
 
-## Four paths over the same persisted data
+## Five paths over the same persisted data
 
 ```
 WRITE/SYNC PATH:
@@ -99,28 +106,35 @@ MULTI-SERIES ANALYSIS PATH:
   Client -> GET /api/v1/analysis/compare -> Route -> AnalysisService
     -> SeriesRepository -> PostgreSQL   (SELECT only, twice: once per series, each independently date-filtered)
     -> Analysis engine (pure, in-process; no I/O: exact-date alignment, then spread/correlation)
+
+COMPOSABLE PIPELINE PATH:
+  Client -> POST /api/v1/analysis/pipeline -> Route -> AnalysisService
+    -> SeriesRepository -> PostgreSQL   (SELECT only, per series: requested range + preceding context, independently)
+    -> Transformation engine (pure, in-process; per series, only if requested)
+    -> Analysis engine (pure, in-process; exact-date alignment of the FINAL values, then spread/correlation)
 ```
 
 `POST .../sync` is the only way data enters PostgreSQL.
-`GET .../observations`, `GET .../transform`, and `GET /analysis/compare`
-are the only ways to read it back through this API — the first returns
-raw persisted values for one series, the second returns values computed
-from one series' history, the third returns values computed by comparing
-*two* series' histories. No path touches another path's external
-dependency: sync never reads more than it needs to upsert; `.../observations`,
-`.../transform`, and `/analysis/compare` never call FRED; and neither
-`.../transform` nor `/analysis/compare` ever writes anything back to
-PostgreSQL — none of their computed values are stored anywhere (see Data
-model below). `/analysis/compare` calls `SeriesRepository` twice per
-request (once per compared series) rather than needing any
-analysis-specific repository method — the existing single-series lookup
-and range-query methods are already series-agnostic enough to serve two
-independent calls.
+`GET .../observations`, `GET .../transform`, `GET /analysis/compare`, and
+`POST /analysis/pipeline` are the only ways to read it back through this
+API — the first returns raw persisted values for one series, the second
+returns values computed from one series' history, the third returns
+values computed by comparing two series' raw histories, and the fourth
+returns values computed by comparing two series' *optionally transformed*
+histories. No path touches another path's external dependency: sync
+never reads more than it needs to upsert; the four read paths never call
+FRED; and none of them ever writes anything back to PostgreSQL — none of
+their computed values (raw comparisons, single-series transformations, or
+pipeline results) are stored anywhere (see Data model below). Neither
+`/analysis/compare` nor `/analysis/pipeline` needed any analysis-specific
+repository method — both call the same `SeriesRepository` methods
+Increments 004/005 already built, `/pipeline` simply calling them per
+series exactly as `.../transform` already does for one.
 
-`GET /api/v1/series/{series_id}` (no suffix) is a fifth, separate path,
+`GET /api/v1/series/{series_id}` (no suffix) is a sixth, separate path,
 unchanged since Increment 002 — it still reads live from FRED and never
 touches PostgreSQL at all. See Response contract below for how its
-contract relates to the other four.
+contract relates to the other five.
 
 ## Configuration boundary
 
@@ -294,6 +308,38 @@ carries the scalar result instead — returning every aligned pair
 alongside a single number wasn't judged useful enough to justify the
 response size.
 
+`POST /api/v1/analysis/pipeline` returns `PipelineResponse`
+(`app/models/analysis.py`), which reuses every field from
+`SeriesComparisonResponse` via inheritance and narrows `series_a`/`series_b`
+to `PipelineSeriesSummary` — `SeriesSummary` plus a `transformation` field
+naming what (if anything) was applied to that side:
+
+```json
+{
+  "series_a": { "series_id": "CPIAUCSL", "title": "...", "units": "...", "source": "FRED",
+                "transformation": { "type": "percent_change", "window": null } },
+  "series_b": { "series_id": "UNRATE", "title": "...", "units": "Percent", "source": "FRED",
+                "transformation": { "type": "absolute_change", "window": null } },
+  "analysis": "correlation",
+  "matching_pairs": 10,
+  "usable_pairs": 9,
+  "correlation": 0.24,
+  "observations": []
+}
+```
+
+The **request** body (`PipelineRequest`) mirrors this shape: each of
+`series_a`/`series_b` (`PipelineSeriesSpec`) carries a `series_id` and an
+optional `transformation` (`TransformationSpec`: `type` +, only for
+`moving_average`, `window`). `transformation` absent/`null` means "use
+raw persisted observations for this side" — exactly what a `null`
+`transformation` in the *response* also means. `observations`' per-pair
+values (`value_a`/`value_b`) are always the *final* values fed into
+alignment — the already-transformed number, when a transformation was
+requested, never the original persisted value alongside it (the original
+is visible only via `.../observations` or `.../transform` on that series
+directly, not inside a pipeline response).
+
 Notes on the current implementation:
 - On `GET /api/v1/series/{series_id}` (FRED-backed), `observations` is the
   10 most recent data points (`DEFAULT_OBSERVATION_LIMIT` in
@@ -315,11 +361,12 @@ Notes on the current implementation:
   one provider.
 - `GET /api/v1/series/{series_id}` never touches the database — it is a
   pure, read-only pass-through to FRED, unchanged since Increment 002.
-  `GET .../observations`, `GET .../transform`, and `GET /analysis/compare`
-  never touch FRED — all three are pure, read-only paths over PostgreSQL
-  (the latter two additionally compute over what they read, in-process,
-  before responding). `POST .../sync` is the only operation that writes,
-  and the only path that touches both FRED and PostgreSQL.
+  `GET .../observations`, `GET .../transform`, `GET /analysis/compare`,
+  and `POST /analysis/pipeline` never touch FRED — all four are pure,
+  read-only paths over PostgreSQL (the latter three additionally compute
+  over what they read, in-process, before responding). `POST .../sync` is
+  the only operation that writes, and the only path that touches both
+  FRED and PostgreSQL.
 
 ## Health endpoint
 
@@ -384,23 +431,30 @@ The following are intentionally absent — not overlooked:
   here (unlike `.../observations`), because a derived value can depend on
   a preceding point that a naive page boundary could cut off.
 - **Transformations beyond the three implemented** — no year-over-year,
-  CAGR, volatility, z-score, or interpolation.
-- **Transformation composition in multi-series analysis** — `/analysis/compare`
-  operates on raw persisted observations only; correlating or spreading
-  two *transformed* series (e.g. `percent_change(A)` vs.
-  `percent_change(B)`) is not supported.
+  CAGR, volatility, z-score, or interpolation, on either the single-series
+  or pipeline (composable) paths.
 - **Lagged/lead correlation, regression, or a standalone covariance
-  metric** — `/analysis/compare` only supports same-date pairing and the
-  three named analyses.
+  metric** — neither `/analysis/compare` nor `/analysis/pipeline` supports
+  anything beyond same-date pairing and the three named analyses.
 - **Unit-compatibility checking for spread** — `spread` computes
-  `value_a - value_b` regardless of whether the two series share units;
-  no dimensional-analysis or unit-reconciliation logic exists to flag or
-  block a spread between incompatible units.
-- **Pagination on multi-series analysis** — `/analysis/compare` always
-  returns its full requested (date-filtered) comparison in one response,
-  for the same population-integrity reason `.../transform` isn't
-  paginated: slicing the compared population into pages would change what
-  a correlation over "one page" actually measures.
+  `value_a - value_b` regardless of whether the two (possibly transformed)
+  series share units; no dimensional-analysis or unit-reconciliation logic
+  exists to flag or block a spread between incompatible units.
+- **Pagination on multi-series analysis** — neither `/analysis/compare`
+  nor `/analysis/pipeline` paginates; both always return their full
+  requested (date-filtered) comparison in one response, for the same
+  population-integrity reason `.../transform` isn't paginated: slicing
+  the compared population into pages would change what a correlation over
+  "one page" actually measures.
+- **Frequency-aware alignment** — `/analysis/pipeline` composes
+  transformations with exact-date alignment ([ADR-011](../adr/011-exact-date-alignment.md)),
+  but alignment itself is unchanged: two series (transformed or raw) with
+  different native reporting frequencies still only align on dates that
+  match exactly. No resampling, period-label matching (e.g. "Q1 2025" vs.
+  a specific date), or frequency inference exists anywhere.
+- **Persisted/cached pipeline results** — same reasoning as single-series
+  transformations: a pipeline result is fully reproducible from persisted
+  raw data plus its request body, so nothing about it is stored.
 
 ## Future direction (not implemented)
 
@@ -409,10 +463,10 @@ codebase today. Per the project purpose, later increments are expected to
 add, in some order: a freshness policy connecting the FRED-backed and
 database-backed read paths (e.g. serving from PostgreSQL with an
 explicit staleness check, rather than two independent endpoints),
-additional transformations, transformation composition in multi-series
-analysis, or a pagination strategy for derived/comparison data if a real
-need emerges, additional external data providers, an AI
-reasoning/tool-calling layer over the persisted and derived data, and
-production infrastructure concerns (Docker, CI/CD, observability, cloud
-deployment). Each will get its own ADR(s) and journal entry when it
-happens, the same as Increments 001–006.
+additional transformations, frequency-aware alignment, or a pagination
+strategy for derived/comparison/pipeline data if a real need emerges,
+additional external data providers, an AI reasoning/tool-calling layer
+over the persisted and derived data, and production infrastructure
+concerns (Docker, CI/CD, observability, cloud deployment). Each will get
+its own ADR(s) and journal entry when it happens, the same as Increments
+001–007.
