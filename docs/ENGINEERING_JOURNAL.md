@@ -1339,3 +1339,332 @@ application/database:
   under clearly distinct names is safer than trying to guess which one a
   caller "really" wants, or worse, only implementing one and letting
   people misuse it for the other.
+
+---
+
+## Increment 006 — Multi-Series Analysis
+
+**Objective:** compare two persisted series against each other —
+exact-date alignment, spread, and Pearson correlation — via a new
+`GET /api/v1/analysis/compare` endpoint. Explicitly not in scope:
+comparing *transformed* series (e.g. correlating two percent-change
+series), lagged/lead correlation, regression, or persisting any analysis
+result.
+
+### Why multi-series analysis follows transformations
+
+Increment 005 established that this project can compute derived values
+over *one* series' history without touching FRED or the database beyond
+reading it. Multi-series analysis is the natural next question — not "how
+has this series changed over time" but "how do these two series relate to
+each other" — and it only became answerable once two independent series
+could reliably be fetched, filtered, and handed to pure computation, which
+is exactly the machinery Increment 005 built. The prompt's explicit
+"no transformation composition yet" boundary matters here: correlating
+`percent_change(UNRATE)` against `percent_change(CPIAUCSL)` is a real,
+likely-useful future question, but it's a *composition* of two increments'
+capabilities, deliberately deferred until plain multi-series semantics
+(this increment) are stable and proven correct on their own.
+
+### Exact-date inner alignment, and why array-position alignment would be wrong
+
+Given two persisted series with different observation dates:
+
+```
+Series A: Jan -> 10, Feb -> 20, Mar -> 30
+Series B: Jan -> 100, Mar -> 120, Apr -> 130
+```
+
+the only defensible way to pair these up is by matching *dates*: Jan
+pairs with Jan (`10`/`100`), Mar pairs with Mar (`30`/`120`); Feb and Apr
+have no counterpart and are excluded. `align_series` builds this via two
+`{date: value}` dictionaries and a set intersection of their keys — there
+is no `zip()`, no `enumerate()` walking both lists by position anywhere
+in the implementation.
+
+Pairing by array position (`A[0]` with `B[0]`, `A[1]` with `B[1]`, …)
+would have quietly paired Jan with Jan by coincidence here, but Feb (A's
+2nd point) with Mar (B's 2nd point) — two different calendar months,
+silently treated as simultaneous. Two persisted series essentially never
+share an identical set of observation dates in general (a provider can
+revise its publication calendar, a sync can happen at different times,
+one series can simply report more or less often) — array-position
+alignment isn't a rare edge case away from being wrong, it's wrong by
+default the moment the two series' date sets diverge at all, and it fails
+*silently*: a positionally-misaligned pair still looks like a normal
+`{date, value_a, value_b}` object, with nothing about its shape hinting
+that `value_a` and `value_b` don't actually describe the same point in
+time.
+
+### Matching pairs vs. usable pairs
+
+Two different counts, both reported in the response, because they answer
+different questions:
+
+- **`matching_pairs`** — how many *dates* exist in both series, regardless
+  of whether either series' value for that date is itself missing. This
+  is `len(aligned)`.
+- **`usable_pairs`** — of those matched dates, how many have a genuine
+  numeric value on *both* sides. This is the population `spread`'s
+  non-null results and `pearson_correlation` actually operate over.
+
+The distinction matters because a matched date is not automatically a
+usable one: a date can exist in both `economic_observations` tables while
+one series' value for it is `NULL` (a FRED-reported missing observation,
+carried through unchanged since Increment 002). Reporting only one count
+would hide either "how much overlap exists" or "how much of that overlap
+is actually numeric" — a caller needs both to interpret `correlation` or
+a `spread` sensibly (e.g. "10 matching dates but only 6 usable" is a
+different, worse signal than "10 matching, 10 usable").
+
+### Missing-value semantics: never substituted
+
+An exact date match does not guarantee both series reported a value —
+`align_series` still returns the pair (so the caller can see the dates
+matched at all), but leaves `value_a`/`value_b` as `None` when the source
+was `None`. Every downstream calculation respects this without
+exception: `calculate_spread` returns `None` for that date rather than
+treating a missing side as `0`; `pearson_correlation` excludes that pair
+from its population entirely rather than substituting anything. Nothing
+in this increment forward-fills, backward-fills, interpolates, or infers
+a value that was never actually observed — the same discipline
+established for single-series transformations in Increment 005, now
+applied across two series at once.
+
+### Spread: a simple subtraction, with a real interpretive limitation
+
+```
+spread = value_a - value_b   (per matched date; null if either side is null)
+```
+
+`calculate_spread` performs no unit reconciliation — it will happily
+compute `UNRATE (Percent) - CPIAUCSL (Index 1982-1984=100)`, a spread
+between a percentage and an index number, which is *arithmetically*
+well-defined but not obviously *economically* meaningful (a spread is
+most naturally interpreted when both sides share units, e.g. two interest
+rates, or the same index rebased differently). This project deliberately
+does not attempt to detect or block unit-incompatible spreads in this
+increment — doing that correctly would require a real dimensional-
+analysis or unit-compatibility model, which is exactly the kind of
+premature, speculative machinery the project's engineering rules ask to
+avoid building before there's a demonstrated need for it. The response
+includes each series' actual `units` (via `SeriesSummary`) precisely so a
+caller can make that judgment themselves rather than the API silently
+making it for them.
+
+### Pearson correlation: formula, range, and what it does and doesn't claim
+
+```
+r = covariance(X, Y) / sqrt(variance(X) * variance(Y))
+```
+
+computed directly with the standard deviation-from-mean formula (no
+external library — see below), over exactly the *usable* pairs (both
+values non-null). `r` is always in `[-1, 1]`: `+1` means a perfect
+positive linear relationship between the two series over the compared
+observations, `-1` a perfect negative linear one, `0` no linear
+relationship. **This project's API and documentation never describe a
+correlation result as evidence of causation** — a high correlation
+between two economic series says nothing here about which one, if
+either, drives the other, and this codebase makes no attempt to claim
+otherwise.
+
+### Insufficient-data and zero-variance behavior — undefined, not an error
+
+Two situations where Pearson correlation is *mathematically* undefined,
+both handled the same deliberate way — return `None`, respond `200`, and
+never raise:
+
+- **Fewer than 2 usable pairs.** Correlation describes a relationship
+  between two *sets* of paired values; one pair (or zero) has no
+  relationship to describe.
+- **Either usable series has zero variance** (every usable value on one
+  side is identical). The correlation formula divides by
+  `sqrt(variance_x * variance_y)`; a constant series has zero variance,
+  and dividing by zero is exactly what `pearson_correlation` checks for
+  and refuses to do, returning `None` instead of raising
+  `ZeroDivisionError`, returning `NaN`, or returning `inf`.
+
+Both are checked explicitly, before the division is attempted — not
+caught as exceptions after the fact — which keeps "this comparison has no
+defined correlation" clearly distinct from "something actually went
+wrong." A microscopic floating-point overshoot outside `[-1, 1]` from the
+formula's arithmetic (which can happen with values very close to a
+perfect ±1 relationship) is clamped back into range — the *true*
+mathematical correlation coefficient can never leave `[-1, 1]`, so an
+overshoot is understood as float noise, not a different real answer.
+
+### Date filtering applies before alignment, and needs no boundary context
+
+`start_date`/`end_date` are applied independently to each series' raw
+observation query (`SeriesRepository.get_observations_in_range`, reused
+unchanged from Increment 005) *before* `align_series` ever runs — a
+requested range narrows what's available to match, not what's already
+been matched. Unlike Increment 005's transformations, none of these three
+analyses need data from *outside* the requested range to compute a
+correct value at the boundary: alignment, spread, and correlation all
+operate purely on the pairs that exist within whatever range was
+requested, with no notion of "the point before this one." The
+boundary-context machinery Increment 005 built for exactly that problem
+simply doesn't apply here, and wasn't reused or reinvented for a problem
+this increment doesn't have.
+
+### Why this endpoint isn't paginated
+
+Same underlying concern as Increment 005's transformation endpoint, one
+level up: correlation is computed over a *population* (all usable pairs
+in the requested range), and slicing that population into pages would
+change what's actually being measured at each page boundary — a
+correlation computed over "page 2's pairs alone" answers a different,
+arguably meaningless question compared to the correlation over the whole
+requested range. Date filtering (already supported) is the intended way
+to narrow what's being compared; `limit`/`offset` pagination is not
+offered here, on purpose.
+
+### Pure domain analysis: `app/domain/analysis.py`
+
+Four functions — `align_series`, `calculate_spread`,
+`count_usable_pairs`, `pearson_correlation` — with the same purity
+discipline as `app/domain/transformations.py`: no FastAPI, SQLAlchemy,
+FRED/httpx, environment-variable, or logging imports anywhere in the
+module (confirmed directly by inspecting its import list), no mutation of
+anything outside a function call, deterministic output for identical
+input. `pearson_correlation` calls `count_usable_pairs` internally rather
+than recomputing "both values non-null" inline a second time — the
+definition of a usable pair exists in exactly one place.
+
+No strategy classes, no registry, no NumPy/pandas/SciPy — the Pearson
+formula is a handful of `sum()`/`sqrt()`-equivalent expressions over
+plain Python floats, well within what the standard library already
+provides.
+
+### Service and repository responsibilities
+
+**No repository changes were needed.** `SeriesRepository.get_series_by_series_id`
+and `get_observations_in_range` — both already built for single-series
+use in Increments 004/005 — are exactly what two-series comparison needs;
+`AnalysisService.compare` simply calls each one twice (once per series).
+This is treated as a genuine design outcome worth recording, not an
+oversight: the repository's existing responsibilities ("look up a
+persisted series," "retrieve its chronological observations, optionally
+date-filtered") were already series-agnostic enough that "two series"
+needed no new capability, only two calls.
+
+A new `AnalysisService` (`app/services/analysis.py`), not a method added
+to `EconomicDataService`, coordinates the two lookups, calls
+`align_series`, and dispatches to `calculate_spread`/`pearson_correlation`
+depending on the requested `analysis`. `EconomicDataService` is
+documented and structured around single-series concerns spanning FRED and
+persistence (`get_series`, `sync_series`, `get_observations`,
+`get_transformed_observations`) — none of which multi-series comparison
+needs or extends. Forcing a `compare(series_a, series_b, ...)` method onto
+a class named for *one* series' data would have made its own name and
+docstring inaccurate, which is exactly the "responsibility becoming
+incoherent" case worth a new, small class instead. `AnalysisService` has
+no `FREDClient` at all — not even an optional one — because multi-series
+analysis genuinely never touches FRED, unlike `EconomicDataService`'s
+`get_observations`/`get_transformed_observations`, which still carry an
+unused-but-present optional client for constructor-shape consistency with
+their FRED-backed siblings.
+
+`SeriesNotFoundError` and `InvalidDateRangeError` are imported from
+`app.services.economic_data` rather than redefined in the new service —
+they mean the same thing in both places, and two same-named-but-distinct
+exception classes would have made `except SeriesNotFoundError` in a route
+silently depend on which module it was imported from.
+
+### A new nested-metadata model: `SeriesSummary`
+
+`series_id`/`title`/`units`/`source` had already been reused twice by
+inheritance (`SeriesObservationsResponse(SeriesResponse)` in Increment
+004) — but this response needs that same quartet to appear as a *nested*
+object (`series_a`/`series_b`), which inheritance can't produce (a
+subclass's fields flatten into it, they don't nest as a sub-object).
+`SeriesSummary` is the smallest change that made this reusable both ways
+without touching `SeriesResponse`'s existing, already-relied-upon shape.
+
+### Verification performed
+
+Against both isolated pure-function tests and the real running
+application/database (a second real series, `CPIAUCSL`, was synced
+through the existing `POST /sync` endpoint purely to have two persisted
+series to compare — no test-only application code was added for this):
+
+- **Pure-function correctness**: every example in this increment's spec
+  reproduced exactly — exact-date alignment on the spec's own
+  Jan/Feb/Mar vs. Jan/Mar/Apr example; chronological output regardless of
+  input order; null values preserved through alignment; `10 - 7 = 3` for
+  spread; null propagation for spread; same-series spread of exactly `0`;
+  perfectly increasing/perfectly inverse series producing correlations of
+  exactly `+1.0`/`-1.0`; fewer-than-2-usable-pairs and zero-variance both
+  producing `None`; a mixed dataset's `matching_pairs`/`usable_pairs`
+  counted correctly (4 matched, 2 usable) with missing values properly
+  excluded from the usable count; a series correlated against itself
+  producing `1.0`.
+- **API integration**: all three analyses exercised through the real
+  endpoint against real persisted `UNRATE`/`CPIAUCSL` data (10 fully
+  overlapping dates) — correct aligned pairs, correct spreads, a real
+  (non-trivial, negative) correlation coefficient.
+- **Date filtering**: `start_date`, `end_date`, and a combined range each
+  correctly narrowed the compared dates before alignment.
+- **Zero matching dates**: a date range outside both series' persisted
+  history correctly returned `200` with `matching_pairs: 0`,
+  `usable_pairs: 0`, `observations: []`, and `correlation: null` for all
+  three analysis types.
+- **Same-series comparison**: `UNRATE` vs. `UNRATE` correctly allowed
+  (not rejected) — spread `0.0` for every pair, correlation exactly `1.0`.
+- **No FRED dependency**: `FREDClient` patched to raise on instantiation;
+  all three analysis types still returned `200` normally.
+- **No PostgreSQL mutation**: `economic_series`/`economic_observations`
+  row counts compared before and after several analysis requests —
+  identical.
+- **Validation/error behavior**: `start_date > end_date` → `400`; an
+  invalid `analysis` value → `422` (FastAPI's `Literal` validation);
+  missing `series_a`/`series_b` → `422` (FastAPI's own required-query-
+  parameter validation); a nonexistent `series_a` or `series_b` → `404`,
+  each correctly naming the specific missing series in its message.
+- **Database failures**: unreachable `DATABASE_URL` → `503`, no
+  connection string leaked; a mocked generic `SQLAlchemyError` → `500`.
+- Confirmed via `git status`/`grep` that no secret value appears in any
+  changed file, and `.env` was never read or displayed at any point in
+  this increment.
+- Confirmed no repository changes, no new Alembic migration, and no new
+  dependency, by inspecting `git status`/`git diff` directly.
+
+### Deferred decisions
+
+- **Transformation composition** (correlating derived series, e.g.
+  percent-change-vs-percent-change) — explicitly out of scope, per the
+  reasoning in "Why multi-series analysis follows transformations" above.
+- **Unit-compatibility checking for spread** — no dimensional-analysis or
+  unit-reconciliation logic; deferred until a real need for it is
+  demonstrated (see the Spread section above).
+- **Pagination for large aligned/spread result sets** — deferred for the
+  same population-integrity reason correlation isn't paginated; not a
+  concern at this project's current data volumes.
+- **Lagged/lead correlation, regression, covariance as its own metric** —
+  all named explicitly out of scope; each would be a genuinely new
+  analysis type, not a variation of the three implemented here.
+
+### Reusable engineering lessons
+
+- Joining two time series is a join, not a zip — the same relational
+  instinct that already justified PostgreSQL over array-position data
+  structures back in Increment 003 (ADR-006) applies again here at the
+  domain-logic level: match by key (date), never by position, the moment
+  two ordered collections might not be in lockstep.
+- A count without a companion count can hide the more important half of
+  a "how much data do I actually have" question — `matching_pairs` alone
+  would have let a caller believe 10 dates lined up meaningfully, when
+  only, say, 6 of them had two real numbers to compare.
+- "Mathematically undefined" and "a server error" are not the same
+  category, and conflating them (crashing, or returning a sentinel like
+  `0` for correlation) actively lies to the caller about what happened.
+  Checking explicitly for the undefined cases and returning `null` keeps
+  "the calculation ran and correctly found no defined answer" honestly
+  distinct from "the calculation failed."
+- Before adding a repository method for a new use case, check whether an
+  existing one, called an extra time, already covers it — the instinct to
+  add `AnalysisRepository`-shaped new methods was worth resisting here;
+  the two methods Increment 004/005 already built were series-agnostic
+  enough to need nothing new.

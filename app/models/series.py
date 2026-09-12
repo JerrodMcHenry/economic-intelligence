@@ -14,6 +14,21 @@ class Observation(BaseModel):
     value: float | None  # None represents a missing/unreported observation
 
 
+class SeriesSummary(BaseModel):
+    """A series' identifying metadata, with no observations attached.
+
+    Used where series metadata needs to appear as a *nested* value (e.g.
+    `series_a`/`series_b` in a comparison response) rather than as the
+    top-level fields `SeriesResponse` reuses via inheritance -- inheritance
+    doesn't help when the metadata needs to be embedded as its own object.
+    """
+
+    series_id: str
+    title: str
+    units: str
+    source: str = "FRED"
+
+
 class SeriesResponse(BaseModel):
     series_id: str
     title: str

@@ -13,6 +13,8 @@ component picture.
 - Flow 7 — Observations Query Failure Scenarios — new in Increment 004
 - Flow 8 — Transformation Query (`GET .../transform`, PostgreSQL-only + boundary context) — new in Increment 005
 - Flow 9 — Transformation Failure Scenarios — new in Increment 005
+- Flow 10 — Multi-Series Analysis Query (`GET /analysis/compare`, PostgreSQL-only) — new in Increment 006
+- Flow 11 — Multi-Series Analysis Failure Scenarios, including undefined correlation — new in Increment 006
 
 ## Flow 1 — Health Check
 
@@ -468,5 +470,107 @@ sequenceDiagram
     S->>S: raise InvalidWindowError("window is not applicable to transformation=absolute_change.")
     S-->>R: (exception propagates)
     R-->>C: 400 {"detail": "window is not applicable to transformation=absolute_change."}
+    end
+```
+
+## Flow 10 — Multi-Series Analysis Query (success path)
+
+`GET /api/v1/analysis/compare` reads only from PostgreSQL, twice —
+independently for `series_a` and `series_b` — then aligns and analyzes
+in-process. `FREDClient` never appears anywhere in this flow.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/analysis.py)
+    participant S as AnalysisService
+    participant Repo as SeriesRepository
+    participant Eng as Analysis engine<br/>(app/domain/analysis.py)
+    participant DB as PostgreSQL
+
+    C->>R: GET /analysis/compare?series_a=UNRATE&series_b=CPIAUCSL&analysis=correlation
+    Note over R: FastAPI/Pydantic validate analysis (Literal)<br/>and date syntax before this handler runs
+    R->>R: database_url present?
+    R->>S: compare("UNRATE", "CPIAUCSL", session, analysis, start_date, end_date)
+    S->>S: start_date > end_date?
+    S->>Repo: get_series_by_series_id("UNRATE")
+    Repo->>DB: SELECT economic_series WHERE series_id = 'UNRATE'
+    DB-->>Repo: series_a row
+    S->>Repo: get_series_by_series_id("CPIAUCSL")
+    Repo->>DB: SELECT economic_series WHERE series_id = 'CPIAUCSL'
+    DB-->>Repo: series_b row
+    S->>Repo: get_observations_in_range(series_a.id, start_date, end_date)
+    Repo->>DB: SELECT * WHERE economic_series_id = ? [AND date filters] ORDER BY observation_date
+    DB-->>Repo: series A's observations
+    S->>Repo: get_observations_in_range(series_b.id, start_date, end_date)
+    Repo->>DB: SELECT * WHERE economic_series_id = ? [AND date filters] ORDER BY observation_date
+    DB-->>Repo: series B's observations
+    S->>Eng: align_series(observations_a, observations_b)
+    Note over Eng: exact-date inner join (dict keys, never zip/position);<br/>pure -- no DB, no HTTP, no FRED
+    Eng-->>S: aligned pairs (matching_pairs = len(aligned))
+    S->>Eng: count_usable_pairs(aligned)
+    Eng-->>S: usable_pairs
+    S->>Eng: pearson_correlation(aligned)
+    Note over Eng: computed over usable pairs only;<br/>null if <2 usable or zero variance
+    Eng-->>S: correlation (float or null)
+    S->>S: build SeriesComparisonResponse (observations=[] for correlation)
+    S-->>R: SeriesComparisonResponse
+    R-->>C: 200 JSON
+```
+
+Both `get_observations_in_range` calls are the *same* repository method
+Increment 005 already built for single-series use — reused unchanged,
+called once per compared series, with no analysis-specific repository
+method added.
+
+## Flow 11 — Multi-Series Analysis Failure Scenarios
+
+| Scenario | Where it's caught | HTTP status |
+|---|---|---|
+| Malformed date syntax, or an unrecognized `analysis` value | FastAPI/Pydantic, before the route body runs | `422` |
+| Missing `series_a` or `series_b` (required query params) | FastAPI/Pydantic, before the route body runs | `422` |
+| `start_date` after `end_date` | `InvalidDateRangeError` from the service | `400` |
+| `series_a` not persisted in PostgreSQL | `SeriesNotFoundError` from the service, naming `series_a` | `404` |
+| `series_b` not persisted in PostgreSQL | `SeriesNotFoundError` from the service, naming `series_b` | `404` |
+| `DATABASE_URL` not configured | Checked in the route before a session is opened | `503` |
+| Database unreachable | `sqlalchemy.exc.OperationalError` | `503` |
+| Any other database-layer failure | `sqlalchemy.exc.SQLAlchemyError` (base class) | `500` |
+
+As with Flows 7 and 9, there is no `IntegrityError` branch — this endpoint
+never writes.
+
+### Zero matching dates and undefined correlation — both valid `200`s, not errors
+
+Neither of these is a failure; both are legitimate answers a caller needs
+to be able to receive without the response looking like something broke:
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route
+    participant S as AnalysisService
+    participant Eng as Analysis engine
+
+    rect rgb(134, 239, 172)
+    Note over C,Eng: Zero matching dates (e.g. a date range outside both series' history)
+    C->>R: GET /analysis/compare?series_a=UNRATE&series_b=CPIAUCSL&analysis=aligned&start_date=2099-01-01
+    R->>S: compare(...)
+    S->>Eng: align_series([], [])
+    Eng-->>S: []  (no common dates)
+    S-->>R: SeriesComparisonResponse(matching_pairs=0, usable_pairs=0, observations=[])
+    R-->>C: 200 {"matching_pairs": 0, "usable_pairs": 0, "observations": [], "correlation": null}
+    end
+
+    rect rgb(134, 239, 172)
+    Note over C,Eng: Correlation requested, but fewer than 2 usable pairs or zero variance
+    C->>R: GET /analysis/compare?series_a=UNRATE&series_b=UNRATE&analysis=correlation&start_date=2026-08-01&end_date=2026-08-01
+    R->>S: compare(...)
+    S->>Eng: align_series(...) -- one matching date
+    Eng-->>S: [one pair]
+    S->>Eng: pearson_correlation([one pair])
+    Note over Eng: n=1 usable pair < 2 -> return None<br/>(never ZeroDivisionError, NaN, or inf)
+    Eng-->>S: None
+    S-->>R: SeriesComparisonResponse(matching_pairs=1, usable_pairs=1, correlation=null)
+    R-->>C: 200 {"matching_pairs": 1, "usable_pairs": 1, "correlation": null}
     end
 ```
