@@ -4,3 +4,11 @@ __pycache__/
 .env
 .DS_Store
 *.egg-info/
+
+# Inflation Momentum Methodology Study (research/, not production):
+# fetched raw FRED data and generated study outputs are both fully
+# regenerable (fetch_data.py / study.py) from a live FRED credential --
+# not committed as large, effectively-derived datasets. The study code
+# itself, its tests, and STUDY_RESULTS.md ARE tracked.
+research/inflation_momentum/data/
+research/inflation_momentum/outputs/

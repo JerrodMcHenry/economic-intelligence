@@ -17,6 +17,7 @@ from pathlib import Path
 DOMAIN_FILES = [
     Path("app/domain/transformations.py"),
     Path("app/domain/analysis.py"),
+    Path("app/domain/inflation.py"),
 ]
 
 # Forbidden if an imported module IS one of these, or is a submodule of
@@ -70,7 +71,7 @@ class TestDomainLayerArchitecturalIndependence:
         catches a new, not-yet-forbidden-by-name dependency too, not
         just the ones already known to be risky."""
         allowed_prefixes = ("app.models.",)
-        stdlib_or_builtin_ok = {"typing", "datetime", "__future__"}
+        stdlib_or_builtin_ok = {"typing", "datetime", "__future__", "math"}
 
         for file_path in DOMAIN_FILES:
             for module_name in _imported_module_names(file_path):

@@ -942,3 +942,74 @@ service never raises here; "nothing was confidently found" and
 "something went wrong" are deliberately different outcomes, consistent
 with how every other read path in this project treats an empty result
 as success, not failure.
+
+## Flow 22 — Inflation Monitor (`inflation_v1.0`)
+
+`GET /api/v1/monitors/inflation` reads only from PostgreSQL, for exactly
+the four canonical series named in
+[docs/methodology/inflation-monitor-v1.0.md](../methodology/inflation-monitor-v1.0.md).
+`FREDClient` never appears anywhere in this flow, and no AI service is
+imported or called. All four series are fetched independently; a series
+that isn't persisted at all yields an empty observation list rather
+than an error, so the flow below is identical whether zero, some, or
+all four canonical series have data.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/inflation.py)
+    participant S as InflationMonitorService
+    participant SS as session_scope()
+    participant Repo as SeriesRepository
+    participant DB as PostgreSQL
+    participant D as app.domain.inflation (pure)
+
+    C->>R: GET /api/v1/monitors/inflation
+    R->>R: database_url present?
+    R->>SS: enter session_scope()
+    R->>S: get_result(session)
+    loop for each of PCEPILFE, CPILFESL, PCEPI, CPIAUCSL
+        S->>Repo: get_series_by_series_id(series_id)
+        Repo->>DB: SELECT economic_series WHERE series_id = ?
+        DB-->>Repo: row or None
+        alt series persisted
+            Repo-->>S: EconomicSeries
+            S->>Repo: get_observations_in_range(economic_series_id, None, None)
+            Repo->>DB: SELECT * FROM economic_observations WHERE economic_series_id = ? ORDER BY observation_date
+            DB-->>Repo: all rows (values may include NULL, per FRED's "." convention)
+            Repo-->>S: list[Observation]
+        else series not persisted
+            S->>S: observations = [] (never SeriesNotFoundError)
+        end
+    end
+    S->>D: compute_inflation_monitor_result(primary, confirmation, target, headline_cpi)
+    Note over D: pure -- no session, no HTTP, no FRED, no OpenAI,<br/>no environment access; exact-calendar-month endpoint<br/>resolution throughout (never row-position)
+    D-->>S: InflationMonitorResult
+    S-->>R: InflationMonitorResult
+    R->>SS: exit session_scope() normally
+    SS->>DB: COMMIT (no-op for a read, but the same owned boundary as every other DB access)
+    R-->>C: 200 JSON (methodology_id, data_basis, target,<br/>underlying_momentum, confirmation, headline_context,<br/>periods, coverage)
+```
+
+Missing or insufficient economic data for any component is **not** an
+error: `compute_inflation_monitor_result` always returns a complete,
+typed result, with that component's own `INSUFFICIENT_DATA`/
+`available: false`/`UNAVAILABLE` value inside a normal `200` response.
+Only a genuine database/infrastructure failure produces a non-`200`
+response — the same infrastructure-vs-economic-data distinction every
+other PostgreSQL-backed route in this project already makes.
+
+### Flow 23 — Inflation Monitor Failure Scenarios
+
+| Scenario | Where it's caught | HTTP status |
+|---|---|---|
+| `DATABASE_URL` not configured | Checked in the route before a session is opened | `503` |
+| Database unreachable | `sqlalchemy.exc.OperationalError` | `503` |
+| Any other database-layer failure | `sqlalchemy.exc.SQLAlchemyError` (base class) | `500` |
+| One or more canonical series not persisted at all | *(no exception — that component's own `INSUFFICIENT_DATA`/`available: false`)* | `200` |
+| A persisted series has insufficient trailing history (e.g. brand new) | *(no exception — `state: "INSUFFICIENT_DATA"`, `missing_required_metrics` names which of r_3m/r_6m/r_12m)* | `200` |
+| A required calendar-month endpoint is missing (e.g. the real 2025-10-01 Core CPI gap) | *(no exception — the affected derived metric is `null`; an unrelated later period whose own endpoints are all present remains valid)* | `200` |
+| No period exists where both Core PCE and Core CPI have a valid state | *(no exception — `confirmation.latest_common_period: null`, `confirmation.relationship: "UNAVAILABLE"`)* | `200` |
+
+No scenario in this table ever substitutes a different series, fetches
+from FRED, triggers ingestion, or calls AI to resolve a gap.

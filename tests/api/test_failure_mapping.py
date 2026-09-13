@@ -180,10 +180,10 @@ class TestAIIndependence:
         assert response.status_code == 503
 
     def test_no_deterministic_route_file_imports_aiservice(self):
-        """Static guard: app/api/series.py and app/api/analysis.py never
-        import AIService/app.services.ai(_tools) -- app/api/ai.py is
-        exempt (it IS the AI route)."""
-        for route_file in ("api/series.py", "api/analysis.py"):
+        """Static guard: app/api/series.py, app/api/analysis.py, and
+        app/api/inflation.py never import AIService/app.services.ai(_tools)
+        -- app/api/ai.py is exempt (it IS the AI route)."""
+        for route_file in ("api/series.py", "api/analysis.py", "api/inflation.py"):
             path = APP_DIR / route_file
             tree = ast.parse(path.read_text(), filename=str(path))
             imported = set()

@@ -3905,3 +3905,565 @@ was not this increment's job and the brief was explicit not to "fix"
 discovered behavior without stopping to report first. No production bug
 was found, so no stop was warranted -- this is a documented, pre-
 existing characteristic, not a defect discovered mid-implementation.
+
+## Inflation Momentum Methodology Study (research, not a numbered increment)
+
+Not Increment #14 — an explicit research increment, kept out of the
+numbered production sequence on purpose. Its purpose: empirically
+evaluate candidate deterministic inflation-momentum methodologies
+*before* freezing a canonical "Inflation Monitor" specification, rather
+than picking a formula first and discovering its behavioral properties
+only after it ships. Methodology choice has real, durable product
+consequences (which candidate becomes the thing users see as "cooling"
+or "heating"); this project's own standing practice is to verify
+against reality before committing to an architectural or product
+decision, and a classification formula is exactly that kind of
+decision.
+
+### Why methodology first, implementation later
+
+The same discipline this project applied to AI orchestration (diagnose
+and measure before building, per the earlier architecture-reset
+increments) applies here: build the smallest amount of code needed to
+*measure* candidate behavior against real historical data, look at what
+actually happens, and only then decide what to freeze as canonical. No
+methodology was selected in this study, deliberately — the codebase's
+production `app/` package was not touched at all.
+
+### Candidate families tested
+
+Recent-vs-Trailing (3M vs 12M, four neutral-band deltas), Dual
+Confirmation (3M AND 6M vs 12M), Ordered Momentum (strict 3M<6M<12M or
+reverse, plus one explicitly-separated banded variant), and Change in
+Recent Momentum (delta of 3M annualized, evaluated for churn only,
+never proposed as a standalone state) — each run independently against
+Core PCE, Core CPI, Headline PCE, and Headline CPI.
+
+### Data basis and current-vintage limitation
+
+Full available history for all four canonical series (Headline/Core
+CPI back to 1947/1957, Headline/Core PCE back to 1959, all through
+mid-2026) fetched via the existing, unmodified production `FREDClient`
+directly — reused, not duplicated — and cached as research-local JSON,
+never written to the production PostgreSQL database, keeping the
+research harness fully isolated from production runtime behavior. This
+is explicitly a **current-vintage historical reconstruction**: FRED
+does not preserve pre-revision vintages through this application today,
+so this study cannot and does not claim to show what an analyst would
+have known in real time at any past date. Building vintage-aware
+(ALFRED-style) persistence is out of scope here.
+
+### Reproducibility strategy
+
+Dates sorted explicitly wherever consumed; missing values propagate as
+`None`, never imputed or approximated; calculation kept fully separate
+from display rounding; the entire study, run twice against the same
+cached data, produces byte-identical output files — verified both
+manually (`diff -rq`) and by an automated end-to-end test. 46 new,
+offline, deterministic tests (`tests/research/test_inflation_momentum.py`)
+cover the transformation math (hand-checked against the formula's own
+definition, not against the function under test), every candidate's
+boundary and adversarial behavior, the metrics definitions, common-
+period alignment, and an architectural guard proving `app/` never
+imports `research/` (and, empirically, that it currently does not).
+
+### Key empirical findings
+
+- Candidate A's (Recent vs Trailing) state-change rate is **not
+  monotonic** in neutral-band width — it *increases* from delta=0.00 to
+  delta=0.25 before falling at delta=0.50, because a mid-size band adds
+  a third reachable state without yet being wide enough to meaningfully
+  reduce boundary-crossing. "Wider band = more stable" is not a safe
+  assumption for this candidate family without checking, which this
+  study did.
+- Dual Confirmation (Candidate B) and Ordered Momentum's banded variant
+  both cut churn roughly in half relative to Candidate A at a matching
+  delta, and Dual Confirmation specifically cuts *cross-measure
+  opposite-state disagreement* even more (e.g. Core PCE vs Core CPI
+  opposite-state: 7.4% under Candidate A, 1.3% under Candidate B).
+- All four canonical series agree on the same state simultaneously in
+  only ~30% of fully-classified months — four-way consensus is the
+  exception, not the rule.
+- The specific hierarchy-divergence pattern this study was asked to
+  quantify (Core PCE and Core CPI agreeing with each other while
+  Headline PCE and Headline CPI agree with each other on the *opposite*
+  state) occurs in 3.4% of common months — real and non-trivial, though
+  not the dominant case.
+- Candidate A applied to Core PCE (delta=0.25) tracks independently-
+  documented macroeconomic history well across five widely-known
+  episodes (the late-1970s oil shock, Volcker disinflation, the
+  2021-2022 surge, the 2022-2024 disinflation, and the COVID collapse)
+  without any parameter having been chosen to produce that match —
+  the strongest available evidence the methodology family measures
+  something real.
+- A real, current data gap exists at 2025-10-01 in both CPI series
+  (FRED's own data, not a bug in this study) — an unplanned, live
+  instance of exactly the "missing intermediate observation" adversarial
+  case the brief asked to be tested, handled correctly (propagates as
+  `None`, never imputed).
+- Candidate D (change in 3M momentum) churns near 50/50 almost every
+  month as a standalone signal, confirming it is not viable as a
+  canonical state on its own; whether it has value as a secondary
+  confirmation layer on top of another candidate was not tested.
+
+### Rejected/weak approaches
+
+Nothing was rejected outright — the study's mandate was explicitly not
+to select a winner. The weakest empirical showing was Candidate D used
+standalone (see above) and Candidate B at wide deltas, where the large
+majority of months fall into MIXED_OR_STABLE and very few are
+classified as COOLING/HEATING at all — a real responsiveness cost for
+its stability gain.
+
+### Unresolved methodology decisions
+
+Which candidate/delta becomes canonical; whether MIXED_OR_STABLE should
+ever be split into separate MIXED and STABLE concepts; whether the
+four-series hierarchy (vs. some other structure) is the right one,
+given how infrequently all four agree; what delta/band value is
+"right" given Candidate A's non-monotonic response; whether Candidate D
+has value as a secondary confirmation signal; how the current-vintage
+limitation should be surfaced to end users; and whether a full
+responsiveness/turn-persistence episode table is worth building before
+finalizing. Full detail: `research/inflation_momentum/STUDY_RESULTS.md`'s
+"Questions Requiring Human Decision" section.
+
+### Reusable engineering/economic lessons
+
+- **Level and momentum are genuinely different questions** and this
+  study's target-gap analysis (Headline PCE YoY vs. the 2% objective,
+  reported directly in percentage points, never bucketed into arbitrary
+  categorical bands) keeps them structurally separate rather than
+  collapsing both into one score — exactly the trap the research brief
+  warned against.
+- **A parameter's effect on a metric is not always monotonic** —
+  assuming "more of X produces more of Y" without measuring it directly
+  (as with Candidate A's band width vs. churn) is exactly the kind of
+  assumption this project's standing practice of verifying against
+  reality exists to catch.
+- **Isolating a research harness from production runtime behavior is a
+  real, separate design decision from "reuse existing code"** — reusing
+  `FREDClient` directly (not duplicating its HTTP/auth/error logic)
+  while deliberately never writing fetched data into the production
+  database were two independent choices, both necessary, and neither
+  implied by the other.
+
+## Inflation Momentum Finalist Analysis (research, not a numbered increment)
+
+Extends the Inflation Momentum Methodology Study above to resolve the
+specific human-decision questions it left open, narrowed to a finalist
+set: Candidate A (delta=0.25), Candidate B (deltas 0.10/0.25/0.50), and
+Candidate C (band=0.25). Candidate D was excluded as a finalist (the
+prior study found it churns near-continuously as a standalone signal).
+No methodology was selected; no ADR was created. Full report:
+`research/inflation_momentum/FINALIST_ANALYSIS.md`. Orchestration:
+`research/inflation_momentum/finalist_study.py` (new file, purely
+additive — re-running the original `study.py` after this file exists
+still produces byte-identical output to before, verified directly).
+
+### What was added
+
+- `classify_candidate_b_explicit()` in `methodology.py`: an explicit
+  five-state split of Candidate B (COOLING/HEATING/STABLE/MIXED/
+  INSUFFICIENT_DATA) replacing the original study's single
+  `MIXED_OR_STABLE` bucket for this analysis, with exact, gap-free/
+  overlap-free boundary operators (`_horizon_bucket`): the neutral band
+  is closed/inclusive on both ends, COOLING/HEATING use strict
+  inequalities just outside it. `classify_candidate_b` itself is
+  untouched.
+- `compute_directional_metrics()` in `metrics.py`: separates "direct
+  reversal rate" (a same-month flip straight from one directional state
+  to the other) from "directional-to-neutral rate" (a move into/out of a
+  neutral state) — both sharing the same denominator as the existing
+  all-state churn rate, so the three are directly comparable.
+- `finalist_study.py`: new orchestration computing the Core PCE decision
+  table, Candidate B explicit-state distributions, the neutral-band
+  mechanism investigation, the cross-measure confirmation hierarchy, the
+  turn-persistence episode table, and the missing-confirmation check —
+  all against the same cached FRED data the original study uses.
+- 14 adversarial boundary tests for the explicit B states, 5 tests for
+  the directional-metrics split, and 23 tests for the finalist
+  orchestration itself (89 research tests total, up from 46).
+
+### Key empirical findings
+
+- The non-monotonic churn finding (Candidate A's all-state churn peaking
+  at delta=0.25) is confirmed as a real mechanical effect, not a bug:
+  direct reversal rate falls monotonically as delta widens (0.258 →
+  0.155 → 0.044 → 0.005), but directional-to-neutral transitions rise
+  faster than reversals fall until the neutral band gets wide enough
+  that the series starts resting inside it rather than merely crossing
+  through — producing a genuine peak in total churn around delta=0.25.
+  The same shape (peak at 0.25) reproduces for Candidate B-explicit,
+  driven almost entirely by MIXED/STABLE churn since B's direct
+  reversal rate is already near zero at every finalist delta.
+- Once MIXED and STABLE are split apart for Candidate B, its direct
+  COOLING↔HEATING reversal rate is effectively 0 at all three finalist
+  deltas (0.011 / 0.000 / 0.000) — the dual-confirmation design
+  essentially eliminates same-month directional whipsaws, at the cost of
+  a large MIXED bucket (32-45% of months).
+- Candidate A is fastest to signal a turn across six tested historical
+  episodes but is also the only finalist observed to reverse within one
+  month at a genuine historical turning point (2008 crisis, 2022-2024
+  disinflation) — no finalist achieves both speed and persistence at
+  once in this data.
+- The 2025-10-01 CPI gap is confirmed as a documented BLS
+  government-shutdown data-collection gap (per BLS's own published page),
+  not a defect in this project's retrieval code; verified directly that
+  Core PCE's own classification is structurally unaffected by the
+  missing Core CPI confirmation, and that the cross-measure agreement
+  computation correctly reports the month as neutral disagreement rather
+  than fabricating or silently dropping it.
+- Cross-measure hierarchy analysis (not majority voting) shows the
+  underlying pair (Core PCE/Core CPI) is rarely in direct opposition
+  (≤2.84%) but agrees on the same state under 55% of the time — most of
+  the remainder is neutral/mixed disagreement, not opposition. Headline
+  measures agree with each other more often (63-70%) than the underlying
+  pair does.
+- "Current vintage" as a future UI label was found potentially
+  misleading given the app's actual architecture: `EconomicObservation`
+  stores exactly one value per `(series, date)`, with no revision/vintage
+  dimension at all, so there is no second vintage for "current" to be
+  implicitly contrasted against. Recommended a more precise label
+  ("Latest revised data") plus an expanded disclosure sentence stating
+  the single-value architecture explicitly. Documentation-only
+  recommendation; no product code changed.
+
+### Unresolved methodology decisions
+
+Unchanged in kind from the original study, now sharpened to the
+finalist set: which Candidate B delta to canonicalize; whether
+Candidate A's speed is worth its whipsaw risk; whether Candidate C's 82%
+MIXED occupancy is acceptable for a primary signal; how to surface
+Core CPI confirmation-unavailable states to end users; and the
+current-vintage UI label wording. Full detail:
+`research/inflation_momentum/FINALIST_ANALYSIS.md`'s "Questions for
+Human Decision" section.
+
+## Inflation Monitor Methodology Freeze — inflation_v1.0 (pre-implementation, not Increment #14)
+
+The human methodology decision left open by the finalist analysis above
+has now been made: **Candidate B (Dual Confirmation), neutral band
+δ = 0.10 percentage points, Core PCE primary / Core CPI confirmation**.
+This entry records freezing that decision into a normative,
+versioned contract *before* any production implementation, per this
+project's standing principle:
+
+> Facts are sourced. Calculations are deterministic. AI is
+> interpretive. No probabilistic component may be required for the
+> correctness, reproducibility, availability, or integrity of the
+> Economic Intelligence Engine.
+
+New artifact: [`docs/methodology/inflation-monitor-v1.0.md`](methodology/inflation-monitor-v1.0.md)
+(`docs/methodology/` is a new directory — no established methodology-doc
+convention existed in the repository before this). No production code
+was written; no ADR was created for the candidate/delta selection
+itself, because the methodology specification document *is* the
+canonical economic-method decision record — an ADR would only be
+warranted by a new durable *architectural* decision, and this freeze
+did not surface one (see Architecture Compatibility below).
+
+### Why freeze before implementation
+
+A deterministic methodology contract, versioned and marked FROZEN, lets
+Increment #14 be evaluated against a fixed target rather than an
+evolving one — implementation conforms to the contract; it does not
+reinterpret, extend, simplify, or "improve" the economic methodology
+along the way. This mirrors ADR-010's existing precedent for the
+transformation engine (spec first, then a provably pure implementation)
+applied one layer up, to methodology rather than arithmetic.
+
+### Key exact rules carried into the frozen contract
+
+- **Exact calendar-month endpoints, not row position.** `t-3`/`t-6`/
+  `t-12` must resolve by looking up the actual calendar date N months
+  before `t`, never by counting back N rows of whatever happens to be
+  persisted. A missing intermediate month does not invalidate an
+  endpoint calculation that doesn't require it; a missing *endpoint*
+  does. This explicitly forbids reusing `app/domain/transformations.py`'s
+  existing row-position offset pattern for inflation horizons.
+- **Primary vs. confirmation authority is a hard invariant.** Canonical
+  underlying state is `classify(Core PCE)` — never `combine(...)`,
+  never `vote(...)`, never AI-decided. Core CPI, Headline CPI, and
+  Headline PCE can never override Core PCE's state.
+- **Five canonical momentum states** (COOLING/HEATING/STABLE/MIXED/
+  INSUFFICIENT_DATA) and **four confirmation relationships**
+  (CONFIRMS/DIVERGES/INCONCLUSIVE/UNAVAILABLE), both exhaustively and
+  unambiguously defined — no aliases, no additional states.
+- **Latest-revised-data limitation is explicit and disclosed.** The
+  contract forbids claiming "what was known at the time" for any
+  historical calculation, since the persistence model has no
+  point-in-time vintage architecture.
+- **AI has zero methodology authority.** AI may explain the final
+  deterministic evidence object; it may never calculate, classify,
+  choose comparison periods, or alter provenance. The Monitor must be
+  fully functional with AI unavailable.
+
+### Adversarial audit
+
+Performed against the frozen text itself (35 required cases: boundary
+equality on both sides, floating-point boundary values just outside
+each side, negative inflation, missing t-1/t-3/t-6/t-12, missing
+intermediate months, zero/negative/non-finite index values, every
+confirmation-relationship combination, both orderings of
+latest-CPI-vs-latest-PCE, no-common-period, target/primary independent
+availability, infrastructure vs. economic missing data, versioning
+triggers, and every "accidental" failure mode: research-code
+dependency, AI dependency, live-FRED dependency, row-offset mistakes,
+post-rounding classification, 1M wrongly invalidating state, CPI
+overriding PCE, headline series majority-voted into primary).
+**Result: PASS** — every case yields one unambiguous expected behavior.
+The exact `12M=3.00, delta=0.10` boundary values from the frozen text
+were additionally run through the real, already-tested
+`classify_candidate_b_explicit` function this session; all matched,
+and `3.0 - 0.10 == 2.9` / `3.0 + 0.10 == 3.1` were confirmed exact in
+IEEE-754 double precision for this constant — no hidden-epsilon problem
+exists for it. Two non-blocking implementation notes were recorded for
+Increment #14: NaN must be excluded with an explicit `isfinite` check
+(bare `<=`/`>` does not reject NaN), and the future domain module must
+build calendar-exact date lookups rather than reusing
+`app/domain/transformations.py`'s row-position pattern.
+
+### Research consistency
+
+Confirmed, not re-decided: the frozen formulas are algebraically
+identical to the research's general compounding formula at n=1/3/6/12;
+the frozen boundary operators match `_horizon_bucket`'s existing
+inclusive-band/strict-outside implementation exactly; δ=0.10 is one of
+the three deltas the finalist analysis actually computed and reported
+for Candidate B (`FINALIST_ANALYSIS.md`); and the real 2025-10-01
+Core-CPI gap already empirically demonstrated Core PCE's classification
+is unaffected by missing confirmation, directly supporting the Primary
+Authority invariant. One implementation-pattern difference was found
+and is not a mismatch: the research code resolves horizons by row
+position, verified this session to be numerically equivalent to
+calendar-exact lookup only because all four cached series have zero
+structurally-missing calendar months across their full history (the one
+real gap, 2025-10-01, is a null-valued row, not an absent one) — this
+equivalence is a fact about that dataset, not a property of
+row-position code in general, which is exactly why the frozen contract
+states the calendar-exact rule explicitly rather than inheriting the
+research shortcut. **Result: no material mismatch.**
+
+### Architecture compatibility
+
+Inspected `app/domain/`, `app/repositories/series_repository.py`,
+`app/services/`, `app/models/series.py`, `app/api/analysis.py`, and
+ADR-009/010/011/017. The repository already returns full,
+chronologically-ordered observation ranges sufficient for a pure domain
+function to build its own exact-date lookups; `app/domain/analysis.py`'s
+`align_series` is already a directly analogous exact-date-matching
+precedent (ADR-011) for the new `latest_common_period` logic;
+`app/api/analysis.py` already distinguishes infrastructure failure
+(503/500) from data-availability outcomes (400/404), matching this
+contract's required separation; and ADR-017's "the application, never
+the model, owns execution" principle already establishes the precedent
+this contract's AI Boundary section needs. **Result: no blocking
+conflict.** Increment #14 can implement `inflation_v1.0` as a pure
+function in a new domain module, fed by the existing repository, with
+no migration and no dangerous change to an existing public contract.
+
+### Reusable lesson
+
+Methodology decisions happen *before* implementation, and implementation
+conforms to the versioned contract rather than the other way around —
+the same discipline this project already applies to architecture
+(ADR-first) now applied to economic methodology (spec-first). A
+methodology document that is FROZEN, adversarially audited, and checked
+against both its own research lineage and the target architecture
+*before* a single line of production code exists is what makes "the
+model doesn't get to reinterpret the methodology" an enforceable claim
+later, rather than a hope.
+
+## Increment 014 — Deterministic Inflation Monitor v1
+
+Implements `inflation_v1.0` exactly as frozen in
+[docs/methodology/inflation-monitor-v1.0.md](methodology/inflation-monitor-v1.0.md)
+(the prior entry). One narrow, read-only endpoint:
+`GET /api/v1/monitors/inflation`. No reinterpretation of the
+specification was needed or made.
+
+### Files
+
+New: `app/models/inflation.py` (typed models, enums, and the one
+canonical definition of every `inflation_v1.0` constant), `app/domain/inflation.py`
+(pure methodology core), `app/services/inflation.py`
+(`InflationMonitorService`), `app/api/inflation.py` (the route),
+`tests/test_domain_inflation.py` (112 pure-domain tests),
+`tests/integration/test_inflation_service.py` (9 PostgreSQL-backed
+service tests), `tests/api/test_inflation_api.py` (18 HTTP tests).
+Modified: `app/main.py` (router registration), `tests/test_domain_architectural_independence.py`
+(added `app/domain/inflation.py` to the guarded file list and `math` to
+its stdlib allowlist), `tests/api/test_failure_mapping.py` (added
+`api/inflation.py` to the existing AI-independence static-import
+guard), `docs/architecture/current-architecture.md`,
+`docs/architecture/request-flows.md` (Flow 22/23). No ADR: nothing here
+is a new durable *architectural* decision beyond what ADR-009/010/011/017
+already establish and the methodology document already records as the
+economic-method decision.
+
+### Domain design
+
+`app/domain/inflation.py` follows `app/domain/transformations.py`/
+`app/domain/analysis.py`'s existing convention exactly (no FastAPI,
+SQLAlchemy, FRED, httpx, environment, or `research/` import — enforced
+by the existing architectural-independence test, extended to cover this
+file) with one deliberate, frozen-spec-mandated departure: every
+horizon (`t-1`/`t-3`/`t-6`/`t-12`) resolves by an **exact calendar-month
+lookup** against an explicit `{date: value}` index (`build_index`,
+`month_before`), never by row position. `classify_state` (rates in,
+state out) is factored out of `classify_period` (index in, full
+evidence+state out) specifically so the five-state boundary decision is
+unit-testable against hand-picked float literals without needing index
+values that round-trip exactly through the 3M/6M annualization
+formula's 4th/2nd roots — verified, not assumed, that such a round-trip
+is not generally achievable in IEEE-754 (see "Numeric safety" below).
+
+`compute_series_momentum` (one series' own latest state),
+`compute_confirmation` (Core CPI vs. Core PCE, same-period only),
+`compute_target` (Headline PCE YoY vs. 2.0%), and
+`compute_headline_context` (Headline PCE/CPI, independently, no
+aggregate) each call `classify_period` as their shared primitive, so
+"latest state" and "state at a specific comparison period" can never
+drift into different classification logic.
+
+### Service orchestration
+
+`InflationMonitorService.get_result` fetches the four canonical series
+independently via `SeriesRepository`. A series with no `EconomicSeries`
+row at all yields an empty observation list — **not** `SeriesNotFoundError`
+— so a missing series is indistinguishable, downstream, from one that's
+persisted with insufficient history. This is a deliberate, spec-mandated
+departure from `AnalysisService`'s convention (which does raise
+`SeriesNotFoundError` → 404 for a missing series): the frozen
+specification requires missing economic data to surface as a normal
+`200` with `INSUFFICIENT_DATA`/`available: false`, never as an HTTP
+error, so this endpoint's missing-series behavior is intentionally
+*not* the same as `/analysis/compare`'s.
+
+### Exact-calendar-endpoint strategy
+
+`month_before(period, n)` computes calendar months arithmetically
+(`year*12 + month - n`, then `divmod`) — no dependency on which rows
+happen to exist. `build_index` turns a series' observation list into a
+`{date: value}` map (excluding invalid values entirely, never leaving a
+placeholder). Every horizon looks up `index.get(month_before(t, n))`
+directly: a month absent from the index (no row, or a row with an
+unusable value) is unavailable for that lookup, full stop, and can
+never shift which calendar month a *different*, unrelated calculation
+uses. Verified directly with a dedicated regression test
+(`test_row_position_shifting_cannot_occur`): adding an early, unrelated
+observation row changes nothing about a later period's 3M/6M/12M
+values or endpoint dates.
+
+One correctness bug caught by this increment's own integration tests
+(not shipped): `latest_observation_period` was initially computed from
+`build_index`'s output (valid values only), which would have silently
+reported the wrong "latest observation" date whenever the true latest
+row's *value* was itself missing (exactly today's real 2025-10-01 Core
+CPI situation) — the row exists, but with a null value, so it was being
+treated as if it didn't exist at all. Fixed by adding
+`latest_observation_date`, which reads the raw observation list's dates
+directly, independent of value validity. `latest_valid_state_period`
+correctly continues to search backward using the valid-only index.
+
+### Numeric safety
+
+`_is_valid_index_value` requires `value is not None and math.isfinite(value)
+and value > 0` — `math.isfinite`, not a bare `<=`/`>` comparison, is
+required because `NaN` compares `False` to every comparison including
+`NaN <= 0`, so a naive guard would silently let it through. No epsilon
+is added anywhere in the boundary comparison; `classify_state`'s
+`lower <= r_3m <= upper` is exactly the frozen spec's inclusive rule,
+using `NEUTRAL_BAND_PP` (`0.10`) as-is. Verified directly (test
+authoring, not production code) that `3.0 - 0.10 == 2.9` and
+`3.0 + 0.10 == 3.1` hold bit-exactly in this Python's IEEE-754 double
+precision — but also verified, by exhaustive attempted construction,
+that hand-picking raw index *levels* whose forward-computed 3M/6M rate
+round-trips to an exact chosen decimal target is generally **not**
+achievable (off by ~1e-13 to 1e-14 in every combination tried), because
+those horizons require a 4th/2nd root of the raw ratio. This is exactly
+why `classify_state` takes already-computed rates rather than raw index
+values: it makes the boundary decision testable against exact float
+literals directly, sidestepping a real (not hypothetical) IEEE-754
+limitation rather than working around it with an ad hoc tolerance.
+
+### Evidence / provenance design
+
+`InflationMetricEvidence` carries `series_id`, `calculation_period`,
+`transformation`, both endpoint dates, both endpoint values (as
+persisted, unrounded), the unrounded computed value, `methodology_id`,
+and `data_basis` for every one of 1M/3M/6M/12M — populated even when
+the metric is unavailable (endpoint dates still show which exact month
+was needed; values are `null`). `TestProvenance.test_evidence_reproduces_returned_state_by_hand`
+proves this is sufficient: given only the evidence fields, the exact
+same state can be recomputed without calling any function in the
+module under test.
+
+### Missing-data semantics
+
+`SeriesMomentumResult.calculation_period` is `null` only when a series
+has no usable observation at all; otherwise it anchors to the latest
+period that was actually evaluated (the latest valid state period, or,
+failing that, the latest observation period) — never a fabricated
+period. `INSUFFICIENT_DATA` never conflates with an infrastructure
+failure: a missing endpoint produces a normal `200` result; a real
+`OperationalError`/`SQLAlchemyError` from the database still propagates
+through the service to the route's existing 503/500 mapping, unchanged
+from every other PostgreSQL-backed route in this project.
+
+### Primary/confirmation separation
+
+Core PCE's own state is computed exclusively from Core PCE's own
+observations (`compute_series_momentum(primary_observations, ...)`) —
+structurally incapable of referencing Core CPI, Headline CPI, or
+Headline PCE, since those functions are never called. Proven directly
+(`TestPrimaryAuthority`): changing Core CPI arbitrarily, removing it
+entirely, changing Headline CPI, or changing Headline PCE's level all
+leave Core PCE's own `underlying_momentum` byte-for-byte identical.
+
+### Common-period resolution
+
+`find_latest_common_period` intersects both series' own observation
+dates, then searches backward for the latest date where *both*
+independently have a full valid state — never merely a shared row.
+Proven with a real fallback scenario (`test_confirmation_falls_back_to_earlier_common_period`,
+both at the domain and the PostgreSQL-integration level): both series
+share their newest observation date, but Core CPI's t-12 endpoint for
+that date is missing, so the comparison period correctly falls back one
+month rather than either using the mismatched date or giving up
+entirely.
+
+### Verification
+
+`TEST_DATABASE_URL=... .venv/bin/pytest tests/ -q`, run twice: **501
+passed** both times (up from the pre-Increment-014 baseline of 362; all
+139 new tests are additive, nothing existing was modified to
+accommodate this increment). `app/domain/inflation.py` confirmed on the
+existing pure-domain-layer architectural guard (no forbidden import,
+allowlist-only imports). No new module under `app/` imports
+`research/` (covered automatically by the existing repository-wide
+`tests/research/test_inflation_momentum.py::TestArchitecturalIndependence`
+guard, which walks all of `app/`, not a fixed file list). `git diff`
+confirms: no migration, no change to `app/api/ai.py`/`app/services/ai.py`/
+`app/services/ai_tools.py`/`app/models/ai.py`, no OpenAI/FRED
+dependency anywhere in the monitor's request path (proven by a
+fail-fast mock in `tests/api/test_inflation_api.py`), and
+`docs/methodology/inflation-monitor-v1.0.md` itself was not modified —
+the specification was implemented as written, not adjusted for
+implementation convenience.
+
+### Reusable lesson
+
+Writing integration tests against a real database, not just domain unit
+tests, caught a genuine bug (the `latest_observation_period`/null-value
+conflation above) that an in-memory-only test suite with hand-picked
+fixtures had not exposed, because the domain tests happened to always
+pair "latest row" with "latest valid row" in their fixtures. The fix
+came from deliberately constructing a fixture where those two diverge
+— exactly the kind of case the frozen specification's own "Latest
+observation period" vs. "latest valid state period" distinction was
+written to guard against, which is what prompted writing that specific
+test in the first place. A specification that draws a sharp distinction
+between two similar-sounding concepts is often signaling exactly where
+an implementation is likely to quietly conflate them.
