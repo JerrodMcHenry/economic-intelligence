@@ -8,7 +8,7 @@ are reused from there rather than duplicated.
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.series import SeriesSummary, TransformationMeta, TransformationType
 
@@ -61,7 +61,13 @@ class TransformationSpec(BaseModel):
     already established for the single-series transform endpoint in
     Increment 005, rather than a second, differently-coded validation
     path for the identical rule.
+
+    `extra="forbid"`: fail-closed validation for this public request
+    contract -- an unexpected field is rejected outright with a clear
+    validation error, rather than silently dropped.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     type: TransformationType
     window: int | None = Field(default=None, ge=2, le=365)
@@ -70,14 +76,24 @@ class TransformationSpec(BaseModel):
 class PipelineSeriesSpec(BaseModel):
     """One side of a pipeline request: which persisted series, and
     optionally what to transform it by before analysis. Absent/null
-    `transformation` means "use raw persisted observations"."""
+    `transformation` means "use raw persisted observations".
+
+    `extra="forbid"`: see `TransformationSpec` -- same rationale."""
+
+    model_config = ConfigDict(extra="forbid")
 
     series_id: str
     transformation: TransformationSpec | None = None
 
 
 class PipelineRequest(BaseModel):
-    """Request body for POST /api/v1/analysis/pipeline."""
+    """Request body for POST /api/v1/analysis/pipeline.
+
+    `extra="forbid"`: see `TransformationSpec` -- same rationale. A
+    legitimate client never needed to send an unrecognized field either,
+    so one is rejected outright rather than silently ignored."""
+
+    model_config = ConfigDict(extra="forbid")
 
     series_a: PipelineSeriesSpec
     series_b: PipelineSeriesSpec

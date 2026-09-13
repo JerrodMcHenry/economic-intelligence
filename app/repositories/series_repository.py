@@ -10,7 +10,7 @@ within a caller-provided `Session` and never calls `commit()` or
 from datetime import date
 from typing import Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import EconomicObservation, EconomicSeries
@@ -26,6 +26,30 @@ class SeriesRepository:
         return self._session.execute(
             select(EconomicSeries).where(EconomicSeries.series_id == series_id)
         ).scalar_one_or_none()
+
+    def search_series(self, query: str, limit: int) -> list[EconomicSeries]:
+        """Case-insensitive substring match against persisted series'
+        `series_id` or `title` -- discovery only, no judgment about which
+        match is economically "best" (that's the caller's/model's job).
+
+        Deterministic ordering: an exact `series_id` match (case-
+        insensitive) first, then alphabetically by `series_id` -- there is
+        no local popularity/relevance signal to rank by, unlike FRED's
+        `search_rank`.
+        """
+        pattern = f"%{query}%"
+        is_exact_id = func.lower(EconomicSeries.series_id) == query.lower()
+        rows = (
+            self._session.execute(
+                select(EconomicSeries)
+                .where(or_(EconomicSeries.series_id.ilike(pattern), EconomicSeries.title.ilike(pattern)))
+                .order_by(is_exact_id.desc(), EconomicSeries.series_id.asc())
+                .limit(limit)
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
 
     def get_observations(
         self,

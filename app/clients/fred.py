@@ -59,6 +59,27 @@ class FREDClient:
             raise FREDUpstreamError(f"FRED returned no observations payload for series '{series_id}'")
         return observations
 
+    def search_series(self, search_text: str, limit: int = 5) -> list[dict]:
+        """Full-text search FRED's series catalog (fred/series/search) --
+        metadata only (id, title, frequency, units, seasonal_adjustment,
+        observation_start/end, popularity, ...), never observation values.
+
+        An empty/zero-match search is a normal, successful outcome (FRED
+        returns `200` with an empty `seriess` list) -- returns `[]`, not
+        an error.
+        """
+        data = self._get(
+            "/series/search",
+            {
+                "search_text": search_text,
+                "search_type": "full_text",
+                "limit": limit,
+                "order_by": "search_rank",
+                "sort_order": "desc",
+            },
+        )
+        return data.get("seriess") or []
+
     def _get(self, path: str, params: dict) -> dict:
         query = {**params, "api_key": self._api_key, "file_type": "json"}
 

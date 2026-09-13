@@ -3588,3 +3588,158 @@ verifies a configuration-absent 503 and calls no OpenAI SDK method.
 No production database mutation: every API test's request handling was
 redirected to `economic_intelligence_test`; `economic_intelligence` was
 never connected to.
+
+## Increment 012.5 — Working Tree Cleanup & Autonomous AI Rollback
+
+Not a feature increment: a deliberate cleanup, restoring the working
+tree to a clean, coherent state before Increment 013. This entry does
+not rewrite anything above it -- the full Increment 009 narrative, all
+three correction attempts, and ADR-017/018's complete empirical results
+remain exactly as recorded. What follows is what changed *after* that
+history, in response to it.
+
+### Why
+
+Increment 009 and its three corrective follow-ups were built and
+verified entirely in the working tree, never committed. By the time
+Increment 012 landed (the deterministic HTTP API test foundation), that
+uncommitted batch mixed three genuinely different kinds of change in
+the same diff: real, deterministic, independently-useful discovery
+capability; real, valuable safety/validation hardening; and an
+autonomous multi-round AI tool-orchestration experiment that was tried
+three separate times (prompt-only guidance, a deterministic execution
+gate, dynamic tool-schema shaping) and never passed its own acceptance
+gate -- the last attempt's own measured result was a ~60% rate of the
+model ignoring the schema constraint it was just given. Leaving that
+failed experiment sitting in the tree as if it were pending, undecided
+work was no longer honest about its status: it had already failed,
+repeatedly and specifically, and continuing to carry it forward risked
+it being mistaken for active canonical architecture.
+
+### What was reverted
+
+`app/services/ai.py`, `app/services/ai_tools.py`, and `app/models/ai.py`
+were restored via `git checkout HEAD --` to their last-committed state
+(Increment 008, commit `aff7ba4`) -- the exactly-three-tool
+(`get_observations`/`transform_series`/`analyze_series`), no-discovery,
+no-grounding AI path this project shipped before Increment 009 ever
+touched it. This removes, as active code: the `search_series` tool and
+its wiring; `GroundingContext` and `execute_tool`'s grounding/persisted-
+execution gate; `build_tool_schemas`, `MAX_DISCOVERY_ROUNDS`, and
+`_round_had_successful_search`; and `SearchSeriesArgs` plus the
+`extra="forbid"` hardening that existed only to support the AI tool
+loop. No attempt was made to fix, redesign, or improve any of it --
+consistent with the explicit instruction for this cleanup, and with the
+conclusion three separate corrections had already reached.
+
+`docs/architecture/current-architecture.md` and
+`docs/architecture/request-flows.md` were reverted the same way, for
+the same reason: both had accumulated hundreds of lines describing the
+reverted discovery/grounding/dynamic-schema system as active, current
+architecture. Both now accurately describe the system as it actually
+runs (three AI tools, no discovery, exactly as Increment 008 left it).
+
+Verified directly, not assumed: a repo-wide search for every
+orchestration-specific symbol (`MAX_DISCOVERY_ROUNDS`,
+`build_tool_schemas`, `known_persisted_ids`, `GroundingContext`,
+`_round_had_successful_search`, `register_discovery`,
+`resolve_persisted`) found them nowhere outside the two files being
+reverted -- confirming none of the 226 committed tests from Increments
+010-012 depend on any of it, and the revert was safe by construction.
+Running the full committed suite immediately afterward confirmed this:
+226/226 passed, unchanged.
+
+### What was preserved
+
+**Deterministic discovery capability** (Category 1: independently
+useful, zero AI dependency, verified by direct import/grep inspection):
+`app/clients/fred.py`'s `FREDClient.search_series` (catalog metadata
+only, never observations), `app/repositories/series_repository.py`'s
+`SeriesRepository.search_series` (local substring match, deterministic
+ordering), and the two new modules `app/models/discovery.py`/
+`app/services/discovery.py` (`SeriesCandidate`, `SeriesSearchResponse`,
+`SeriesDiscoveryService`) -- none of the four references `app.services.ai`,
+`app.services.ai_tools`, or `openai` anywhere. This capability is
+currently orphaned (nothing wires it into anything reachable -- no HTTP
+route, no AI tool) but intact and correct, confirmed by four new small,
+focused, offline tests (`tests/integration/test_discovery_service.py`)
+exercising local-only search (`fred_client=None`) directly: find by id,
+find by title substring, no-match returns an empty list (not an error),
+and a non-mutation proof. Exposing this as a direct HTTP endpoint is
+Increment 013's job, not this cleanup's.
+
+**Durable validation hardening, independent of the failed orchestration**
+(Category 2): `app/models/analysis.py`'s `extra="forbid"` on
+`TransformationSpec`/`PipelineSeriesSpec`/`PipelineRequest` was kept
+as-is. Verified precisely why this is safe and correct to keep, not an
+oversight: `PipelineRequest` is the real request body for the
+deterministic `POST /analysis/pipeline` HTTP endpoint (reused by the AI
+`analyze_series` tool since Increment 008, predating Increment 009's
+work entirely), and this exact hardening is already load-bearing for
+Increment 012's own committed HTTP tests
+(`test_unknown_top_level_field_returns_422` and its siblings in
+`tests/api/test_analysis_api.py`). Reverting this file would have
+broken currently-passing committed tests for no benefit -- confirmed by
+inspecting its diff line-by-line and finding it contains only
+`extra="forbid"` additions and docstring updates, nothing
+orchestration-specific. One docstring correction was made for accuracy
+(a stray "(Increment 009)" attribution for `analyze_series` reusing
+`PipelineRequest`, corrected to "(Increment 008)", since that reuse
+predates Increment 009 -- confirmed directly against the Increment
+008 commit).
+
+By contrast, `app/models/ai.py`'s `extra="forbid"` additions
+(`GetObservationsArgs`/`TransformSeriesArgs`) were reverted along with
+the rest of that file: confirmed by grep that neither model is used
+anywhere outside `app/services/ai_tools.py` (the deterministic HTTP
+routes use plain FastAPI `Query(...)` parameters, never these models),
+so nothing dual-use was lost.
+
+### ADR disposition
+
+None of ADR-015/016/017/018 were committed before this cleanup (all
+four were still untracked working-tree files), so editing their status
+lines is not a rewrite of committed history -- the append-only
+constraint applies to this journal, which is committed, not to them.
+
+- **ADR-015** (verified-series grounding): kept, status amended to
+  note the implementation is reverted while the decision/principle is
+  preserved for future re-application.
+- **ADR-016** (no AI-triggered ingestion): kept, status amended to
+  "standing principle, currently inapplicable" -- there is no
+  AI-driven discovery left for it to constrain right now, but the rule
+  should govern that design again from the start whenever there is.
+- **ADR-017** (deterministic analytical execution eligibility): kept,
+  status amended the same way as ADR-015 -- this is the one piece of
+  the Increment 009 era most worth re-applying essentially unchanged
+  whenever AI-triggered execution returns, given its 100%-verified
+  enforcement record.
+- **ADR-018** (dynamic tool availability): kept, but its Status is now
+  explicitly **SUPERSEDED — FAILED ACCEPTANCE GATE**, with the
+  decisive empirical finding (the ~60% schema-violation rate) restated
+  at the top of the document, not just buried in its Consequences
+  section. The full original document is preserved unchanged below
+  that notice.
+
+### Tests
+
+226 pre-existing tests: unchanged, all still passing. 4 new tests
+(`tests/integration/test_discovery_service.py`) added to prove the
+preserved discovery capability wasn't left silently broken by the
+cleanup -- no live FRED, no live OpenAI, real isolated PostgreSQL test
+database (same fixtures Increment 011 already established). Full
+suite: **230/230 passing** after this cleanup.
+
+### What remains true
+
+The AI path is back to exactly what Increment 008 shipped and nothing
+more: three tools, no discovery, no grounding, no dynamic anything. It
+is not part of the canonical, currently-recommended product
+architecture (see the architecture reset audit) -- it remains mounted
+and reachable at `/api/v1/ai/query` (untouched, unimproved, not
+re-evaluated by this cleanup) but is not where product development
+attention belongs until the deterministic engine (Increments 010-012,
+plus whatever Increment 013 and beyond add) is further along. Future AI
+work should start from ADR-015/017's preserved principles and the
+architecture reset audit's bounded-intent-extraction design, not from
+reviving anything reverted here.
