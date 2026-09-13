@@ -4467,3 +4467,253 @@ written to guard against, which is what prompted writing that specific
 test in the first place. A specification that draws a sharp distinction
 between two similar-sounding concepts is often signaling exactly where
 an implementation is likely to quietly conflate them.
+
+## Pre-Increment 015 — "What Changed?" Contract Design (specification only)
+
+Increment #14 is closed, committed, and pushed (baseline: 513 passing
+tests). This entry records designing and proposing — not implementing —
+the deterministic comparison contract for "what changed in inflation
+since the previous comparable canonical result." New artifact:
+[`docs/methodology/inflation-what-changed-v1.0.md`](methodology/inflation-what-changed-v1.0.md),
+status **PROPOSED**, not FROZEN. No production code was written; no
+`app/` file, test, or the frozen `inflation-monitor-v1.0.md` was
+modified.
+
+### Purpose and why the comparator does not recalculate
+
+The product question ("what changed, what didn't, what evidence
+supports that") is exactly the kind of question it would be tempting to
+hand an LLM. This contract exists to make that unnecessary: `compare(previous,
+current)` operates only on two already-canonical `InflationMonitorResult`
+values and must never recalculate a formula, choose a different series,
+reclassify momentum, alter target-gap semantics, reinterpret
+confirmation, repair missing data, substitute a period, or use AI
+judgment — mirroring `inflation_v1.0`'s own "facts are sourced,
+calculations are deterministic" principle one layer up, applied to
+comparison rather than classification.
+
+### Previous-period semantics (the central design question)
+
+The task's proposed default — previous means the immediately preceding
+**calendar month**, never a database row, never a backward search — was
+adversarially evaluated against the real #14 contract and recommended
+for freezing, with one refinement: because `inflation_v1.0` already
+allows Core PCE's own anchor period, Core CPI confirmation's
+`latest_common_period`, Target's own period, and each headline series'
+own period to differ from one another (existing, approved #14 behavior),
+"previous" must be computed **per tier**, relative to that tier's own
+current anchor (`month_before(tier_current_period, 1)`), not from one
+forced global `t`. Critically, previous is never searched for — if the
+exact calendar month before the current anchor isn't classifiable, that
+is reported as an availability transition, never silently bridged to an
+earlier classifiable month. This is precisely what resolves the
+July/August(missing)/September adversarial case: comparing "current"
+against exactly one month before it can never accidentally skip the gap
+and report a direct COOLING→HEATING transition across it.
+
+### State vs. availability vs. metric distinction
+
+Formalized exactly as specified: a state change requires both sides to
+be economically classifiable (COOLING/HEATING/STABLE/MIXED) and unequal;
+`INSUFFICIENT_DATA` on either side is an availability transition, never
+an economic state transition. A state that doesn't change while its
+underlying metrics do (`3M: 2.8→2.6`, `state: COOLING→COOLING`) is
+explicitly *not* "no change" — the metric-change fact is preserved and
+reported alongside `state_changed=false`. Metric comparison is based on
+canonical unrounded values (`2.844→2.846` is `changed=true` even when
+both round to the same display value), with no epsilon introduced —
+consistent with `inflation_v1.0`'s own "no hidden epsilon" discipline.
+
+### Confirmation-change semantics
+
+A relationship change and an availability change are represented as
+independent, coexisting facts, never one erasing the other —
+`CONFIRMS→UNAVAILABLE` is both `relationship_changed=true` and
+`confirmation_availability_lost=true` simultaneously. The frozen #14
+invariant (`confirmation_available == (relationship != UNAVAILABLE)`)
+is read from each already-canonical `ConfirmationResult`, never
+re-derived independently by the comparator.
+
+### Latest-revised-data and release-awareness limitations
+
+What Changed V1 inherits `inflation_v1.0`'s `latest_revised_data` basis
+verbatim: a historical comparison uses the latest revised observations
+currently available, never a claim about what was known at that
+historical time. Because persistence overwrites revised observations in
+place rather than retaining vintages, What Changed V1 cannot distinguish
+"a new month arrived" from "an old month was revised between two runs"
+— explicitly documented as a permanent v1 limitation, with no
+revision-attribution heuristic invented to paper over it. Release-aware
+framing ("since yesterday's CPI release") is explicitly deferred — the
+system has no release-event metadata or point-in-time vintage snapshots
+today; V1 is a plain period-to-period comparison, `MONTH_OVER_MONTH`
+only (current canonical period vs. exact calendar month before it), by
+explicit product direction — no week/quarter/release/custom/AI-selected
+comparison mode exists in V1.
+
+### Architecture compatibility finding
+
+Inspected the actual committed #14 code (not recalled from memory of
+writing it) rather than designing against an imagined
+`InflationMonitorResult`. Finding: `InflationMonitorService.get_result`
+takes no period argument and only ever computes "latest" — but the pure
+primitives one layer down (`classify_period`, `_metric_evidence`,
+`classify_confirmation_relationship`, `build_index`, `month_before`)
+already accept or support an explicit calculation period and are not
+"latest-only" internally (they're already used this way for
+confirmation's own comparison-period classification). The smallest
+clean #15 extension is therefore: one new, additive, pure function that
+assembles an `InflationMonitorResult`-shaped object anchored at an
+explicit period per tier (a sibling to, never a modification of,
+`compute_inflation_monitor_result`), plus one new, pure comparator with
+zero economic-formula knowledge. No repository change, no migration, no
+change to any existing model or function is required.
+
+### Adversarial audit result
+
+All 18 originally-specified adversarial cases (A–R) resolve to one
+unambiguous behavior. One additional case was found during this audit
+and is not yet resolved by fiat: a tier whose current anchor period is
+itself `None` (e.g. confirmation has never had a common period in
+recorded history) has no date to compute "one month before" from. A
+conservative default is proposed (previous also `None`, no change flags
+raised) but is presented as an open decision, not silently assumed,
+alongside one product-confirmation question (whether confirmation's
+period basis should really follow its own `latest_common_period` rather
+than primary's period, as recommended here).
+
+### Unresolved decisions
+
+Two, both narrow and named precisely in
+`docs/methodology/inflation-what-changed-v1.0.md`'s "Remaining human
+decisions" section. Status is **PROPOSED**, not FROZEN, until a human
+resolves them — per this project's now-established discipline of never
+marking a specification frozen merely because it was written.
+
+### Reusable lesson
+
+A comparison contract is not a second methodology, but it is tempting
+to let it become one the moment it needs a period the underlying
+methodology doesn't explicitly hand it (here: "previous period" for a
+tier `inflation_v1.0` never defined a "previous" for at all). Resolving
+that temptation by extending the *period selection* mechanism only —
+while reusing every existing classification primitive completely
+unmodified — is what keeps "the comparator recalculates nothing" true
+in practice, not just in the document's stated intent.
+
+### Amendment — decisions resolved, structural correction, FROZEN
+
+Both decisions listed as "Unresolved decisions" above are now resolved,
+and a third, more serious problem was found and fixed in the same pass:
+the proposed contract's own two-snapshot assumption directly
+contradicted its own per-tier independent-period design. Status moved
+from **PROPOSED** to **FROZEN**.
+
+**Decision 1 (degenerate anchor) — resolved: no `NOT_APPLICABLE` state.**
+A section with no current anchor period reports
+`comparison_available = false`, both periods `null`, and an empty
+change list — never a fabricated transition. This is now a first-class,
+explicit field, not a value smuggled into the existing
+`INSUFFICIENT_DATA`/`UNAVAILABLE` states, and it is structurally
+distinct from "compared successfully and found nothing different"
+(`comparison_available = true`, `changes = []`) — the two cases the
+task most wanted kept from collapsing into each other.
+
+**Decision 2 (confirmation's period basis) — resolved and frozen as
+originally recommended.** Confirmation's current anchor remains
+`inflation_v1.0`'s own `latest_common_period` verbatim, never
+re-anchored to Core PCE's standalone period. Primary's and
+confirmation's periods are allowed to differ in the same report; this
+is `inflation_v1.0`'s own existing design, not something to normalize
+away.
+
+**Decision 3 (found during this pass, not listed as a prior open
+question) — the false global two-snapshot assumption, removed.** The
+prior draft wrapped the whole comparison in one global
+`previous_result`/`current_result` pair of full `InflationMonitorResult`
+objects and claimed the entire comparison was auditable from those two
+objects alone. That directly contradicted the document's own,
+already-correct statement that primary/confirmation/target/headline may
+have independently different current/previous periods — there is no
+single pair of full-monitor snapshots that can truthfully represent
+five independently-anchored comparisons, and the architecture has no
+point-in-time monitor-vintage concept that could construct such a pair
+even in principle. Corrected: each of the five change sections now owns
+its exact canonical evidence (`SeriesMomentumResult`/`TargetResult`,
+`inflation_v1.0`'s own unmodified shapes) and its own period pair
+directly; a live, current-only `InflationMonitorResult` may still be
+attached as optional convenience context but is no longer the required
+evidence basis for anything.
+
+**Comparison-availability semantics, clarified.** `comparison_available`
+answers exactly one question — does this section have a current anchor
+at all — never "did both sides turn out classifiable." This is
+guaranteed by `inflation_v1.0` itself: every "latest" anchor
+(`find_latest_valid_state_period`, `latest_common_period`,
+`find_latest_period_with_valid_12m`) is by definition only ever set to
+an already-classifiable period, so whenever a current anchor exists,
+the current side is always valid; only the previous side can ever turn
+out unavailable, and that is exactly category 4 (an availability
+change), never a reason to call the comparison itself unavailable.
+
+**Re-audit result: PASS**, 18 cases (A–O in the renumbered list,
+covering every case named in this round plus every case from the first
+audit), no case left ambiguous, no new open question found. Contract ID
+`inflation_what_changed_v1.0`, version `1.0`, is now **FROZEN**.
+
+### Second amendment — corrected a real contradiction found after freeze: unreachable `AVAILABLE → UNAVAILABLE`
+
+The freeze above was premature in one respect: its own "comparison
+availability" clarification asserted that `inflation_v1.0`'s existing
+"latest" anchors (`latest_valid_state_period` for ordinary series,
+`latest_common_period` for confirmation) guarantee the *current* side of
+a comparison is always classifiable. That claim is true of those
+anchors by construction — and that is exactly the problem. Anchoring
+What Changed's "current" period to a *valid-state* anchor means an
+unclassifiable most-recent month is, by definition, never selected as
+"current" — it is silently skipped in favor of an earlier period that
+does classify. That directly contradicts this same contract's own
+required taxonomy: `AVAILABLE → UNAVAILABLE` (category 4) becomes
+structurally unreachable, for both primary/target/headline (Core PCE
+`current_period` would always resolve past an `INSUFFICIENT_DATA`
+month) and, more seriously, for confirmation (`latest_common_period` is
+defined as a period where *both* series are already valid, so
+`CONFIRMS → UNAVAILABLE` could never be observed even though the
+contract explicitly requires it as an adversarial case).
+
+**Why this happened:** the first freeze pass correctly separated "an
+anchor exists" from "the anchor's state is classifiable" at the
+*comparison_available* level, but did not carry that separation through
+to *which* `inflation_v1.0` period field gets used as the anchor itself
+— it reused the Monitor's own "latest valid" anchors, which exist
+precisely to hide an unclassifiable period from the Monitor's user-
+facing "current state," the opposite of what a change-detector needs.
+
+**Fix, now frozen:** introduced one new, purely period-selection concept
+this contract owns — `latest_shared_observation_period` — the latest
+calendar month for which Core PCE and Core CPI both have *any*
+observation row, regardless of classifiability (computed by intersecting
+the two already-fetched observation date sets and taking the max; no
+new query, no repository change). Confirmation now anchors to this,
+never to `inflation_v1.0`'s `latest_common_period`. Ordinary series
+(primary, target, headline PCE, headline CPI) now anchor to
+`inflation_v1.0`'s own existing `latest_observation_period` (a row
+exists, regardless of validity) rather than `latest_valid_state_period`.
+`inflation_v1.0` itself was not touched — all three of its existing
+period fields keep their exact existing meanings and continue to serve
+the Monitor exactly as before; this contract simply stopped reusing the
+*wrong one* of them as its own anchor. A structural invariant now stated
+explicitly in the spec: `latest_valid_state_period <=
+latest_observation_period` and `latest_common_period <=
+latest_shared_observation_period`, always — What Changed's anchors are
+never earlier than the Monitor's, and are strictly later exactly when
+there is an availability event the Monitor's own "current" reading
+would otherwise hide.
+
+**Re-audit result: PASS**, 17 cases, including the two that directly
+exercise the fix (case 3: valid → unavailable for ordinary series; case
+10: `CONFIRMS → UNAVAILABLE` for confirmation) and the two structural
+invariants (cases 12/13: the Monitor's own valid-state anchor is always
+at or before What Changed's observation-based anchor). No new ambiguity
+found. Contract remains **FROZEN**, `inflation_what_changed_v1.0`,
+version `1.0`.
