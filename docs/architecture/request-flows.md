@@ -1309,3 +1309,53 @@ monitor, or imports AI/news — checked structurally by
 `TestReleaseCalendarStructuralIndependence` (an import-level guard, the
 same style already used for the domain layer's architectural
 independence).
+
+## Flow 30 — Release Calendar UI (`/releases`, Increment #17B)
+
+Presentation only, on top of Flow 28 — the browser never reaches Flow
+29 (the sync write path) at all.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (ReleasesPage)
+    participant H1 as useApiResource(fetchUpcomingReleases)
+    participant H2 as useApiResource(fetchRecentReleases)
+    participant API as FastAPI (via Flow 26's proxy in dev)
+
+    par independent requests
+        B->>H1: mount
+        H1->>H1: upcomingWindow() -- today through +45 days
+        H1->>API: GET /api/v1/releases?start_date&end_date&order=asc
+    and
+        B->>H2: mount
+        H2->>H2: recentWindow() -- -30 days through today
+        H2->>API: GET /api/v1/releases?start_date&end_date&order=desc
+    end
+    API-->>H1: 200 ReleaseListResponse (or a network/HTTP failure)
+    API-->>H2: 200 ReleaseListResponse (or a network/HTTP failure)
+    H1-->>B: {status: "success", data} | {status: "error", error} | {status: "loading"}
+    H2-->>B: {status: "success", data} | {status: "error", error} | {status: "loading"}
+    Note over B: groupReleasesByDate() groups same-date items for<br/>display only -- schedule_status is rendered exactly<br/>as returned, never reclassified client-side.
+```
+
+Rendering per combination, identical shape to Flow 27's table:
+
+| Upcoming state | Recent state | Rendered result |
+|---|---|---|
+| loading | loading | `LoadingSkeleton` (role="status") in both slots; no release data rendered anywhere |
+| success | success | Both `ReleaseCalendarSection`s render, grouped by date, backend order and `schedule_status` preserved exactly |
+| error | success | `ErrorMessage` ("Upcoming releases could not be loaded.", with Retry) in place of Upcoming; Recent still renders normally |
+| success | error | Upcoming renders normally; `ErrorMessage` ("Recent releases could not be loaded.", with Retry) in place of Recent |
+| error | error | Both `ErrorMessage`s render; nothing on the page claims to be release data |
+
+A successful response with zero occurrences in the requested window
+(`releases: []`) is not an error — it renders "No scheduled releases in
+this window."/"No recently scheduled releases in this window." as plain
+text, the same infrastructure-failure-vs-canonical-empty-result
+distinction Flow 27 already draws for Inflation.
+
+The page never constructs a request to `POST /api/v1/releases/sync`
+(Flow 29) — there is no code path from `ReleasesPage` or anything it
+imports that could reach it; `frontend/src/test/no-release-sync-or-coupling.test.ts`
+checks this statically across every release-related file, and the
+literal path does not appear anywhere in the built frontend source.

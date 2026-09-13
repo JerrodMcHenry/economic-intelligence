@@ -5809,3 +5809,187 @@ AI file. Still no `ReleaseSeriesMapping`, `scheduled_at`,
 scheduler, news integration, observation-availability logic, or
 monitor recomputation anywhere in the codebase -- confirmed by direct
 grep across every #17A production file, not just by omission.
+
+## Increment #17B — Release Intelligence UI
+
+Presentation only, on top of #17A's `GET /api/v1/releases`. Zero
+backend production changes -- the existing read contract
+(`ReleaseOccurrenceItem`/`PaginationMeta`/`ReleaseListResponse`) was
+already sufficient for the frozen #17B experience, so no
+"STOP -- BACKEND CONTRACT GAP" was ever reached. This increment picked
+up an in-progress session that had completed exactly one file
+(`frontend/src/api/releases.types.ts`) before hitting a usage limit --
+that file was re-verified field-for-field against `app/models/releases.py`
+(it was already correct and complete: no derived status logic, no
+invented fields) and kept unchanged; everything else below was built
+fresh in this session.
+
+### Route, navigation, and page structure
+
+`/releases` (`pages/Releases.tsx`), added to `App.tsx`'s route table
+and `AppShell.tsx`'s primary nav (`"Releases"`, after `"Inflation"`).
+One page, not tabs -- **Upcoming Releases** then **Recent Releases**,
+in that order, matching `/inflation`'s existing header/disclosure/
+`divide-y`-separated-sections structure exactly so the two pages read
+as the same product. The mandated disclosure ("Release dates indicate
+scheduled publication dates. They do not confirm that new data has
+been published, ingested, or reflected in Economic Intelligence
+analysis.") renders permanently visible and visually secondary (small,
+muted text under the page subtitle) -- unlike `/inflation`'s
+methodology note, this one is load-bearing for the whole page's
+meaning, so it is never hidden behind a disclosure toggle.
+
+### Typed API contract
+
+`api/releases.types.ts` (pre-existing, verified) +
+`api/releases.ts` (new): `getReleases(params)` on the existing
+`apiGet<T>` foundation, plus two named fetchers,
+`fetchUpcomingReleases`/`fetchRecentReleases`, mirroring
+`api/inflation.ts`'s own pattern of exporting stable, zero-argument
+functions `useApiResource` can take directly. No `any` anywhere
+(enforced by the existing strict `tsconfig`). Only the read contract is
+mirrored -- `ReleaseSyncResponse` and friends are deliberately not
+modeled here at all, since nothing in this increment's import graph
+could ever construct a request to that endpoint.
+
+### Upcoming/Recent query windows (product default, not frozen by the spec)
+
+`docs/architecture/release-intelligence-v1.md` §13 leaves the exact
+window to a "clear bounded product default" -- none is frozen. Chosen
+here: **Upcoming = today through +45 days** (ascending), **Recent =
+-30 days through today** (descending), computed by
+`lib/releases.ts`'s `upcomingWindow`/`recentWindow` (pure, explicit
+`today` parameter, defaulting to the real current date -- this is
+UI/query-window logic only, never a canonical calculation, so unlike
+`classify_schedule_status` a default is appropriate here). Sized
+against the real curated catalog before choosing a `limit`: the six
+curated releases produced 7 occurrences in the upcoming window and 6 in
+the recent window on the day this was checked against the synced
+development database -- both comfortably inside the request's
+`limit=100` (the backend's own default), so V1 needs no "Load more" UI
+at all; both windows fit in one request with wide headroom.
+
+### Date and status semantics
+
+Every `schedule_status` badge renders the backend's own value verbatim
+("Scheduled"/"Past due") -- proven directly with tests where a
+*future*-dated release carries `PAST_DUE` and a *past*-dated release
+carries `SCHEDULED` from the mock, and the UI shows exactly what the
+backend said in both cases, never "correcting" it. Dates render via a
+compact "SEP 17" badge (`components/releases/ReleaseDateBadge.tsx`,
+wrapped in a real `<time dateTime="...">` element) plus a full
+accessible date via `aria-label`/`title` -- no time of day, no
+timezone, no countdown, no "released X hours ago" anywhere (checked by
+a page-level test asserting no `HH:MM` pattern renders at all). No
+"Today" display enhancement was implemented -- the task framed it as
+strictly optional ("acceptable ONLY IF..."), and skipping it entirely
+avoids any risk of the accompanying precision requirement being
+implemented sloppily; the compact month/day badge is already fully
+precise on its own.
+
+### Presentation-only label and category maps
+
+`lib/releasePresentation.ts`: a short display label for the two
+curated releases whose canonical name is genuinely long ("Job Openings
+and Labor Turnover Survey" -> "JOLTS", "Advance Monthly Sales for
+Retail and Food Services" -> "Advance Retail Sales") plus a small
+"GDP" shortening for Gross Domestic Product, and the requested
+economic-category tag for all six curated releases (Inflation, Inflation
+/ Consumer, Labor ×2, Growth, Consumer). Keyed by the backend's own
+stable `provider_release_id`, never by matching on `name` text. Every
+lookup falls back to the real canonical `name` for anything not in the
+map (including a future release curated later that this map hasn't
+been updated for). Where a name is shortened, the row's accessible name
+(`aria-label`) is always the full canonical name -- proven by a
+dedicated test. Considered, and rejected, keeping this out of scope
+entirely: the map creates no coupling to #18 because it answers a
+different question (which UI category badge does a release show) than
+#18's eventual release-to-series mapping will (which series prove this
+release's data actually arrived) -- the two never share code, a type,
+or a lookup key.
+
+### Data fetching, loading, empty, and error states
+
+`useApiResource` reused unmodified, instantiated twice -- Upcoming and
+Recent load, fail, and retry completely independently, the same
+partial-failure resilience `/inflation` already established (proven
+directly: Upcoming failing renders Recent normally and vice versa, in
+both directions). A successful empty result ("No scheduled releases in
+this window." / "No recently scheduled releases in this window.")
+renders as plain text, never as an error (`role="alert"` never
+appears for an empty-but-successful response) -- the same
+infrastructure-failure-vs-empty-result distinction `/inflation`
+already draws between `ApiError` and a canonical
+`INSUFFICIENT_DATA`-shaped 200.
+
+### Grouping
+
+`lib/releases.ts`'s `groupReleasesByDate` groups adjacent
+same-`scheduled_date` releases under one date badge (e.g. GDP and
+Personal Income and Outlays, which shared a real scheduled date in the
+synced development data) -- display-only, never re-sorts (the backend's
+own `order` parameter already produced the chronology), and preserves
+each date's items in exactly the order the backend returned them.
+
+### Architectural guard
+
+`test/no-release-sync-or-coupling.test.ts`: scans every file whose path
+contains "release" (narrow, not a broad-word grep) for two things --
+the sync endpoint path never appears anywhere, and no import references
+inflation, AI, or news code. Also checked directly:
+`grep -rn "releases/sync" frontend/src/` and a `POST` scan across the
+release-specific files both return zero matches.
+
+### Tests
+
+98 new tests (110 -> **208**): `lib/releases.test.ts` (window math with
+explicit reference dates, grouping, compact/full date formatting),
+`lib/releasePresentation.test.ts` (short labels, categories, canonical
+fallback, non-mutation), `api/releases.test.ts` (exact query-string
+construction, GET-only, never `/sync`), `pages/Releases.test.tsx` (the
+integration suite -- ordering, both statuses from the backend directly,
+same-day-SCHEDULED not overridden, empty/loading/error per section,
+both partial-failure directions, forbidden-language scan scoped around
+the one sanctioned disclosure sentence, no time-of-day anywhere,
+presentation labels and their accessible names, heading/landmark
+structure), plus the architectural guard above and two `App.test.tsx`
+routing/nav additions. One real bug caught while writing these: the
+architectural guard's own regex tripped on this increment's *own*
+source comments explaining that these files never call sync (the
+literal URL substring appeared in prose, not code) -- fixed by
+rewording the comments, the same fix already applied to an analogous
+false positive in Increment #17A's domain guard test, not by weakening
+the guard.
+
+### Verification
+
+Frontend: `npx vitest run`, run twice: **208 passed** both times.
+`npm run typecheck`: clean. `npm run lint` (`oxlint`): clean.
+`npm run build`: succeeds. Backend:
+`TEST_DATABASE_URL=... .venv/bin/pytest tests/ -q`: **686 passed**, 0
+skipped -- unchanged from the #17A baseline, since no backend file was
+touched.
+
+### Visual review
+
+Checked live against the already-synced development database (desktop
+width): hierarchy, grouping, category tags, short labels, and both
+status tones render exactly as designed, with real data (Upcoming
+showing Sep 16 Advance Retail Sales through mid-October; Recent showing
+Sep 11 CPI back through Aug 14, newest first). Narrow/mobile-width
+visual verification could not be completed in this session -- the
+browser automation's window-resize did not actually change the
+viewport's reported width in this environment (the same limitation
+already noted in the Increment #16B.1 visual-polish entry), so no
+narrow-viewport screenshot was captured. Responsive safety for the new
+markup instead rests on reusing the identical Tailwind flex/wrap
+patterns (`flex-none` fixed-width date badge, `min-w-0 flex-1` content
+column, `flex-wrap` metadata line) already verified not to overflow on
+`/inflation`.
+
+### Deferred (unchanged from the frozen spec's own scope discipline)
+
+No charts, no polling/auto-refresh, no sync call from the browser, no
+`ReleaseSeriesMapping`, no observation-availability inference, no
+monitor recomputation, no AI, no news -- all remain #18/#20, not
+designed or implemented here.

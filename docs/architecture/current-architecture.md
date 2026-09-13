@@ -498,7 +498,7 @@ structurally, not just by convention, and were each verified directly
   same, unmodified `EconomicDataService`/`AnalysisService` methods every
   HTTP endpoint already uses.
 
-## Frontend architecture (Increment #16B: Inflation Monitor product UI)
+## Frontend architecture (Increment #17B: Release Intelligence UI)
 
 ```
 Browser
@@ -556,8 +556,10 @@ frontend/
   src/
     api/
       client.ts, errors.ts          typed fetch foundation (Increment #16A)
-      inflation.types.ts            TS mirror of app/models/inflation*.py, field-for-field
-      inflation.ts                  getInflationMonitor / getInflationWhatChanged
+      inflation.types.ts, inflation.ts    TS mirror of app/models/inflation*.py + fetchers
+      releases.types.ts, releases.ts      TS mirror of app/models/releases.py (read contract
+                                           only) + getReleases/fetchUpcomingReleases/
+                                           fetchRecentReleases -- GET only, never the sync path
       useApiResource.ts             one independent load/error/success/reload hook per resource
     components/
       PageContainer.tsx, Disclosure.tsx, LoadingSkeleton.tsx, ErrorMessage.tsx
@@ -565,12 +567,18 @@ frontend/
                    InflationHero, MomentumMetrics, TargetPanel,
                    ConfirmationPanel, HeadlineContext, WhatChangedSection,
                    EvidenceDisclosure, DataBasisNote, MethodologyDisclosure)
+      releases/    presentation-only release calendar components (ScheduleStatusBadge,
+                   ReleaseDateBadge, ReleaseRow, ReleaseCalendarSection)
     layouts/     the application shell (AppShell: header, nav, main)
     lib/         format.ts (presentation-only formatting), inflationLabels.ts
-                 (state/relationship → label + tone lookups)
-    pages/       one component per route (Overview, Inflation, NotFound)
+                 (state/relationship → label + tone lookups), releases.ts (query-window
+                 date math + same-date grouping + compact date display -- never a
+                 status classification), releasePresentation.ts (frontend-only
+                 short-label/category map for the curated V1 releases)
+    pages/       one component per route (Overview, Inflation, Releases, NotFound)
     styles/      global.css (Tailwind entry + minimal visual foundation)
-    test/        Vitest setup, fixtures/, the no-economic-logic architectural guard
+    test/        Vitest setup, fixtures/, the no-economic-logic and
+                 no-release-sync-or-coupling architectural guards
     App.tsx      route table
     main.tsx     React root, router provider
   public/
@@ -633,6 +641,37 @@ truthful `ErrorMessage` with Retry in place of the sections it drives,
 while What Changed (or vice versa) still renders normally if its own
 call succeeded — partial, truthful rendering, never a blanked page for
 one endpoint's failure.
+
+**The Releases page** (`frontend/src/pages/Releases.tsx`, Increment
+#17B) calls `useApiResource(fetchUpcomingReleases)` and
+`useApiResource(fetchRecentReleases)` independently — same partial-
+failure pattern as Inflation. Both fetchers call the single, database-
+only `GET /api/v1/releases` (see
+[Flow 28](./request-flows.md#flow-28--release-calendar-read-get-apiv1releases-increment-17a))
+with different date-range/`order` query parameters computed by
+`lib/releases.ts`'s `upcomingWindow`/`recentWindow` (today through +45
+days ascending; -30 days through today descending — a product default,
+not frozen by `docs/architecture/release-intelligence-v1.md` §13; see
+the Increment #17B journal entry for why). This window math is
+UI/query-window logic only — it decides which dates to ask about, never
+what a date means; every `schedule_status` badge renders the backend's
+own `"SCHEDULED"`/`"PAST_DUE"` value verbatim, with no client-side
+reclassification (proven directly by tests where a future-dated release
+carries `PAST_DUE` and a past-dated one carries `SCHEDULED` from the
+mock, and the UI shows exactly what the backend said either way).
+Same-date releases are grouped under one compact date badge
+(`ReleaseDateBadge`, a real `<time dateTime>` element — date only, no
+time-of-day, no timezone, no countdown) by `lib/releases.ts`'s
+`groupReleasesByDate`, purely a display concern that never re-sorts or
+touches status. `lib/releasePresentation.ts` adds an optional, frontend-
+only short label and economic-category tag for the six curated V1
+releases, keyed by their stable `provider_release_id`, always falling
+back to the real canonical `name`; this is presentation only and is
+architecturally distinct from #18's eventual release-to-series mapping
+(different purpose, different code, never shared). The frontend never
+calls the release calendar's explicit sync write path anywhere — proven
+both by a dedicated test (`test/no-release-sync-or-coupling.test.ts`)
+and by direct inspection of the built source.
 
 **Local development** (see [Flow 26](./request-flows.md#flow-26--frontend-local-development-proxy-increment-16a)):
 the Vite dev server proxies `/api/*` requests to

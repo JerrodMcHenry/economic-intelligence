@@ -6,13 +6,13 @@ import { PageContainer } from "../components/PageContainer";
  * The application's minimal, reusable shell: a skip link, a header
  * with the product name and primary navigation, and a main landmark
  * that renders the active route. Navigation is intentionally limited
- * to what's justified right now -- see
- * docs/architecture/current-architecture.md for why "Inflation" is a
- * placeholder route in this increment.
+ * to real product destinations -- see docs/architecture/current-architecture.md
+ * for what each route actually implements.
  */
 const NAV_LINKS: ReadonlyArray<{ to: string; label: string; end?: boolean }> = [
   { to: "/", label: "Overview", end: true },
   { to: "/inflation", label: "Inflation" },
+  { to: "/releases", label: "Releases" },
 ];
 
 function navLinkClassName({ isActive }: { isActive: boolean }): string {

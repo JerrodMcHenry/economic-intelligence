@@ -34,9 +34,11 @@ describe("App", () => {
     const nav = screen.getByRole("navigation", { name: "Primary" });
     const overviewLink = within(nav).getByRole("link", { name: "Overview" });
     const inflationLink = within(nav).getByRole("link", { name: "Inflation" });
+    const releasesLink = within(nav).getByRole("link", { name: "Releases" });
 
     expect(overviewLink).toHaveAttribute("href", "/");
     expect(inflationLink).toHaveAttribute("href", "/inflation");
+    expect(releasesLink).toHaveAttribute("href", "/releases");
 
     const user = userEvent.setup();
     await user.tab(); // skip link first
@@ -59,6 +61,14 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/inflation");
     expect(screen.getByRole("heading", { level: 1, name: "Inflation" })).toBeInTheDocument();
+  });
+
+  it("renders the Releases product route at /releases", () => {
+    // Only routing is under test here -- pages/Releases.test.tsx covers
+    // the page's own data loading and rendering behavior in full.
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    renderAt("/releases");
+    expect(screen.getByRole("heading", { level: 1, name: "Economic Releases" })).toBeInTheDocument();
   });
 
   it("renders a deterministic not-found page for an unknown route", () => {
