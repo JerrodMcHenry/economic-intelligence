@@ -7,9 +7,26 @@ normalizing that data into our own response contract is the caller's
 (service layer's) job.
 """
 
+from dataclasses import dataclass
+from datetime import date
+
 import httpx
 
 FRED_BASE_URL = "https://api.stlouisfed.org/fred"
+
+
+@dataclass(frozen=True)
+class FredReleaseDate:
+    """One normalized `(release_id, date)` pair from FRED's release-dates
+    data -- schedule metadata only. FRED's raw payload also carries
+    `release_name`, `realtime_start`/`realtime_end`, and (for some
+    requests) `release_last_updated`; none of those cross the client
+    boundary here (see docs/architecture/release-intelligence-v1.md #3),
+    and this being present is never proof that observation data is
+    actually available -- it is a schedule fact only."""
+
+    release_id: str
+    date: date
 
 
 class FREDError(Exception):
@@ -79,6 +96,30 @@ class FREDClient:
             },
         )
         return data.get("seriess") or []
+
+    def get_release_dates(self, release_id: str) -> list[FredReleaseDate]:
+        """Fetch one release's scheduled/published dates, date-level only
+        (see `FredReleaseDate`).
+
+        Requests dates FRED has not yet attached data to as well as ones
+        it has (`include_release_dates_with_no_data`) -- otherwise
+        upcoming/scheduled occurrences would never be visible, only past
+        ones. A returned date is a schedule fact only; it does not mean
+        data is available for that date (see
+        docs/architecture/release-intelligence-v1.md #3).
+        """
+        data = self._get(
+            "/release/dates",
+            {"release_id": release_id, "include_release_dates_with_no_data": "true"},
+        )
+        raw_dates = data.get("release_dates")
+        if raw_dates is None:
+            raise FREDUpstreamError(f"FRED returned no release-dates payload for release '{release_id}'")
+
+        try:
+            return [FredReleaseDate(release_id=str(entry["release_id"]), date=date.fromisoformat(entry["date"])) for entry in raw_dates]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise FREDUpstreamError(f"FRED returned malformed release-dates data for release '{release_id}'") from exc
 
     def _get(self, path: str, params: dict) -> dict:
         query = {**params, "api_key": self._api_key, "file_type": "json"}

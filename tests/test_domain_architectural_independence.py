@@ -19,6 +19,7 @@ DOMAIN_FILES = [
     Path("app/domain/analysis.py"),
     Path("app/domain/inflation.py"),
     Path("app/domain/inflation_what_changed.py"),
+    Path("app/domain/releases.py"),
 ]
 
 # Forbidden if an imported module IS one of these, or is a submodule of

@@ -159,20 +159,23 @@ class TestAIAndNetworkIndependence:
     # nothing repository/service/discovery-level ever needs it.
     AI_FORBIDDEN_PREFIXES = ("openai", "app.services.ai")
     # httpx/FREDClient are forbidden everywhere EXCEPT test_discovery_service.py
-    # (Increment 013): that file legitimately imports FREDClient to mock
-    # its search_series method (`patch.object(FREDClient, "search_series",
-    # ...)`, per that increment's explicit "mock at the FREDClient
-    # boundary" requirement) -- it never constructs a client that makes a
-    # real call. Every one of its tests runs in well under a second
+    # (Increment 013) and test_release_calendar_service.py (Increment
+    # #17A): each legitimately imports FREDClient only to mock one of
+    # its methods (`patch.object(FREDClient, "search_series", ...)` /
+    # `patch.object(FREDClient, "get_release_dates", ...)`, per each
+    # increment's explicit "mock at the FREDClient boundary"
+    # requirement) -- neither ever constructs a client that makes a
+    # real call. Every one of their tests runs in well under a second
     # against only the local isolated Postgres test database, with no
     # other network configured, which this repo's automated tests never
     # have access to -- circumstantial but consistent confirmation
     # alongside the mocking pattern itself that no live call occurs.
-    # This exclusion existed before Increment 013 only in the sense that
-    # no file needed it yet; it does not weaken the guarantee for any
-    # other file in this directory, which remains absolute.
+    # These exclusions existed before their respective increments only
+    # in the sense that no file needed them yet; they do not weaken the
+    # guarantee for any other file in this directory, which remains
+    # absolute.
     NETWORK_FORBIDDEN_PREFIXES = ("httpx", "app.clients.fred")
-    NETWORK_EXCEPTIONS = {"test_discovery_service.py"}
+    NETWORK_EXCEPTIONS = {"test_discovery_service.py", "test_release_calendar_service.py"}
 
     def test_no_integration_test_file_imports_ai(self):
         """Static guard: no file in tests/integration/ imports openai or
@@ -208,3 +211,54 @@ class TestAIAndNetworkIndependence:
         invoked here, since none of this suite's tests call them."""
         service = EconomicDataService()
         assert service._fred_client is None
+
+
+class TestReleaseCalendarStructuralIndependence:
+    """Increment #17A's permanent invariant (see
+    docs/architecture/release-intelligence-v1.md #2), checked
+    structurally rather than left to convention: release-calendar code
+    cannot write an economic observation, recompute a monitor, or call
+    AI/news, because none of the modules that could do those things are
+    ever imported by it. A file that can't import
+    `app.services.economic_data` can't call `sync_series`; one that
+    can't import `app.repositories.series_repository` can't write
+    `EconomicObservation` directly either."""
+
+    RELEASE_CALENDAR_FILES = [
+        Path("app/repositories/release_repository.py"),
+        Path("app/services/releases.py"),
+        Path("app/api/releases.py"),
+    ]
+
+    FORBIDDEN_PREFIXES = (
+        "openai",
+        "app.services.ai",  # covers app.services.ai and app.services.ai_tools
+        "app.services.economic_data",  # owns sync_series / observation writes
+        "app.services.inflation",  # owns monitor recomputation
+        "app.repositories.series_repository",  # owns EconomicObservation writes directly
+        "app.domain.inflation",  # covers app.domain.inflation and app.domain.inflation_what_changed
+        "app.services.news",  # doesn't exist yet -- forbidden in advance, not just once added
+    )
+
+    def test_release_calendar_files_exist_where_expected(self):
+        for file_path in self.RELEASE_CALENDAR_FILES:
+            assert (REPO_ROOT / file_path).is_file(), f"expected {file_path} to exist"
+
+    def test_no_release_calendar_file_imports_ai_observation_writes_or_monitor_recomputation(self):
+        violations = []
+        for file_path in self.RELEASE_CALENDAR_FILES:
+            for module_name in _imported_module_names(REPO_ROOT / file_path):
+                if any(module_name == p or module_name.startswith(p + ".") for p in self.FORBIDDEN_PREFIXES):
+                    violations.append(f"{file_path}: imports '{module_name}'")
+        assert violations == [], "release-calendar code imports a forbidden dependency:\n" + "\n".join(violations)
+
+    def test_release_repository_never_imports_fred_or_http(self):
+        """Stricter than the general network guard above: the
+        repository specifically -- the layer closest to the database --
+        must never import FRED/httpx at all, not even via a documented
+        test exception (that exception is for the sync *service*, which
+        legitimately talks to FRED; the repository never should)."""
+        network_prefixes = TestAIAndNetworkIndependence.NETWORK_FORBIDDEN_PREFIXES
+        imported = _imported_module_names(REPO_ROOT / "app/repositories/release_repository.py")
+        forbidden = {m for m in imported if m in network_prefixes or any(m.startswith(p + ".") for p in network_prefixes)}
+        assert forbidden == set(), f"app/repositories/release_repository.py must never import FRED/httpx: {forbidden}"

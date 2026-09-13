@@ -1194,3 +1194,118 @@ for the full section-by-section breakdown, and
 `frontend/src/test/no-economic-logic.test.ts` for the guard preventing
 any of this from silently becoming a second implementation of
 `inflation_v1.0` / `inflation_what_changed_v1.0`).
+
+## Flow 28 — Release Calendar Read (`GET /api/v1/releases`, Increment #17A)
+
+Database-only, exactly like `.../observations`/`.../transform` — never
+calls FRED. Implements
+[docs/architecture/release-intelligence-v1.md](./release-intelligence-v1.md)
+#9/#10.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/releases.py)
+    participant S as ReleaseReadService
+    participant SS as session_scope()
+    participant Repo as ReleaseRepository
+    participant DB as PostgreSQL
+    participant D as app.domain.releases (pure)
+
+    C->>R: GET /api/v1/releases?start_date&end_date&limit&offset&order
+    R->>R: database_url present? as_of_date = today (UTC)
+    R->>SS: enter session_scope()
+    R->>S: list_releases(session, filters..., as_of_date)
+    S->>Repo: list_occurrences(start_date, end_date, limit, offset, order)
+    Repo->>DB: SELECT economic_releases JOIN release_occurrences WHERE ... ORDER BY scheduled_date, name, id
+    DB-->>Repo: page of (EconomicRelease, ReleaseOccurrence) rows + total count
+    Repo-->>S: (rows, total)
+    loop for each row
+        S->>D: classify_schedule_status(scheduled_date, as_of_date)
+        Note over D: pure -- no session, no HTTP, no FRED,<br/>as_of_date passed explicitly, never date.today()
+        D-->>S: "SCHEDULED" | "PAST_DUE"
+    end
+    S-->>R: ReleaseListResponse (releases, pagination)
+    R->>SS: exit session_scope() normally
+    R-->>C: 200 JSON
+```
+
+`ReleaseReadService` has no method that accepts or constructs a
+`FREDClient` at all (checked structurally, not just by convention --
+see `tests/integration/test_release_calendar_service.py`). A scheduled
+date being `PAST_DUE` carries no claim that data is or isn't available
+-- that signal doesn't exist anywhere in this response.
+
+| Scenario | Where it's caught | HTTP status |
+|---|---|---|
+| `DATABASE_URL` not configured | Checked in the route before a session is opened | `503` |
+| `start_date > end_date` | `InvalidDateRangeError` | `400` |
+| Malformed query param (bad type, `limit` out of bounds, invalid `order`) | FastAPI/Pydantic query validation, before the route body runs | `422` |
+| Database unreachable | `OperationalError` | `503` |
+| Any other database-layer failure | `SQLAlchemyError` | `500` |
+| FRED unreachable/unconfigured/never synced | *(no exception -- this endpoint never calls FRED; returns whatever is persisted, possibly nothing)* | `200` |
+
+## Flow 29 — Release Calendar Sync (`POST /api/v1/releases/sync`, Increment #17A)
+
+The one explicit, separate write path — never invoked by a read, never
+scheduled/automatic. Mirrors `POST /series/{id}/sync`'s shape, widened
+to the whole curated catalog since there is no single-release entry
+point from the frontend.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/releases.py)
+    participant S as ReleaseSyncService
+    participant Repo as ReleaseRepository
+    participant F as FREDClient
+    participant FRED as FRED release/dates API
+    participant DB as PostgreSQL
+
+    C->>R: POST /api/v1/releases/sync
+    R->>R: fred_api_key and database_url present?
+    R->>S: sync_all(session)
+    S->>Repo: get_active_releases()
+    Repo->>DB: SELECT economic_releases WHERE active
+    DB-->>Repo: curated, active releases (deterministic name order)
+    loop for each active release, independently
+        S->>F: get_release_dates(provider_release_id)
+        F->>FRED: GET /release/dates?release_id=...&include_release_dates_with_no_data=true
+        alt success
+            FRED-->>F: {"release_dates": [{release_id, date}, ...]}
+            F-->>S: list[FredReleaseDate] (normalized, date-only)
+            loop for each date
+                S->>Repo: upsert_occurrence(release.id, date)
+                Repo->>DB: existing? update last_seen_at : insert (first_seen_at = last_seen_at = now())
+            end
+            S->>S: record this release under "synced"
+        else FRED failure (auth/timeout/upstream/malformed)
+            F-->>S: FREDAuthError | FREDTimeoutError | FREDUpstreamError
+            S->>S: record this release under "failed" (safe, generic message) -- continue the loop
+        end
+    end
+    S-->>R: ReleaseSyncResponse (synced, failed)
+    R-->>C: 200 JSON
+```
+
+One release's FRED failure never aborts the loop and never touches any
+previously persisted occurrence for any release (`ReleaseRepository`
+has no delete method at all). Only a configuration or database failure
+raises at the route level:
+
+| Scenario | Where it's caught | HTTP status |
+|---|---|---|
+| `FRED_API_KEY` not configured | Checked in the route before a client is constructed | `503` |
+| `DATABASE_URL` not configured | Checked in the route before a session is opened | `503` |
+| Auth failure | `FREDAuthError` | *(per-release `failed` entry, route still `200`)* |
+| Timeout | `FREDTimeoutError` | *(per-release `failed` entry, route still `200`)* |
+| Upstream/malformed | `FREDUpstreamError` | *(per-release `failed` entry, route still `200`)* |
+| Database unreachable | `OperationalError` | `503` |
+| Any other database-layer failure | `SQLAlchemyError` | `500` |
+
+Nothing in either flow ever writes `EconomicObservation`, recomputes a
+monitor, or imports AI/news — checked structurally by
+`tests/integration/test_transaction_and_safety.py`'s
+`TestReleaseCalendarStructuralIndependence` (an import-level guard, the
+same style already used for the domain layer's architectural
+independence).

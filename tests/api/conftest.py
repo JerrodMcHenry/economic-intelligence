@@ -78,6 +78,53 @@ def seed_session(test_database_url: str):
         engine.dispose()
 
 
+#: The six approved V1 curated releases, seeded once by
+#: alembic/versions/fbbe6b1ab8d9_seed_curated_v1_release_catalog.py and
+#: expected to exist for the lifetime of the whole test session, the
+#: same as any other migrated schema/data fact -- NOT test data this
+#: fixture owns or should ever remove. Identified here only by their
+#: (provider, provider_release_id) identity so `release_seed_session`'s
+#: cleanup can tell curated rows apart from ones a test created.
+_CURATED_RELEASE_PROVIDER_IDENTITIES = {"9", "10", "50", "53", "54", "192"}
+
+
+@pytest.fixture
+def release_seed_session(test_database_url: str):
+    """Same reasoning as `seed_session` above, scoped to the release
+    calendar tables instead of series/observations -- a real, committing
+    session so an HTTP request's own separate connection can actually
+    see what this fixture seeds.
+
+    Cleanup is deliberately NOT a blanket `TRUNCATE economic_releases`:
+    the migration-seeded curated catalog (see
+    `_CURATED_RELEASE_PROVIDER_IDENTITIES`) must persist for the whole
+    test session like any other migrated data, not get wiped out by the
+    first test that uses this fixture. `release_occurrences` has no
+    baseline data at all (the seed migration creates none), so it's
+    still safe to truncate in full. Cleanup also restores `active=True`
+    on the curated catalog -- a sync-path test may deactivate it
+    on purpose (to isolate itself), and that must never leak into the
+    next test.
+    """
+    engine = create_engine(test_database_url)
+    session = Session(bind=engine)
+    try:
+        yield session
+    finally:
+        session.rollback()
+        session.execute(text("TRUNCATE TABLE release_occurrences RESTART IDENTITY CASCADE"))
+        placeholders = ", ".join(f"'{provider_release_id}'" for provider_release_id in _CURATED_RELEASE_PROVIDER_IDENTITIES)
+        session.execute(
+            text(f"DELETE FROM economic_releases WHERE provider != 'FRED' OR provider_release_id NOT IN ({placeholders})")
+        )
+        session.execute(
+            text(f"UPDATE economic_releases SET active = true WHERE provider = 'FRED' AND provider_release_id IN ({placeholders})")
+        )
+        session.commit()
+        session.close()
+        engine.dispose()
+
+
 @pytest.fixture
 def fred_configured(monkeypatch):
     """A synthetic, non-secret sentinel -- never a real FRED API key --

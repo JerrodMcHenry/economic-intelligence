@@ -5465,3 +5465,347 @@ guard). #17B (the `/releases` frontend page) and #18 (release-driven
 observation updates, monitor recomputation, release-driven What
 Changed) remain further out, per the frozen spec's own explicit scope
 boundaries.
+
+## Increment #17A — Release Intelligence Backend Foundation
+
+Implements the frozen spec's #17A scope exactly (see
+`docs/architecture/release-intelligence-v1.md` §12), narrowed by one
+real gap the frozen spec left open: it never named actual curated
+release names or FRED `provider_release_id` values. Per the task's own
+explicit instruction ("do not guess them; no implementation
+workaround"), the migration creates the schema with **zero seed rows**
+-- the curated catalog is a real gap, not a placeholder decision made
+here. Everything else -- schema, domain, client, repository, service,
+API, and a full test suite -- is implemented, tested, and green.
+
+### Schema
+
+Two tables, `alembic/versions/42114760e4c8_*.py` (revises the existing
+single migration; downgrade verified clean both directions;
+`alembic check` confirms zero drift between the ORM models and this
+migration):
+
+- `economic_releases` (`id`, `name`, `provider`, `provider_release_id`,
+  `official_url` nullable, `active`, `created_at`, `updated_at`) --
+  `UNIQUE(provider, provider_release_id)`.
+- `release_occurrences` (`id`, `economic_release_id` FK `ON DELETE
+  CASCADE`, `scheduled_date`, `first_seen_at`, `last_seen_at`) --
+  `UNIQUE(economic_release_id, scheduled_date)`, indexed on the FK.
+  Deliberately no `scheduled_at`/`source_timezone`/`time_precision`/
+  `cancelled_at`/`published_at`/`data_status`/`analysis_status` column
+  -- exactly the frozen spec's #5, none invented.
+
+Both classes follow `EconomicSeries`/`EconomicObservation`'s existing
+conventions verbatim (internal `id` vs. business identity kept
+separate, explicit non-ambiguous FK naming, `DateTime(timezone=True)`
++ `server_default=func.now()`, cascade delete matching the existing
+precedent).
+
+### Domain
+
+`app/domain/releases.py`: `classify_schedule_status(scheduled_date,
+as_of_date) -> Literal["SCHEDULED", "PAST_DUE"]`. Pure; `as_of_date` is
+always an explicit parameter (proven by a signature-inspection test
+that it has no default, plus a source-text guard that neither
+`today(` nor `now(` appears anywhere in the module). Registered in
+`tests/test_domain_architectural_independence.py`'s `DOMAIN_FILES` --
+the existing generic allowlist test (stdlib + `app.models.*` only)
+applies to it automatically, so it's structurally incapable of
+importing SQLAlchemy, FastAPI, httpx, or any other domain module, not
+just conventionally discouraged from it. No `CANCELLED`/`UNKNOWN` --
+the frozen spec's own reasoning (no reliable cancellation signal in
+#17A; no occurrence is ever missing a date) held up under
+implementation with no contradiction found.
+
+### FRED client
+
+`FREDClient.get_release_dates(release_id) -> list[FredReleaseDate]`
+(new `app/clients/fred.py` dataclass, `release_id`+`date` only) --
+requests `include_release_dates_with_no_data=true` so scheduled/
+upcoming occurrences are actually visible, not just past ones with
+data already attached. Normalizes at the client boundary as the frozen
+spec requires: FRED's `release_name`/`realtime_start`/`realtime_end`/
+`release_last_updated` never cross it. Malformed/missing
+`release_id`/`date` raises `FREDUpstreamError` (same convention as
+`EconomicDataService.get_series`'s existing malformed-response
+handling); an empty `release_dates` list is a normal, successful `[]`.
+No `get_release_series` method, no provider abstraction -- exactly the
+frozen spec's #9/ADR-020.
+
+### Repository and services
+
+`ReleaseRepository` (`app/repositories/release_repository.py`):
+`get_active_releases`, `get_release_by_provider_identity`,
+`upsert_occurrence` (idempotent -- lookup by `(economic_release_id,
+scheduled_date)`, refreshes only `last_seen_at` on a repeat, preserves
+`first_seen_at`, never deletes), `list_occurrences`
+(filter/order/paginate, joined to the release, deterministic tie-break
+by `name` then `id` since `scheduled_date` alone isn't unique across
+releases). Never imports `app.clients.fred`/`httpx` at all -- checked
+structurally, not just by the general FRED/AI import guard every other
+integration test file already respects.
+
+`ReleaseReadService`/`ReleaseSyncService`
+(`app/services/releases.py`) are deliberately two separate classes,
+not one with an optional `FREDClient` (the `EconomicDataService`
+pattern): `ReleaseReadService` has no FRED-shaped parameter anywhere on
+it at all, proven by a test that inspects every public method's
+signature. `ReleaseSyncService.sync_all` iterates only
+`active=true` releases, in deterministic name order, and degrades
+per-release (mirrors `SeriesDiscoveryService.search`'s existing FRED-
+failure-degrade pattern) -- one release's `FREDAuthError`/
+`FREDTimeoutError`/`FREDUpstreamError` never aborts the others, and the
+route still returns `200` with that release under `failed`, using a
+safe, generic message per failure kind (never the raw exception text,
+which could in principle echo upstream content).
+
+### API
+
+`GET /api/v1/releases` (`app/api/releases.py`) -- filters
+`start_date`/`end_date`/`limit` (1-1000)/`offset`/`order`
+(`asc`/`desc`), reusing the exact `Query(...)` bounds and
+`InvalidDateRangeError` → `400` pattern `.../observations` already
+established. Database-only: `as_of_date` is resolved once at the route
+boundary (`datetime.now(timezone.utc).date()`) and passed explicitly
+into the service/domain call -- never read a second time, never read
+inside `classify_schedule_status` itself. `POST /api/v1/releases/sync`
+mirrors `POST /series/{id}/sync`'s shape, widened to the whole curated
+catalog (no single-release entry point makes sense from the frontend).
+Both mounted under `/api/v1` in `app/main.py`.
+
+### Failure isolation
+
+Exactly the frozen taxonomy, no new codes invented: unconfigured/DB-
+unavailable → `503`, semantic bad date range → `400`, malformed query
+params → `422` (FastAPI/Pydantic validation, for free), other DB error
+→ `500`; sync-only: `FREDAuthError`→ per-release failure entry (not a
+route failure), `FREDTimeoutError`/`FREDUpstreamError` likewise. Proven
+directly: `GET /releases` still returns `200` with `patch.object(FREDClient,
+"__init__", side_effect=AssertionError(...))` in effect -- if the read
+path ever tried to construct a client, the test would fail immediately
+rather than merely passing by coincidence.
+
+### Shutdown invariant
+
+`tests/integration/test_release_shutdown_invariant.py` is a dedicated,
+non-inflation-domain regression test: persist one occurrence at the
+real October 2025 CPI-style date, move `as_of_date` past it (status
+derives to `PAST_DUE`), assert zero `EconomicObservation` rows exist
+before and after, and assert the occurrence's own `scheduled_date` is
+unchanged. Nothing about this test exercises `inflation_v1.0` -- it
+proves the tables never move, which is the actual invariant.
+
+### Tests
+
+77 new tests (604 → **681**, run twice, deterministic both times):
+pure domain (`tests/test_domain_releases.py`), FRED client unit tests
+mocked at the `httpx.Client.get` transport boundary
+(`tests/test_fred_client.py` -- the first direct `FREDClient` unit
+test file in this project; every prior FRED-touching test mocked at
+the method level instead, one layer up), repository integration
+(`tests/integration/test_release_repository.py`), service integration
+(`tests/integration/test_release_calendar_service.py`, added to
+`test_transaction_and_safety.py`'s `NETWORK_EXCEPTIONS` alongside
+`test_discovery_service.py`), the dedicated shutdown-invariant test,
+and HTTP tests (`tests/api/test_releases_api.py`, needing a new
+`release_seed_session` fixture in `tests/api/conftest.py` -- same
+real-commit-plus-TRUNCATE pattern as the existing `seed_session`,
+scoped to `release_occurrences`/`economic_releases`).
+`test_transaction_and_safety.py` also gained
+`TestReleaseCalendarStructuralIndependence`: an AST import guard
+proving `app/repositories/release_repository.py`,
+`app/services/releases.py`, and `app/api/releases.py` never import
+AI/`app.services.economic_data`/`app.repositories.series_repository`/
+`app.services.inflation`/`app.domain.inflation`/news -- the permanent
+invariant checked structurally, not left to code-review vigilance.
+
+### Verification
+
+`TEST_DATABASE_URL=... .venv/bin/pytest tests/ -q`, run twice: **681
+passed** both times, 0 skipped. `alembic upgrade head` /
+`alembic downgrade -1` / `alembic upgrade head` against the isolated
+test database: clean both directions. `alembic check`: no drift. `git
+status` confirms zero changes under `frontend/`, `research/`,
+`docs/methodology/`, or any AI file (`app/services/ai*.py`,
+`app/api/ai.py`, `app/models/ai.py`). No secret read, printed, or
+logged anywhere.
+
+### Live smoke check: skipped, honestly
+
+The curated catalog is empty (see above), so `ReleaseSyncService.sync_all`
+against the real development database would trivially iterate zero
+releases -- not a meaningful smoke check of the FRED-calling code path.
+Seeding one temporary release to make the check meaningful would
+require a real FRED `provider_release_id`, which is exactly the value
+this increment declined to guess. Skipped rather than worked around.
+
+### Deferred (unchanged from the frozen spec's own scope discipline)
+
+No `ReleaseSeriesMapping`, no observation-availability check, no
+scheduler, no monitor recomputation, no AI, no news, no `/releases`
+frontend route -- all remain #18/#17B, not designed or implemented
+here.
+
+### Outstanding before this capability is reachable end-to-end
+
+The curated release catalog itself: exact release names and FRED
+`provider_release_id` values, to be supplied and seeded via a follow-up
+migration. Nothing else blocks it -- schema, sync, read, and status
+derivation are all implemented and fully tested against synthetic
+fixture data.
+
+## Increment #17A follow-up — Curated Catalog Blocker Resolved
+
+Resolves the one open item from the entry above. The six V1 provider
+release IDs were independently verified against official/current FRED
+release pages (verification happened outside this session; this
+follow-up only implements the already-approved result) and supplied
+explicitly:
+
+| Release | `provider_release_id` |
+|---|---|
+| Consumer Price Index | `10` |
+| Personal Income and Outlays | `54` |
+| Employment Situation | `50` |
+| Job Openings and Labor Turnover Survey | `192` |
+| Gross Domestic Product | `53` |
+| Advance Monthly Sales for Retail and Food Services | `9` |
+
+All `provider = "FRED"`, `active = true`, `official_url = NULL` (not
+separately verified/frozen -- name + provider + provider_release_id
+alone are sufficient to unblock this; inventing a URL was explicitly
+out of scope). FOMC, PPI, Industrial Production, housing releases, and
+Initial Claims were deliberately excluded from this V1 set -- may be
+curated later, in their own migration.
+
+### New migration, existing one untouched
+
+`alembic/versions/fbbe6b1ab8d9_seed_curated_v1_release_catalog.py`,
+`down_revision = 42114760e4c8` (the existing #17A schema migration,
+which this follow-up does not modify -- confirmed via file hash/line
+count before and after this session touched anything else). Product
+curation is kept in its own migration, separate from schema creation,
+on purpose: the catalog can be re-curated later without ever touching
+a table definition again. Literal seed data only (`op.bulk_insert`
+against a migration-local `sa.table()` shim, not the ORM model, so this
+migration stays correct even if `EconomicRelease`'s shape changes
+later) -- no FRED call, no dynamic discovery, no environment read, no
+`ReleaseOccurrence` rows created. Downgrade removes only the six rows
+it seeded, matched by their exact `(provider, provider_release_id)`
+pairs -- never a blanket `DELETE FROM economic_releases`, so an
+unrelated release row (if one existed) would survive a downgrade
+untouched. (If occurrences existed for one of these six at downgrade
+time, the existing `ON DELETE CASCADE` FK from 42114760e4c8 would
+remove them along with the release -- documented as the already-
+established constraint's behavior, not something this migration adds;
+isolated verification ran with zero occurrences present, as
+instructed.)
+
+### A real gap this follow-up found and fixed: test isolation from persistent seed data
+
+Adding real, permanent baseline rows to `economic_releases` broke an
+assumption every #17A test silently depended on: that the table starts
+empty. Two distinct problems, both fixed:
+
+1. **Identity collisions.** Every #17A test's `_release()`/`_seed_release()`
+   helper defaulted to (or explicitly passed) `provider_release_id="10"`
+   -- which now collides with the real, migration-seeded Consumer Price
+   Index row's `UNIQUE(provider, provider_release_id)` constraint.
+   Fixed by moving every test-created release to a `provider_release_id`
+   well outside the curated range (`"9001"`+, curated range is
+   `9`/`10`/`50`/`53`/`54`/`192`).
+2. **`get_active_releases()`/`sync_all()` now see six extra real, active
+   rows.** Tests asserting an exact active-release set or an exact sync
+   result needed to either explicitly deactivate the curated catalog
+   first (safe in `tests/integration/`: `db_session` rolls the whole
+   transaction back at teardown, so a deactivation never leaks into
+   another test) or assert containment/exact-set against the *known*
+   curated names rather than assuming emptiness. `tests/api/conftest.py`'s
+   `release_seed_session` fixture needed a real fix, not just a test-
+   level one: its cleanup already couldn't blanket-`TRUNCATE
+   economic_releases` (that would erase the persistent curated catalog
+   for the rest of the session, since migrations only run once per
+   pytest session) -- it now deletes only non-curated rows *and*
+   restores `active=true` on the curated six, so a sync test that
+   deliberately deactivates them to isolate itself can never leak that
+   into the next test. This fixture bug was caught the hard way: an
+   earlier, uncorrected version of it left the real database in a
+   deactivated state via a genuine commit, breaking three unrelated
+   tests in the next run until traced back and the test database's
+   catalog was restored via a clean migration downgrade/upgrade cycle.
+   Recorded here as a real lesson, not smoothed over: adding baseline
+   seed data to a previously-empty table needs its test fixtures
+   audited for exactly this class of bug, every time.
+
+Also added: direct proof (not just inference) that the six real
+curated rows exist, are exactly these six, are all `provider="FRED"`
+and `active=true`, and that `ReleaseSyncService.sync_all` against the
+real (undeactivated) curated catalog attempts exactly these six release
+names and no others -- at the repository, service, and HTTP layers.
+
+### Tests added/modified
+
+5 new tests (686 total): `test_curated_catalog_is_active_by_default`,
+`test_finds_a_real_curated_release_by_provider_identity`,
+`test_unique_provider_identity_is_enforced_against_the_curated_catalog_too`
+(`tests/integration/test_release_repository.py`);
+`test_syncs_exactly_the_six_curated_releases_when_active`
+(`tests/integration/test_release_calendar_service.py`);
+`test_curated_catalog_is_what_gets_synced_when_active`
+(`tests/api/test_releases_api.py`). No existing assertion was weakened
+-- every fixed test still asserts the same behavior it always did, just
+against a `provider_release_id` that can't collide with real seed data,
+or with the curated catalog explicitly isolated where the test's own
+premise required an exact, closed set.
+
+### Migration round-trip verification
+
+Against the isolated test database: `upgrade head` (six rows present,
+exactly these six) → `downgrade -1` (all six removed, schema/other
+tables fully intact) → `upgrade head` again (six rows return exactly
+once, no duplicates) → `alembic check` ("No new upgrade operations
+detected" -- zero model/schema drift). All four steps run clean.
+
+### Full regression
+
+`TEST_DATABASE_URL=... .venv/bin/pytest tests/ -q`, run twice (plus
+once more after the final clean migration re-verification, for extra
+confidence following the fixture bug above): **686 passed** every time,
+0 skipped.
+
+### Live smoke check: performed
+
+The already-configured development environment safely supports FRED
+(key presence checked as a boolean only, never read/printed). Applied
+`alembic upgrade head` to it (a plain forward upgrade -- not the
+destructive round-trip testing that stayed confined to the isolated
+test database), then called the real, running server's
+`POST /api/v1/releases/sync`:
+
+| Release | `provider_release_id` | Occurrences persisted | Earliest | Latest |
+|---|---|---|---|---|
+| Consumer Price Index | 10 | 953 | 1949-03-24 | 2026-12-10 |
+| Personal Income and Outlays | 54 | 744 | 1966-01-18 | 2026-12-23 |
+| Employment Situation | 50 | 867 | 1955-05-06 | 2026-12-04 |
+| JOLTS | 192 | 196 | 2010-08-11 | 2026-12-01 |
+| Gross Domestic Product | 53 | 867 | 1947-07-20 | 2026-12-23 |
+| Advance Monthly Retail Sales | 9 | 758 | 1966-01-10 | 2026-12-16 |
+
+All six synced, zero failures. Confirmed
+`GET /api/v1/releases?start_date=2026-08-01&end_date=2026-12-31` then
+returns exactly these persisted occurrences, correctly split between
+`PAST_DUE` (e.g. 2026-09-11 CPI) and `SCHEDULED` (e.g. 2026-09-16
+Advance Retail Sales) around the real current date -- a live,
+end-to-end confirmation of the derived-status boundary the domain unit
+tests already covered synthetically. No API key, `DATABASE_URL`,
+secret-bearing URL, or raw provider payload was reported or logged
+anywhere in this process.
+
+### Scope confirmation
+
+Zero changes to `frontend/`, `research/`, `docs/methodology/`, or any
+AI file. Still no `ReleaseSeriesMapping`, `scheduled_at`,
+`source_timezone`, `published_at`, `data_status`, `analysis_status`,
+scheduler, news integration, observation-availability logic, or
+monitor recomputation anywhere in the codebase -- confirmed by direct
+grep across every #17A production file, not just by omission.
