@@ -35,18 +35,26 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 # Minimum config: tests/ is the only place pytest looks, run from repo
-# root. No markers, no coverage plugin, no fixture framework -- Increment
-# 010 tests pure domain logic only and needs nothing more than this.
+# root. No coverage plugin, no fixture framework beyond what's in
+# tests/integration/conftest.py.
 testpaths = ["tests"]
-# Testability blocker found during Increment 010 (see the journal): the
-# project's own editable install (`pip install -e .`) does not actually
-# make `import app` resolve outside of `python -m pytest`'s incidental
-# "cwd on sys.path" behavior -- confirmed directly: a plain `pytest`
-# invocation (the console-script entry point, which does not add cwd)
-# fails with `ModuleNotFoundError: No module named 'app'`. Rather than
-# touch the build/packaging configuration (`[tool.setuptools...]`,
-# `[build-system]`) to chase that unrelated pre-existing issue -- out of
-# scope for a test-foundation increment -- this repo root is added to
-# pytest's own import path, a test-runner-only setting untouched by, and
-# with zero effect on, application runtime behavior.
+markers = [
+    "integration: requires an isolated, explicitly-configured PostgreSQL test database (TEST_DATABASE_URL) -- run with `pytest -m integration`, or exclude with `pytest -m \"not integration\"`.",
+]
+# Testability blocker found during Increment 010, root-caused during
+# Increment 011 (see the journal): the project's own editable install
+# (`pip install -e .`) does not actually make `import app` resolve
+# outside of `python -m pytest`'s incidental "cwd on sys.path" behavior.
+# Root cause (confirmed, not a setuptools/pyproject.toml misconfiguration
+# at all): the generated `__editable__...pth` file intermittently carries
+# the OS-level "hidden" file flag in this development environment: Python
+# 3.12's site.py deliberately skips any .pth file with that flag set (a
+# real, documented CPython security hardening behavior), silently
+# disabling the editable-install import hook. Confirmed to reappear even
+# immediately after clearing it and after a full reinstall, i.e. it is
+# not durably fixable from here -- environment-specific, unrelated to
+# this project's actual packaging configuration. This repo root is added
+# to pytest's own import path instead: a test-runner-only setting,
+# unaffected by the above, with zero effect on application runtime
+# behavior.
 pythonpath = ["."]

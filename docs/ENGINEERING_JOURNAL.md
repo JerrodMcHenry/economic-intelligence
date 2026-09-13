@@ -3164,3 +3164,224 @@ documented across ADR-015 through ADR-018 and the corrections above;
 frozen, deterministic-core-first is the standing architecture" as its
 own first-class decision is recommended for a future increment**, but
 was not created here per this increment's own narrow scope.
+
+## Increment 011 — Repository & Service Integration Test Foundation
+
+### Objective
+
+Extend permanent, repeatable test coverage one layer up from Increment
+010's pure domain functions: `SeriesRepository`, `EconomicDataService`,
+and `AnalysisService` composed against a real, isolated PostgreSQL
+database -- proving PostgreSQL → Repository → Service → pure domain
+functions actually compose correctly, which no domain-only unit test
+can show on its own. No FastAPI, no OpenAI, no live FRED; API-level
+testing is explicitly deferred to Increment 012.
+
+### Packaging diagnosis
+
+Increment 010 left the bare `pytest` entry point working only via a
+`pythonpath = ["."]` workaround, without knowing why the project's own
+editable install didn't make that unnecessary. Root-caused this
+increment, precisely, not guessed: the generated
+`__editable__.economic_intelligence-0.1.0.pth` file intermittently
+carries the macOS `UF_HIDDEN` filesystem flag (confirmed directly via
+`ls -lO`/`stat`), and CPython 3.12's `site.py` deliberately skips any
+`.pth` file with that flag set (`site.py:176`, a real, documented
+security-hardening check against silently-hidden `.pth`-based code
+execution) -- silently disabling the editable-install import hook
+entirely, independent of anything in `pyproject.toml`. Confirmed this is
+**not** a `[tool.setuptools...]`/`[build-system]` misconfiguration:
+clearing the flag (`chflags nohidden`) and even a full
+`pip install -e . --force-reinstall` each fixed it only transiently --
+the flag reappeared on the pre-existing file (and, separately, on the
+freshly regenerated one) on a subsequent process launch, confirming this
+is an environment-level artifact outside packaging-configuration
+control, not a small, durably-fixable packaging bug. Per this
+increment's own gate ("if the packaging problem requires something
+beyond a small, clearly correct fix: stop"), no further remediation was
+attempted (no repository restructuring, no venv relocation, no `site.py`
+patching) -- the `pythonpath = ["."]` workaround from Increment 010
+remains in place, its comment updated to record the real root cause
+precisely for whoever revisits this later. `.venv/` is fully gitignored;
+none of this diagnosis touched anything tracked by git.
+
+### Test database strategy and safety guard
+
+A real, separate, isolated PostgreSQL database
+(`economic_intelligence_test`), on the same already-running local
+Postgres 16 server as the development database, created directly
+(`createdb`) using local trust authentication -- no credentials read,
+displayed, or handled anywhere; `.env` was never opened. Deliberately
+**not** SQLite: production behavior (upsert semantics, real `UNIQUE`
+constraint enforcement, `OperationalError`/`IntegrityError` shapes) is
+PostgreSQL-specific, and a substitute engine would prove the wrong
+thing.
+
+Isolation and safety, in `tests/integration/conftest.py`:
+
+- Tests read their own `TEST_DATABASE_URL` environment variable --
+  `app.core.config.settings.database_url` (the real app's configuration)
+  is never read, imported for comparison, or touched by the integration
+  suite's connection logic at all. Unset → tests skip (verified
+  directly), never silently fall back to anything.
+- **Deterministic safety guard**: the target database's name must
+  contain "test" (case-insensitive) or setup refuses outright with a
+  `RuntimeError`, before any migration or write is attempted --
+  verified directly by actually pointing `TEST_DATABASE_URL` at the real
+  `economic_intelligence` database and confirming the refusal fires
+  before any connection is even opened for schema work.
+- Existing Alembic migration(s) are applied to the isolated database via
+  `alembic upgrade head` run as a subprocess with `DATABASE_URL`
+  overridden only in that subprocess's environment -- alembic's normal,
+  documented usage pattern, pointed at a different value; `alembic/env.py`
+  and `app/core/config.py` are untouched. No new migration was created;
+  the existing single migration was sufficient.
+- Per-test isolation: each test runs inside one connection-level
+  transaction, joined via SQLAlchemy's documented
+  `join_transaction_mode="create_savepoint"` pattern, unconditionally
+  rolled back afterward -- verified directly, not assumed: a smoke test
+  proved a committed insert in one test was invisible in the very next
+  test. This works even though the application's own code calls
+  `session.commit()` internally (every service method does, via the
+  pattern `app.db.session.session_scope` implements) because that inner
+  commit only releases a SAVEPOINT, never the outer transaction this
+  fixture controls.
+- No connection string, password, or credential appears anywhere in any
+  test file, fixture, or assertion message -- verified by design (the
+  guard's own error message never echoes the URL) and by inspection.
+
+Not ADR-worthy: this is ordinary test infrastructure (an isolated test
+database and a naming-based safety guard), not a durable application
+architecture decision with product-facing alternatives -- consistent
+with the instruction not to create ADR clutter for it. Likewise the
+packaging diagnosis above: an environment artifact, not an architecture
+decision.
+
+### Repository coverage
+
+`SeriesRepository`, real PostgreSQL: series creation via `save_series`,
+unknown-series lookup, observation persistence, idempotent upsert (a
+second `save_series` call updates metadata and observation values in
+place without duplicating rows -- proven via the real `UNIQUE` database
+constraint, not assumed), the documented "never implicitly deletes
+history absent from new data" rule, ascending/descending ordering,
+start/end/combined date-range filtering, limit, offset, limit+offset
+together, `total` reflecting the filtered (not whole-series) population
+before pagination, preceding-observation retrieval (correct count,
+ascending order, empty when none exists), and a direct before/after
+proof that read methods change nothing.
+
+### Service coverage
+
+`EconomicDataService` (constructed with no `FREDClient` throughout --
+confirmed directly, not just by absence of an import): persisted reads,
+date filtering, pagination metadata, ordering, unknown-series and
+invalid-date-range errors, all three transformations through the
+service, and window validation (required for `moving_average`,
+inapplicable to the other two).
+
+**Boundary-context golden tests** (the important ones): persisted
+Jan=100/Feb=110/Mar=121, requesting `percent_change` from `start_date=Feb`
+returns Feb=10.0 (not null) and Mar=10.0, `absolute_change` returns
+Feb=10.0/Mar=11.0, and `moving_average(window=2)` from `start_date=Mar`
+returns Mar=115.5 -- every one hand-computed independently, every one
+passed on the first run, proving Increment 005/007's "retrieve preceding
+context, transform, trim" design is correctly wired end-to-end against
+a real database. A dedicated test also confirms the borrowed context
+observation (Jan) never appears in the returned response.
+
+### AnalysisService and pipeline-composition coverage
+
+`compare`: exact-date alignment (canonical Jan/Feb/Mar vs Jan/Mar/Apr
+example), spread, correlation (reusing the hand-derived r=1.0 case),
+null-value preservation on a matched date, start/end filtering, unknown
+series (either side), invalid date range.
+
+`pipeline`: raw/raw, raw/transformed, transformed/raw,
+transformed/transformed, each of the three transformations individually,
+`matching_pairs`/`usable_pairs`, correlation, and spread.
+
+**The critical ordering test**: `test_transformation_happens_before_alignment_not_after`
+constructs A=[Jan:100,Feb:110,Mar:121] and B=[Jan:10,Mar:30] (B
+deliberately missing Feb) and applies `percent_change` to A. If
+alignment happened first (wrong), A would be reduced to [Jan,Mar] before
+transforming, making Mar's "previous" value Jan (100) and producing
+21.0. The actual, correct, documented order (transform each series
+against its own full history, then align) produces 10.0. **The result
+was 10.0** -- passed on the first run, independently confirming
+Increment 007's documented ordering guarantee holds against a real
+database, not merely in the pure-domain unit tests. A companion test
+confirms boundary context is resolved independently per series (not
+shared/confused between the two sides) when both sides are transformed
+and `start_date` truncates the range.
+
+### Transaction and failure-behavior coverage
+
+Exercises the real, unmodified `app.db.session.session_scope` (via a
+`monkeypatch`-scoped, auto-reverting redirection of
+`settings.database_url` to the isolated test database, clearing its two
+`lru_cache`'d singletons before and after) rather than reimplementing
+its logic: a successful block commits (verified via a second, separate
+session proving durability, not just in-transaction visibility); an
+exception inside the block rolls back, including a partial multi-step
+write (a series row plus its observations) -- neither survives.
+`app/db/session.py`'s transaction ownership was not redesigned or
+touched.
+
+Database-failure behavior at the service/repository layer (never
+mapped to HTTP here -- that's Increment 012): an unreachable database
+(a deliberately wrong port, no real credentials involved) raises
+`OperationalError` unmapped, confirming the current, correct contract
+that this layer does not catch it. The real `UNIQUE(economic_series_id,
+observation_date)` constraint was proven enforced by PostgreSQL itself
+(an `IntegrityError` on a raw duplicate insert bypassing `save_series`'s
+own upsert-checking), not merely assumed from the migration's DDL.
+
+### Test commands
+
+```
+pytest                          # everything (pure + integration)
+pytest -m "not integration"     # pure domain tests only -- no TEST_DATABASE_URL needed
+pytest -m integration           # integration tests only -- requires TEST_DATABASE_URL
+```
+
+### Final results
+
+121 total tests (56 pure from Increment 010, unchanged and still
+passing, + 65 new integration tests), 121 passed, 0 failed, ~2 seconds.
+Verified repeatable across multiple full-suite runs, a reversed test-file
+execution order, and each integration file run standalone -- identical
+pass counts every time, confirming the transaction-rollback isolation
+actually delivers order-independence rather than merely intending it.
+
+**No production bug was discovered.** Every hand-derived expected value,
+including the ordering-sensitive pipeline composition test, matched the
+real implementation's actual behavior against real PostgreSQL on the
+first attempt.
+
+### Deferred to Increment 012
+
+FastAPI `TestClient`-level tests, HTTP status-code mapping for every
+failure branch, request/response contract validation at the API
+boundary, and anything involving the AI orchestration layer (still
+frozen, still untouched).
+
+### Documentation/config changes this increment
+
+`pyproject.toml`: registered the `integration` pytest marker; updated
+the `pythonpath` comment to record the real, root-caused packaging
+finding above (no functional change to that workaround). No `app/` file
+was changed. No ADR created -- neither the test-database safety
+mechanism nor the packaging diagnosis rises to a durable
+architecture-decision-with-alternatives; both are testing/environment
+infrastructure.
+
+### Confirmations
+
+AI orchestration untouched: `git diff --stat` shows zero new changes to
+`app/services/ai.py`/`app/services/ai_tools.py` from this increment (the
+diffs present predate it). No production database was mutated: every
+integration test ran inside a rolled-back transaction against
+`economic_intelligence_test`, never `economic_intelligence`; the
+transaction/safety tests that exercise the real `session_scope` were
+also redirected to the isolated test database for their duration only.
