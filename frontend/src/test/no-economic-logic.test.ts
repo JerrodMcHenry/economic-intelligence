@@ -4,13 +4,19 @@
  * logic -- see docs/methodology/inflation-monitor-v1.0.md's
  * "Non-negotiable architecture" and this increment's own hard rules.
  *
- * Scoped narrowly and honestly to what exists right now: #16A adds no
- * inflation-specific display code at all (that's #16B), so this test
- * currently passes by verifying absence across the real foundation
- * source tree, not as a placeholder. It exists as a durable regression
- * guard -- once #16B adds inflation display components, an analogous,
- * similarly narrow guard should be added scoped to those new files
- * (see docs/architecture/current-architecture.md).
+ * Extended for Increment #16B (Inflation Monitor product UI): the new
+ * inflation display components read `state`/`relationship`/`delta` and
+ * other already-canonical fields straight off the API response -- they
+ * must never re-derive them. The three patterns added below guard the
+ * specific reimplementation shapes #16B call out:
+ *   - subtracting a "current" value from a "previous" one instead of
+ *     using the backend-provided `ChangeEvent.delta`,
+ *   - the COOLING/HEATING pair-literal shape the backend's own
+ *     DIVERGES-detection uses to derive a confirmation relationship,
+ *   - declaring a function named after the backend's period-selection
+ *     helpers (latest common/shared observation period) -- reading
+ *     those fields off a response object is fine and does not match
+ *     this pattern; only a client-side re-implementation would.
  *
  * Patterns are deliberately few and specific (not a broad repository
  * grep) -- each one targets a shape that could only plausibly appear
@@ -18,7 +24,10 @@
  *   - the compounded-annualization exponent shape `** (12 / n)` (or
  *     the `Math.pow` equivalent) that computes r_1m/r_3m/r_6m/r_12m,
  *   - the frozen 0.10 percentage-point neutral-band constant applied
- *     as boundary arithmetic (`r_12m - 0.10` / `r_12m + 0.10`).
+ *     as boundary arithmetic (`r_12m - 0.10` / `r_12m + 0.10`),
+ *   - client-side delta recomputation (`current... - previous...`),
+ *   - the COOLING/HEATING pair-literal confirmation-relationship shape,
+ *   - a declared function named after a backend period-selection helper.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -39,6 +48,18 @@ const FORBIDDEN_PATTERNS: ReadonlyArray<{ name: string; pattern: RegExp }> = [
   {
     name: "frozen 0.10pp neutral-band boundary arithmetic",
     pattern: /[-+]\s*0\.10\b/,
+  },
+  {
+    name: "client-side delta recomputation (current... - previous... or vice versa)",
+    pattern: /current\w*\s*-\s*previous\w*|previous\w*\s*-\s*current\w*/i,
+  },
+  {
+    name: "COOLING/HEATING pair-literal confirmation-relationship derivation",
+    pattern: /\[\s*["']COOLING["']\s*,\s*["']HEATING["']\s*\]|\[\s*["']HEATING["']\s*,\s*["']COOLING["']\s*\]/,
+  },
+  {
+    name: "declared period-selection helper function (re-deriving a common/shared period client-side)",
+    pattern: /(function\s+|const\s+)(findLatestCommonPeriod|find_latest_common_period|latestSharedObservationPeriod|latest_shared_observation_period)\b/,
   },
 ];
 

@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 import App from "./App";
@@ -14,6 +14,10 @@ function renderAt(initialRoute: string) {
 }
 
 describe("App", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("renders", () => {
     renderAt("/");
     expect(screen.getByRole("banner")).toBeInTheDocument();
@@ -46,15 +50,15 @@ describe("App", () => {
     expect(screen.getByText("Frontend foundation ready.")).toBeInTheDocument();
   });
 
-  it("renders the Inflation placeholder route at /inflation", () => {
+  it("renders the Inflation product route at /inflation", () => {
+    // Only routing is under test here -- the Inflation page's own data
+    // loading, formatting, and every economic-state rendering path have
+    // a dedicated, thoroughly-mocked test suite (see pages/Inflation.test.tsx).
+    // Stubbing fetch to never resolve keeps this test from making a real
+    // network call while still exercising the real page component.
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/inflation");
     expect(screen.getByRole("heading", { level: 1, name: "Inflation" })).toBeInTheDocument();
-    expect(screen.getByText("Not yet implemented.")).toBeInTheDocument();
-  });
-
-  it("does not fetch or render any inflation data at /inflation", () => {
-    renderAt("/inflation");
-    expect(screen.queryByText(/COOLING|HEATING|STABLE|MIXED|CONFIRMS|DIVERGES/i)).not.toBeInTheDocument();
   });
 
   it("renders a deterministic not-found page for an unknown route", () => {

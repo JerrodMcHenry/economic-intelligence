@@ -5136,3 +5136,226 @@ false-negative on) still has value as a *documented commitment* and a
 adds the first inflation display component. Recording that expectation
 explicitly here (and in `docs/architecture/current-architecture.md`) is
 itself part of making the guard durable rather than decorative.
+
+## Increment 016B — Inflation Monitor Product UI
+
+Replaces the #16A placeholder `/inflation` route with the real,
+production-quality product page: the first user-facing surface where
+"facts are sourced, calculations are deterministic, AI is
+interpretive" is enforced by the frontend rather than just stated by
+it. Inspected `app/models/inflation.py`, `app/models/inflation_what_changed.py`,
+`app/api/inflation.py`, both frozen methodology docs, and the #16A
+frontend foundation before writing anything — every TypeScript type in
+`frontend/src/api/inflation.types.ts` is a field-for-field mirror of
+the real Pydantic models, not inferred from earlier prompts. Zero
+backend files were touched (verified by `git status` before and after
+this increment); zero economic formulas were reimplemented client-side.
+
+### What was built
+
+- **Types & API layer**: `frontend/src/api/inflation.types.ts` (closed
+  union types for `InflationState`/`ConfirmationRelationship`/
+  `ChangeEventType`/etc., matching the backend's own `Literal`s exactly),
+  `frontend/src/api/inflation.ts` (`getInflationMonitor`,
+  `getInflationWhatChanged` — thin `apiGet<T>` callers, no
+  interpretation), `frontend/src/api/useApiResource.ts` (one reusable
+  `loading`/`success`/`error` hook, instantiated twice on the page so the
+  two endpoints load, fail, and retry completely independently).
+- **Presentation-only libraries**: `frontend/src/lib/format.ts`
+  (`formatPeriod`/`formatPeriodPair` — parses ISO date strings by regex,
+  deliberately never via `new Date().toLocaleDateString()`, which can
+  roll a UTC-midnight date back a display month in timezones behind UTC;
+  `formatPercent` for plain readings vs. `formatPercentagePoints` for
+  signed deltas/`target_gap_pp`, matching the task's own "2.64%" vs.
+  "+0.70 pp" convention) and `frontend/src/lib/inflationLabels.ts`
+  (label + restrained "tone" lookups for both closed enums —
+  `INSUFFICIENT_DATA` and `UNAVAILABLE` always resolve to the same muted
+  "unavailable" tone as every other missing value, never a direction).
+- **Inflation components** (`frontend/src/components/inflation/`):
+  `Badge` (text-first pill; color is reinforcement, never the sole
+  signal), `InflationHero` (the primary Core PCE state — the page's
+  single largest visual element), `MomentumMetrics` (3M/6M/12M, 1M as
+  secondary context, plus the backend's own neutral-band boundaries
+  displayed, never re-derived), `TargetPanel` (headline PCE YoY vs. the
+  backend-exposed `fed_objective_percent`, signed `target_gap_pp` — no
+  duplicated UI constant for the objective), `ConfirmationPanel` (Core
+  CPI's relationship to Core PCE, visually subordinate — never an equal
+  vote — and still rendered even when `relationship: "UNAVAILABLE"`,
+  so a confirmation failure never reads as a monitor failure),
+  `HeadlineContext` (headline PCE/CPI shown independently, no combined
+  score), `WhatChangedSection` (the precedence logic below),
+  `EvidenceDisclosure`/`MethodologyDisclosure`/`DataBasisNote` (`<details>`-
+  based progressive disclosure, via the new generic
+  `frontend/src/components/Disclosure.tsx`).
+- **`InflationPage`** (`frontend/src/pages/Inflation.tsx`): composes all
+  of the above in the required hierarchy, rendering each of the
+  monitor's and what-changed's independent load states truthfully (see
+  [Flow 27](./architecture/request-flows.md#flow-27--inflation-page-load-increment-16b)) —
+  including partial success (one endpoint failing never blanks the
+  other) and the infrastructure-failure-vs-economic-unavailability
+  distinction (`ApiError` only ever means network/HTTP failure; a `200`
+  carrying `INSUFFICIENT_DATA`/`UNAVAILABLE`/`comparison_available:
+  false` renders as normal canonical content).
+
+### What Changed rendering precedence (the one genuinely nontrivial piece)
+
+For a momentum-shaped section (Core PCE, Headline PCE, Headline CPI):
+a `STATE_CHANGED`/`AVAILABILITY_*` event on the `"state"` field is
+always the headline transition; otherwise an empty `changes` list
+renders exactly "No canonical changes detected."; otherwise (metrics
+changed but the state didn't) renders exactly "State remains X." —
+**never** collapsed into "No change," per the task's explicit
+requirement — except when both periods' `state` is
+`INSUFFICIENT_DATA`, where "State remains Insufficient data" would
+misleadingly read as a direction, so that case renders "Insufficient
+data in both periods." instead. `comparison_available: false` renders
+"Previous-period comparison unavailable." — a distinct, separately
+tested message from the true-zero-change case. Confirmation's headline
+is a `CONFIRMATION_CHANGED` event on `relationship` when present
+(`confirmation_availability_lost`/`restored` can never be true without
+`relationship_changed` also being true, since `"UNAVAILABLE"` is itself
+one of the four relationship values, so no separate branch was needed).
+Target has no state concept, only metric events. Every subsection
+renders its own `previous_period`/`current_period` pair — there is
+deliberately no page-wide "as of" date.
+
+### Architectural guard extended
+
+`frontend/src/test/no-economic-logic.test.ts` gained three patterns
+beyond #16A's two: client-side delta recomputation
+(`current... - previous...`, which should always read the backend's own
+`ChangeEvent.delta` instead), the `["COOLING","HEATING"]`/
+`["HEATING","COOLING"]` pair-literal shape the backend's own
+confirmation-relationship derivation uses, and a *declared* function
+named after a backend period-selection helper (`findLatestCommonPeriod`,
+`latestSharedObservationPeriod`, etc. — scoped to declaration syntax so
+that legitimately reading `data.confirmation.latest_common_period` off
+a response never false-positives). The guard now scans every new
+inflation component and passed against all of them.
+
+### Tests, typecheck, lint, build
+
+110 frontend tests across 6 files (24 pre-existing #16A tests, updated
+only where they asserted the now-superseded placeholder page content;
+plus new coverage: `lib/format.test.ts`, `lib/inflationLabels.test.ts`,
+and `pages/Inflation.test.tsx` — an integration suite mocking
+`getInflationMonitor`/`getInflationWhatChanged` at the module boundary
+against deterministic fixtures in `frontend/src/test/fixtures/inflation.ts`,
+covering all five `InflationState` values, all four
+`ConfirmationRelationship` values, all five `ChangeEventType`s, the
+state-remains/true-no-change/comparison-unavailable three-way
+distinction, independent per-section periods, primary-stays-visible
+when confirmation is unavailable, evidence/methodology disclosure
+content and toggling, monitor/what-changed HTTP failures independently
+and together with partial-success rendering, retry, the
+economic-unavailable-is-not-an-error distinction, and heading-hierarchy
+accessibility basics). `npx vitest run`, run twice: **110 passed** both
+times. `npm run typecheck`: clean. `npm run lint` (`oxlint`): clean.
+`npm run build`: succeeds (`dist/` ~280 KB JS / ~17 KB CSS before gzip).
+
+### Backend verification
+
+No backend file was modified this increment (confirmed via `git status`
+scoped to non-`frontend/`/non-`docs/` paths — empty). This session's
+shell had no `TEST_DATABASE_URL` set, so `pytest` exercised its own
+documented safety behavior (`tests/conftest.py`: database-backed tests
+skip rather than run against an unconfigured or implicit database) —
+**604 skipped**, not run, in this session. This is a session/environment
+fact, not a code regression: the prior #16A entry's **604 passed**
+baseline is unaffected because the backend source tree is byte-for-byte
+unchanged.
+
+### Deferred (unchanged from the task's own scope discipline)
+
+No chart library (deferred until a deterministic historical monitor API
+exists), no AI/chat surface anywhere, no auth/billing/alerts/watchlists/
+Explore/Compare/second product dimension, no live FRED calls, no
+database migration, no change to frozen methodology semantics.
+
+## Increment 016B.1 — Inflation UI Visual Hierarchy Polish
+
+A narrowly scoped, presentation-only pass over `/inflation`, done after
+visual product review against populated real development data (see the
+prior session's database-population report). No backend file, API
+contract, methodology, or canonical event/state semantic was touched —
+every change below is markup/CSS only, verified by `git status` showing
+zero diffs under `app/`, `research/`, `docs/methodology/`, `docs/adr/`,
+or `tests/`.
+
+**Hero** (`InflationHero.tsx`): the canonical `state` is now the page's
+single dominant object -- a large (`Badge` size `xl`, newly added
+alongside the existing `md`/`lg`) tone-colored pill, with "Core PCE ·
+{period}" as a quiet subtitle beneath it. The previous giant standalone
+12M number is gone from the top line; 3M/6M/12M now render as an
+equal-weight, compact inline strip below the state instead of one
+figure competing with it for attention. The detailed `MomentumMetrics`
+section (with per-metric evidence) is unchanged and still lower on the
+page -- nothing about it was removed, only de-duplicated against the
+hero's now-lighter glance strip.
+
+**What Changed** (`WhatChangedSection.tsx`): each subsection is now a
+quiet left-border-accented block (`border-l-2`, colored by that
+subsection's own current tone -- the same five-tone palette already
+used everywhere else, never a new color system) instead of a run of
+plain paragraphs. Metric rows render as a three-column CSS grid (field ·
+previous → current · right-aligned delta) via `Fragment`-per-row
+children of one grid container -- real column alignment across rows,
+not per-row flex-wrap. 1M-field rows render visually muted relative to
+3M/6M/12M, consistent with 1M's "context only" role elsewhere. The
+headline sentence for each subsection (`"State remains Mixed."` /
+`"Core PCE state: Stable → Cooling"` / `"Confirmation: Confirms →
+Diverges"` / `"No canonical changes detected."` / `"Previous-period
+comparison unavailable."`) is unchanged text, only styled with a
+tone-colored, semibold treatment when it reports an actual state/
+relationship (muted gray for the two "nothing to report" messages).
+Event-determination logic, precedence, and every exact string were left
+untouched -- confirmed by the one test that legitimately needed
+updating: a previous/current/delta assertion that used to match three
+separate text nodes now matches one grid cell's combined text (the
+delta's display format also changed from parenthesized to a plain
+right-aligned `+0.20 pp`, matching the new column).
+
+**Confirmation** (`ConfirmationPanel.tsx`): relabeled so `INCONCLUSIVE`
+(or any relationship) reads unambiguously as Core CPI's own confirmation
+status, not the whole monitor's -- a "Core CPI confirmation" eyebrow
+label now sits directly above the relationship badge, with "Core CPI
+state" and "Confirmation period" as their own labeled fields below.
+"Core PCE is primary. Core CPI confirms or diverges from it." is
+unchanged. No semantic change to the relationship itself or to
+`confirmation_available`/`UNAVAILABLE` handling.
+
+**Target/level, headline context**: left effectively as-is per the
+task's own instruction (Target already worked well; only a spacing
+tweak for consistency with the new label rhythm elsewhere). Headline
+context's two independent cards and independent periods are unchanged
+-- still no aggregation.
+
+**Visual system**: top-level page sections (`Inflation.tsx`) now use a
+`divide-y` border between sections instead of pure vertical spacing, for
+clearer section separation without adding cards, shadows, or gradients.
+No new Tailwind utility class categories were introduced beyond what the
+existing restrained palette already used (the same five tones, now also
+expressed as plain text-color and border-color variants in
+`lib/inflationLabels.ts`'s new `TONE_TEXT_CLASSES`/`TONE_BORDER_CLASSES`
+alongside the existing `TONE_CLASSES`).
+
+**Verification**: `npx vitest run`, twice -- **110 passed** both times
+(one test updated for legitimately-changed presentation markup, per the
+task's own instruction; no test weakened, none of the 40 originally
+enumerated behavioral scenarios lost coverage). `npm run typecheck`:
+clean. `npm run lint`: clean. `npm run build`: succeeds. Backend:
+`TEST_DATABASE_URL=... .venv/bin/pytest tests/ -q` -- **604 passed**,
+confirming zero backend regression from a presentation-only change.
+`no-economic-logic.test.ts` (unmodified from #16B, still guarding
+against reimplemented delta/tone-derivation/period-selection logic):
+green against all 30 scanned files, including every file this pass
+touched. Manually verified in the browser against the populated
+development database (see prior session): hero, What Changed, target,
+confirmation, and headline context all render as designed with no
+console errors; evidence disclosures and the "Latest revised data" note
+still toggle correctly.
+
+No architecture doc update was needed -- this pass changed no data flow,
+no component boundary, and no endpoint; `current-architecture.md`'s
+"Frontend architecture" section already documents the same component
+list and page composition this pass refined the styling of.

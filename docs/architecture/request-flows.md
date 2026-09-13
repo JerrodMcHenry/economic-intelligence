@@ -1108,13 +1108,12 @@ No scenario in this table ever searches backward past the exact
 previous calendar month, substitutes a different series, fetches from
 FRED, triggers ingestion, or calls AI to resolve a gap.
 
-## Flow 26 — Frontend Local Development Proxy (Increment #16A)
+## Flow 26 — Frontend Local Development Proxy
 
-Not a product data flow — Increment #16A's `/inflation` route is a
-static placeholder that fetches nothing (see
-`docs/architecture/current-architecture.md`'s "Frontend architecture").
-This documents the infrastructure path a request *would* take once a
-frontend page calls a real backend endpoint (Increment #16B onward):
+The infrastructure path every frontend request takes in local
+development, independent of which endpoint or page triggers it — see
+Flow 27 below for what actually calls this now that the `/inflation`
+page (Increment #16B) is real:
 
 ```mermaid
 sequenceDiagram
@@ -1139,3 +1138,59 @@ into the browser. In production, the built frontend instead uses the
 explicit, non-secret `VITE_API_BASE_URL` (`frontend/.env.example`) to
 address the deployed API directly — no proxy exists outside local
 development.
+
+## Flow 27 — `/inflation` Page Load (Increment #16B)
+
+`frontend/src/pages/Inflation.tsx` calls `useApiResource(getInflationMonitor)`
+and `useApiResource(getInflationWhatChanged)` in the same render, each
+independently owning its own `loading`/`success`/`error` state (see
+`frontend/src/api/useApiResource.ts`). Neither call waits on, retries
+from, or fabricates data for the other.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (InflationPage)
+    participant H1 as useApiResource(getInflationMonitor)
+    participant H2 as useApiResource(getInflationWhatChanged)
+    participant API as FastAPI (via Flow 26's proxy in dev)
+
+    par independent requests
+        B->>H1: mount
+        H1->>API: GET /api/v1/monitors/inflation
+    and
+        B->>H2: mount
+        H2->>API: GET /api/v1/monitors/inflation/changes
+    end
+    API-->>H1: 200 InflationMonitorResult (or non-2xx / network failure)
+    API-->>H2: 200 InflationWhatChangedResult (or non-2xx / network failure)
+    H1-->>B: {status: "success", data} | {status: "error", error: ApiError} | {status: "loading"}
+    H2-->>B: {status: "success", data} | {status: "error", error: ApiError} | {status: "loading"}
+    Note over B: Page composes both states independently --<br/>see the rendering table below.
+```
+
+How the page renders each combination — the only failure mode
+`ApiError` ever represents here is *infrastructure* (network/HTTP); a
+`200` carrying `state: "INSUFFICIENT_DATA"`, `relationship:
+"UNAVAILABLE"`, or `comparison_available: false` is `{status:
+"success"}` and rendered as normal canonical content, never routed
+through the error path:
+
+| Monitor state | What Changed state | Rendered result |
+|---|---|---|
+| loading | loading | `LoadingSkeleton` (role="status") in both slots; no numbers rendered anywhere |
+| success | success | `InflationHero`, `WhatChangedSection`, `MomentumMetrics`, `TargetPanel`, `ConfirmationPanel`, `HeadlineContext`, `MethodologyDisclosure` — full page |
+| error | success | `ErrorMessage` ("Inflation data could not be loaded.", with Retry) in place of the monitor-driven sections; `WhatChangedSection` still renders normally |
+| success | error | Monitor-driven sections render normally; `ErrorMessage` ("What changed could not be loaded.", with Retry) in place of `WhatChangedSection` |
+| error | error | Both `ErrorMessage`s render; nothing else on the page claims to be inflation data |
+
+Clicking a section's Retry button calls that resource's own `reload()`
+(an incrementing token that re-runs its effect) — it never touches the
+other resource. Every economic value, state, relationship, and period
+shown is exactly what the corresponding endpoint returned;
+`frontend/src/lib/format.ts` and `frontend/src/lib/inflationLabels.ts`
+only format/label already-canonical values (see
+`docs/architecture/current-architecture.md`'s "Frontend architecture"
+for the full section-by-section breakdown, and
+`frontend/src/test/no-economic-logic.test.ts` for the guard preventing
+any of this from silently becoming a second implementation of
+`inflation_v1.0` / `inflation_what_changed_v1.0`).

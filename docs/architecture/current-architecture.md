@@ -494,7 +494,7 @@ structurally, not just by convention, and were each verified directly
   same, unmodified `EconomicDataService`/`AnalysisService` methods every
   HTTP endpoint already uses.
 
-## Frontend architecture (Increment #16A: foundation only)
+## Frontend architecture (Increment #16B: Inflation Monitor product UI)
 
 ```
 Browser
@@ -518,11 +518,19 @@ calculations — every conclusion the UI will ever show is computed once,
 by the backend, and only formatted/labeled/arranged/visualized/
 progressively-disclosed on the client. A narrow, automated guard test
 (`frontend/src/test/no-economic-logic.test.ts`) scans the frontend's
-own source tree for the shapes this would take (the compounded-
-annualization exponent, the frozen 0.10pp neutral-band arithmetic) and
-fails if any appear — currently trivially true (Increment #16A adds no
-inflation-specific code at all), and meant to be extended alongside
-whatever inflation-specific components Increment #16B adds.
+own source tree for the shapes this would take: the compounded-
+annualization exponent, the frozen 0.10pp neutral-band arithmetic,
+client-side delta recomputation (`current... - previous...`, which
+should instead read the backend's own `ChangeEvent.delta`), the
+COOLING/HEATING pair-literal shape the backend's own confirmation-
+relationship derivation uses, and a declared function named after one
+of the backend's period-selection helpers (a client reading
+`latest_common_period`/`latest_shared_observation_period` off a
+response object is fine and does not match this pattern — only
+re-deriving one would). Increment #16B adds the first real inflation
+display components (`frontend/src/components/inflation/`,
+`frontend/src/pages/Inflation.tsx`) and this guard now runs against
+them for real, not as a placeholder against an empty tree.
 
 **Stack, and why:** React + Vite + TypeScript + Tailwind CSS, chosen
 explicitly (not Next.js) because FastAPI already owns every backend/
@@ -542,12 +550,23 @@ runner.
 ```
 frontend/
   src/
-    api/         typed API-client foundation (client.ts, errors.ts)
-    components/  small, clearly-reusable primitives (PageContainer)
+    api/
+      client.ts, errors.ts          typed fetch foundation (Increment #16A)
+      inflation.types.ts            TS mirror of app/models/inflation*.py, field-for-field
+      inflation.ts                  getInflationMonitor / getInflationWhatChanged
+      useApiResource.ts             one independent load/error/success/reload hook per resource
+    components/
+      PageContainer.tsx, Disclosure.tsx, LoadingSkeleton.tsx, ErrorMessage.tsx
+      inflation/   presentation-only Inflation Monitor components (Badge,
+                   InflationHero, MomentumMetrics, TargetPanel,
+                   ConfirmationPanel, HeadlineContext, WhatChangedSection,
+                   EvidenceDisclosure, DataBasisNote, MethodologyDisclosure)
     layouts/     the application shell (AppShell: header, nav, main)
+    lib/         format.ts (presentation-only formatting), inflationLabels.ts
+                 (state/relationship → label + tone lookups)
     pages/       one component per route (Overview, Inflation, NotFound)
     styles/      global.css (Tailwind entry + minimal visual foundation)
-    test/        Vitest setup + the no-economic-logic architectural guard
+    test/        Vitest setup, fixtures/, the no-economic-logic architectural guard
     App.tsx      route table
     main.tsx     React root, router provider
   public/
@@ -569,9 +588,47 @@ converts a successful, economically "unavailable" response
 *infrastructure failure* and *economic-data unavailability* is exactly
 the one `docs/methodology/inflation-monitor-v1.0.md` and
 `docs/methodology/inflation-what-changed-v1.0.md` already establish on
-the backend, and the frontend must preserve it, never collapse it. No
-inflation-specific types or requests exist yet — `apiGet` is generic
-and endpoint-agnostic; Increment #16B adds the first real caller.
+the backend, and the frontend must preserve it, never collapse it.
+`apiGet` itself stays generic and endpoint-agnostic; Increment #16B adds
+its first real callers — `getInflationMonitor`/`getInflationWhatChanged`
+(`frontend/src/api/inflation.ts`), typed against
+`frontend/src/api/inflation.types.ts`, a field-for-field TypeScript
+mirror of `app/models/inflation.py`/`app/models/inflation_what_changed.py`
+built by direct inspection of those Pydantic models, not inferred or
+guessed from prior prompts.
+
+**The Inflation page** (`frontend/src/pages/Inflation.tsx`) calls
+`useApiResource(getInflationMonitor)` and
+`useApiResource(getInflationWhatChanged)` independently — two separate
+`loading`/`success`/`error` states, each with its own retry, neither
+fabricated from the other. Page hierarchy: primary Core PCE state
+(`InflationHero`) → What Changed (`WhatChangedSection`, one of the most
+prominent sections, rendering canonical `ChangeEvent`s — including the
+explicit "state remains X" vs. true "no canonical changes detected" vs.
+"previous-period comparison unavailable" distinctions the
+`inflation_what_changed_v1.0` contract requires) → Core PCE momentum
+metrics (`MomentumMetrics`: 3M/6M/12M, with 1M as secondary context) →
+target/level (`TargetPanel`: headline PCE YoY vs. the backend-exposed
+`fed_objective_percent`, and its signed `target_gap_pp`) → confirmation
+(`ConfirmationPanel`: Core CPI's relationship to Core PCE, never an
+equal vote — a `relationship: "UNAVAILABLE"` never hides the primary
+state above it) → headline context (`HeadlineContext`: headline PCE and
+headline CPI shown independently, no combined score) → an
+"Evidence & methodology" disclosure (`MethodologyDisclosure`, plus a
+per-metric `EvidenceDisclosure` beside every individual reading).
+Every section renders its own comparison-period pair
+(`lib/format.ts`'s `formatPeriodPair`) rather than the page assuming one
+shared "as of" date — Core PCE, confirmation, target, and each headline
+series can legitimately be reporting on different calendar periods at
+once. `lib/inflationLabels.ts` maps each closed enum
+(`InflationState`, `ConfirmationRelationship`) to a label and a quiet,
+restrained visual "tone" — `INSUFFICIENT_DATA`/`UNAVAILABLE` always
+resolve to the same muted tone as every other unavailable value, never
+a direction. A failed `GET /api/v1/monitors/inflation` renders one
+truthful `ErrorMessage` with Retry in place of the sections it drives,
+while What Changed (or vice versa) still renders normally if its own
+call succeeded — partial, truthful rendering, never a blanked page for
+one endpoint's failure.
 
 **Local development** (see [Flow 26](./request-flows.md#flow-26--frontend-local-development-proxy-increment-16a)):
 the Vite dev server proxies `/api/*` requests to
@@ -588,9 +645,11 @@ as client-visible (everything prefixed `VITE_` ships in the browser
 bundle) and never used for a real secret.
 
 **No AI, no charts, no live FRED calls, no additional product
-dimensions** exist anywhere in the frontend as of Increment #16A — see
-"Future direction" below for what's deliberately deferred to Increment
-#16B and beyond.
+dimensions** exist anywhere in the frontend as of Increment #16B — no
+"Ask AI"/"Explain with AI"/chat surface, no charting library (deferred
+until a deterministic historical monitor API exists), and no second
+product dimension (Explore, Compare, watchlists, auth, alerts) beyond
+Inflation. See "Future direction" below.
 
 ## What is deliberately NOT part of this architecture yet
 
@@ -725,17 +784,19 @@ formula knowledge" is a checked fact, not a convention. Same scope
 discipline as Increment #14: no AI, no live FRED reads, no new
 repository method, no migration, no UI.
 
-**Increment #16A** adds the frontend *foundation* only (see "Frontend
-architecture" above) — a working shell, routing, styling, and API-client
-scaffolding, deliberately with no inflation product UI: `/inflation` is
-a static placeholder route that fetches nothing. **Increment #16B**
-(not started) is expected to build the actual Inflation Monitor UI on
-top of this foundation, consuming both `GET /api/v1/monitors/inflation`
-and `.../inflation/changes` for real — primary Core PCE state, What
-Changed, target/level, confirmation, headline context, and evidence
-disclosure, each preserving the backend's independent period semantics
+**Increment #16A** added the frontend *foundation* only — a working
+shell, routing, styling, and API-client scaffolding, deliberately with
+no inflation product UI: `/inflation` was a static placeholder route
+that fetched nothing. **Increment #16B** replaces that placeholder with
+the real Inflation Monitor product page (see "Frontend architecture"
+above) — primary Core PCE state, What Changed, Core PCE momentum
+metrics, target/level, confirmation, headline context, and evidence/
+methodology disclosure, consuming both
+`GET /api/v1/monitors/inflation` and `.../inflation/changes` for real,
+each section preserving the backend's own independent period semantics
 rather than flattening them into one page-wide "as of" date. No
-charting library exists yet; one will only be added if evaluated
-against real deterministic API requirements at that time (see the
-frontend's own dependency list in `frontend/package.json` for exactly
-what is installed today).
+charting library was added — historical visualization stays deferred
+until a deterministic historical monitor API exists — and no AI, live
+FRED call, or second product dimension exists anywhere in the frontend
+(see the frontend's own dependency list in `frontend/package.json` for
+exactly what is installed today).
