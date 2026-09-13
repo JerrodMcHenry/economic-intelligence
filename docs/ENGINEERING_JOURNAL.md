@@ -3385,3 +3385,206 @@ integration test ran inside a rolled-back transaction against
 `economic_intelligence_test`, never `economic_intelligence`; the
 transaction/safety tests that exercise the real `session_scope` were
 also redirected to the isolated test database for their duration only.
+
+## Increment 012 — Deterministic HTTP API Contract & Failure Tests
+
+### Objective
+
+The last permanent layer of the deterministic reset's test foundation:
+HTTP request → FastAPI route → service → repository → domain → typed
+response, for every deterministic route. No FastAPI HTTP status mapping
+had been locked down by a repeatable test before this increment --
+Increment 011 deliberately stopped one layer below it.
+
+### Route inventory (confirmed against actual code, not memory)
+
+| Method & path | Request | Response model | Service | External dep | Success | Exceptions handled |
+|---|---|---|---|---|---|---|
+| `GET /health` | none | `{"status": "ok"}` | none | none | 200 | none (no try/except at all) |
+| `GET /api/v1/series/{id}` | path param | `SeriesResponse` | `EconomicDataService.get_series` | FRED | 200 | `FREDSeriesNotFoundError`→404, `FREDAuthError`→503, `FREDTimeoutError`→504, `FREDUpstreamError`→502 |
+| `POST /api/v1/series/{id}/sync` | path param | `SeriesResponse` | `EconomicDataService.sync_series` | FRED + DB | 200 | above FRED mappings + `IntegrityError`→409, `OperationalError`→503, `SQLAlchemyError`→500 |
+| `GET /api/v1/series/{id}/observations` | query: start_date, end_date, limit(1-1000), offset(≥0), order(asc/desc) | `SeriesObservationsResponse` | `EconomicDataService.get_observations` | DB only | 200 | `InvalidDateRangeError`→400, `SeriesNotFoundError`→404, `OperationalError`→503, `SQLAlchemyError`→500 |
+| `GET /api/v1/series/{id}/transform` | query: transformation(required), start_date, end_date, window(2-365) | `SeriesTransformResponse` | `EconomicDataService.get_transformed_observations` | DB only | 200 | above + `InvalidWindowError`→400 |
+| `GET /api/v1/analysis/compare` | query: series_a, series_b, analysis(required), start_date, end_date | `SeriesComparisonResponse` | `AnalysisService.compare` | DB only | 200 | `InvalidDateRangeError`→400, `SeriesNotFoundError`→404, `OperationalError`→503, `SQLAlchemyError`→500 |
+| `POST /api/v1/analysis/pipeline` | body: `PipelineRequest` (extra="forbid", nested) | `PipelineResponse` | `AnalysisService.pipeline` | DB only | 200 | above + `InvalidWindowError`→400 |
+| `POST /api/v1/ai/query` | body: message | `AIQueryResponse` | `AIService.query` | OpenAI + DB | 200 | `AIProviderUnavailableError`→503, `ToolRoundLimitExceededError`→503; frozen, not behaviorally tested here |
+
+Confirmed HTTP failure taxonomy actually in use: **200, 400, 404, 409
+(sync only), 422 (FastAPI/Pydantic, automatic), 500, 502, 503, 504** --
+all eight exercised by this increment; no status was manufactured for
+symmetry that the code doesn't actually use.
+
+### Test infrastructure: one shared root conftest, two suite-specific ones
+
+`tests/integration/conftest.py` (Increment 011) was moved, not
+duplicated, to `tests/conftest.py`: pytest fixture visibility flows
+downward from a conftest to its subdirectories, never sideways between
+siblings, and `tests/api/` needed the exact same `test_database_url`
+safety guard, migration setup, and `db_session` fixture `tests/
+integration/` already had. `pytest_collection_modifyitems` there now
+auto-marks tests under either subdirectory (`integration`/`api`)
+generically. Re-ran all 121 pre-existing tests immediately after this
+move and confirmed identical results before writing anything new.
+
+`tests/api/conftest.py` adds what's unique to HTTP-level testing:
+
+- `client`: `fastapi.testclient.TestClient(app)` -- the real ASGI app,
+  in-process, no real server, no browser tooling.
+- `_redirect_database` (autouse): the real, unmodified route → `session_scope()`
+  path is redirected to the isolated test database for each test's
+  duration only (`monkeypatch` + explicit `lru_cache.cache_clear()` on
+  both `app/db/session.py` singletons, before and after) -- the same
+  technique Increment 011's transaction tests already used.
+- `seed_session`: a deliberately **different** isolation strategy than
+  `tests/conftest.py`'s rollback-based `db_session`, for a real reason:
+  an HTTP request handled by the actual FastAPI route opens its own,
+  separate PostgreSQL connection. A second connection cannot see a
+  first connection's SAVEPOINT-only "commit" -- rollback isolation is
+  structurally the wrong tool here. `seed_session` commits for real and
+  cleans up via `TRUNCATE ... RESTART IDENTITY CASCADE` after each test
+  instead -- exactly the "otherwise use explicit safe cleanup against
+  the TEST database only" alternative named for this situation, not a
+  second competing database architecture.
+- `fred_configured`: a synthetic, non-secret sentinel string for
+  `settings.fred_api_key` (never a real key) so FRED-backed routes pass
+  their configuration check while every actual `FREDClient` method is
+  mocked per-test at the class level -- no live network call anywhere
+  in this suite.
+
+### FRED mocking strategy
+
+`unittest.mock.patch.object(FREDClient, "<method>", ...)` -- the
+narrowest sensible external boundary named in the brief. Never mocks
+`EconomicDataService`/internal deterministic logic for FRED-success
+paths; the real route → service → (mocked) FREDClient path runs in
+full. Service-level mocks (`EconomicDataService`/`AnalysisService`
+methods) are used only for the handful of branches that can't be
+naturally reached any other way -- `IntegrityError`/generic
+`SQLAlchemyError` mapping, which normal use doesn't trigger.
+
+### Test results by area
+
+- **Health** (4 tests): 200 + exact body; works with no OpenAI key, no
+  DB connectivity (a deliberately unreachable `DATABASE_URL`), no FRED
+  key -- confirming `/health` truly touches none of them, as
+  `app/main.py` already showed by inspection.
+- **Series metadata** (9 tests): success with exact response contract
+  (including FRED's newest-first→chronological reordering and `"."`→
+  `null` value parsing), missing-config 503, all four typed FRED
+  exceptions mapped correctly, malformed-provider-response→502, and an
+  explicit no-stack-trace/no-secret check.
+- **Sync** (10 tests): successful sync verified against real persisted
+  rows (a separate connection, not just the response body), idempotent
+  repeat (no duplicate series or observation rows), value-update-in-
+  place on a changed observation, all FRED mappings, plus
+  `IntegrityError`→409, `OperationalError`→503, generic
+  `SQLAlchemyError`→500 (service-level mocks, real Postgres untouched).
+- **Observations** (16 tests): full pagination/ordering/filtering
+  matrix, an empty-range-on-existing-series 200 (not a 404), read-path
+  non-mutation, repeated-request determinism, and the validation
+  matrix: limit/offset/order/date-shape violations → 422,
+  **start_date > end_date → 400** -- the distinction this increment
+  exists to lock down permanently, confirmed structurally different
+  from the 422 cases (each date is independently valid; only their
+  relationship is a semantic, service-level rule).
+- **Transform** (11 tests): all three transformations, exact metadata
+  contract, unknown-series 404, `InvalidDateRangeError`/`InvalidWindowError`
+  → 400 (both directions: missing window for `moving_average`, window
+  supplied for an inapplicable type), an unrecognized transformation
+  value / out-of-bounds window → 422. **The boundary-context golden
+  test now runs through the full HTTP path**: Jan=100/Feb=110/Mar=121,
+  `start_date=2024-02-01` → Feb=10.0 (not null), Jan correctly trimmed
+  from the response -- confirming Increment 011's service-level proof
+  holds all the way to the public contract.
+- **Compare** (11 tests): alignment, spread, correlation, null
+  preservation, date filtering, both unknown-series directions, invalid
+  range → 400, invalid `analysis` value / missing required query param
+  → 422.
+- **Pipeline** (24 tests) -- the richest contract, and the largest
+  section: every raw/transformed combination, all three transformations
+  individually, aligned/spread/correlation, and **the decisive
+  transformation-before-alignment ordering test carried through the
+  full HTTP path** (A=[Jan:100,Feb:110,Mar:121], B=[Jan:10,Mar:30]
+  deliberately missing Feb; correct answer 10.0, wrong answer 21.0 --
+  **result: 10.0**, confirmed via `POST /api/v1/analysis/pipeline`
+  itself, not just the service layer). Fail-closed validation matrix:
+  unknown top-level/series-spec/transformation field → 422 (the
+  `extra="forbid"` hardening from Increment 009/010's corrections,
+  now proven at the HTTP boundary too), invalid transformation/analysis
+  type → 422, out-of-bounds window → 422, missing-required-window /
+  inapplicable-window-supplied → 400, malformed date → 422, bad date
+  relationship → 400, unknown series → 404.
+- **Cross-cutting failure mapping** (18 tests): `OperationalError`→503
+  and generic `SQLAlchemyError`→500 forced at the service boundary for
+  all four PostgreSQL-only routes (observations, transform, compare,
+  pipeline); two dedicated safe-error-body tests using synthetic
+  marker strings ("password=hunter2", "secret_table", etc.) embedded in
+  a mocked exception, confirmed absent from every response body, plus a
+  lowercase scan for stack-trace/file-path signatures.
+- **AI independence** (7 tests): `/health`, observations, transform,
+  compare, and pipeline all verified working with `OPENAI_API_KEY`
+  unset; one narrow, explicitly-scoped `/ai/query` test confirms a
+  clean 503 when unconfigured (no live call, no round behavior, no
+  schema-compliance testing -- exactly the boundary the brief drew); a
+  static `ast`-based guard confirms `app/api/series.py`/`app/api/analysis.py`
+  import neither `openai` nor any `app.services.ai*` module.
+- **FRED independence of persisted analytics** (1 test, deliberately
+  strong): patches `FREDClient.__init__` itself to raise immediately if
+  ever constructed, then successfully calls observations, transform,
+  compare, and pipeline through the real HTTP client -- if any of those
+  four routes' code path ever tried to construct a `FREDClient`, this
+  test would fail with that exact assertion, not merely "look" like it
+  passed.
+
+### Test commands
+
+```
+pytest                                  # everything (pure + integration + api)
+pytest -m "not integration and not api" # pure domain tests only -- no TEST_DATABASE_URL needed
+pytest -m integration                   # repository/service integration tests
+pytest -m api                           # HTTP API tests
+```
+Both `integration` and `api` require `TEST_DATABASE_URL` (API routes
+read/write through the real `session_scope`, same as direct service
+calls).
+
+### Final results
+
+226 total tests (56 pure + 65 integration, both unchanged from
+Increments 010/011, + 105 new API tests), 226 passed, 0 failed, ~4-5
+seconds. Verified repeatable across multiple full-suite runs, a
+reversed API test-file execution order, and each API file run
+standalone -- identical results every time.
+
+**No production bug was discovered.** Every documented status-code
+mapping, every hand-derived golden value (including the HTTP-level
+transformation-before-alignment test), and every validation-boundary
+case matched the real, unmodified route code's actual behavior on the
+first attempt.
+
+### Deferred (unchanged from the brief)
+
+Any behavioral test of the autonomous AI orchestration loop (round
+efficiency, tool-schema compliance, live OpenAI calls) -- that path
+remains frozen, untouched, and out of this test foundation's scope by
+design, not by omission.
+
+### Documentation/config changes this increment
+
+`pyproject.toml`: registered the `api` marker alongside `integration`.
+`tests/integration/conftest.py` removed (content relocated, not
+duplicated, to the new `tests/conftest.py`). No `app/` file was
+changed. No ADR created -- ordinary API testing infrastructure, no
+durable architecture decision with product-facing alternatives.
+Architecture docs not updated -- no real architecture change occurred.
+
+### Confirmations
+
+AI orchestration untouched: `git diff --stat app/services/ai.py
+app/services/ai_tools.py` shows only pre-existing diffs from before this
+increment. No live OpenAI or FRED call: every FRED interaction in this
+suite is a `patch.object(FREDClient, ...)` mock; the one AI test
+verifies a configuration-absent 503 and calls no OpenAI SDK method.
+No production database mutation: every API test's request handling was
+redirected to `economic_intelligence_test`; `economic_intelligence` was
+never connected to.

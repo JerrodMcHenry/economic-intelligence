@@ -36,10 +36,11 @@ include = ["app*"]
 [tool.pytest.ini_options]
 # Minimum config: tests/ is the only place pytest looks, run from repo
 # root. No coverage plugin, no fixture framework beyond what's in
-# tests/integration/conftest.py.
+# tests/conftest.py (shared) and each suite's own conftest.py.
 testpaths = ["tests"]
 markers = [
     "integration: requires an isolated, explicitly-configured PostgreSQL test database (TEST_DATABASE_URL) -- run with `pytest -m integration`, or exclude with `pytest -m \"not integration\"`.",
+    "api: FastAPI TestClient tests against the deterministic HTTP routes -- also requires TEST_DATABASE_URL (routes read/write through the real session_scope). Run with `pytest -m api`, or exclude with `pytest -m \"not api\"`.",
 ]
 # Testability blocker found during Increment 010, root-caused during
 # Increment 011 (see the journal): the project's own editable install
