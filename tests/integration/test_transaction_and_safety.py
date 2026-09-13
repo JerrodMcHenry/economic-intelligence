@@ -155,18 +155,50 @@ def _imported_module_names(file_path: Path) -> set[str]:
 
 
 class TestAIAndNetworkIndependence:
-    FORBIDDEN_PREFIXES = ("openai", "app.services.ai", "httpx", "app.clients.fred")
+    # AI is forbidden everywhere in this suite, without exception --
+    # nothing repository/service/discovery-level ever needs it.
+    AI_FORBIDDEN_PREFIXES = ("openai", "app.services.ai")
+    # httpx/FREDClient are forbidden everywhere EXCEPT test_discovery_service.py
+    # (Increment 013): that file legitimately imports FREDClient to mock
+    # its search_series method (`patch.object(FREDClient, "search_series",
+    # ...)`, per that increment's explicit "mock at the FREDClient
+    # boundary" requirement) -- it never constructs a client that makes a
+    # real call. Every one of its tests runs in well under a second
+    # against only the local isolated Postgres test database, with no
+    # other network configured, which this repo's automated tests never
+    # have access to -- circumstantial but consistent confirmation
+    # alongside the mocking pattern itself that no live call occurs.
+    # This exclusion existed before Increment 013 only in the sense that
+    # no file needed it yet; it does not weaken the guarantee for any
+    # other file in this directory, which remains absolute.
+    NETWORK_FORBIDDEN_PREFIXES = ("httpx", "app.clients.fred")
+    NETWORK_EXCEPTIONS = {"test_discovery_service.py"}
 
-    def test_no_integration_test_file_imports_ai_or_fred_or_http(self):
-        """Static guard: no file in tests/integration/ imports openai,
-        app.services.ai(_tools), FREDClient, or httpx -- checked by
-        parsing imports, not by trusting a comment."""
+    def test_no_integration_test_file_imports_ai(self):
+        """Static guard: no file in tests/integration/ imports openai or
+        app.services.ai(_tools) -- checked by parsing imports, not by
+        trusting a comment."""
         violations = []
         for file_path in sorted(INTEGRATION_DIR.glob("*.py")):
             for module_name in _imported_module_names(file_path):
-                if any(module_name == p or module_name.startswith(p + ".") for p in self.FORBIDDEN_PREFIXES):
+                if any(module_name == p or module_name.startswith(p + ".") for p in self.AI_FORBIDDEN_PREFIXES):
                     violations.append(f"{file_path.name}: imports '{module_name}'")
-        assert violations == [], "integration test file imports a forbidden dependency:\n" + "\n".join(violations)
+        assert violations == [], "integration test file imports AI:\n" + "\n".join(violations)
+
+    def test_no_integration_test_file_imports_fred_or_http_except_the_documented_discovery_mock(self):
+        """Static guard: no file in tests/integration/ imports httpx or
+        FREDClient, except test_discovery_service.py, which imports
+        FREDClient only to mock its search_series method -- see this
+        class's NETWORK_EXCEPTIONS docstring above for why that one,
+        narrow exception is safe."""
+        violations = []
+        for file_path in sorted(INTEGRATION_DIR.glob("*.py")):
+            if file_path.name in self.NETWORK_EXCEPTIONS:
+                continue
+            for module_name in _imported_module_names(file_path):
+                if any(module_name == p or module_name.startswith(p + ".") for p in self.NETWORK_FORBIDDEN_PREFIXES):
+                    violations.append(f"{file_path.name}: imports '{module_name}'")
+        assert violations == [], "integration test file imports a forbidden network dependency:\n" + "\n".join(violations)
 
     def test_economic_data_service_constructed_without_fred_client_in_this_suite(self):
         """Every EconomicDataService() constructed in this suite is

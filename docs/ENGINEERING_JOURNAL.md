@@ -3743,3 +3743,165 @@ plus whatever Increment 013 and beyond add) is further along. Future AI
 work should start from ADR-015/017's preserved principles and the
 architecture reset audit's bounded-intent-extraction design, not from
 reviving anything reverted here.
+
+## Increment 013 — Deterministic Series Discovery API
+
+### Product problem
+
+A user who doesn't already know a FRED series identifier had no
+deterministic way to find one. Every other endpoint in this project
+requires a `series_id` up front (`GET /{series_id}`, `.../observations`,
+`.../transform`, `/analysis/compare`, `/analysis/pipeline`) -- useful
+only to someone who already knows what they're looking for. Increment
+012.5 preserved a fully deterministic discovery capability
+(`SeriesDiscoveryService` and friends) built during Increment 009, but
+it was reachable only through the AI tool loop, which is frozen and not
+canonical. This increment exposes that same, unmodified capability
+directly, so discovery works with OpenAI completely unavailable --
+exactly the standing principle: facts are sourced, calculations are
+deterministic, AI is interpretive, and the product must remain useful
+without AI.
+
+### Why direct discovery matters now
+
+Without this, "the product is useful without AI" was only true for
+someone who already had a series ID in hand. This closes that gap using
+code that already existed, was already correct, and had already been
+proven independent of both AI and any external write capability --
+Increment 013 is deliberately *exposure*, not new logic: not one line
+of `SeriesDiscoveryService`/`SeriesRepository.search_series`/
+`FREDClient.search_series`/the discovery models changed.
+
+### Route contract
+
+`GET /api/v1/series/search?q=<concept>&limit=<1-50, default 10>`,
+declared **before** `GET /{series_id}` in `app/api/series.py` so `search`
+is never captured as a `series_id` path parameter -- verified directly
+(not just by declaration order) via a live request with
+`FREDClient.get_series_info` mocked to raise if called and
+`FREDClient.search_series` mocked to succeed: the response came back as
+a clean discovery result, and `get_series_info` was never invoked.
+
+Response: the existing `SeriesSearchResponse` model, unmodified --
+`query`, `candidates` (each with `series_id`, `title`, `units`,
+`frequency`, `seasonal_adjustment`, `observation_start`,
+`observation_end`, `popularity`, `persisted`, `discovery_source`), and
+`external_search_available`. No new field was added for aesthetics --
+`discovery_source` (`"local"`/`"fred"`/`"local_and_fred"`) already *is*
+the provenance field the brief asked to preserve-if-present, so nothing
+further was needed.
+
+`q` is required, trimmed, must contain non-whitespace text after
+trimming, and capped at 200 characters; `limit` defaults to 10, bounded
+1-50. The 400-vs-422 split follows this project's existing convention
+exactly: FastAPI/Pydantic catches missing `q`, empty `q`, overlong `q`,
+and out-of-bounds/malformed `limit` (422, structural); a
+whitespace-only `q` is structurally valid (a non-empty string within
+bounds) but semantically empty once trimmed -- caught explicitly in the
+route body and mapped to 400, the same pattern `InvalidDateRangeError`
+etc. already use everywhere else in this project.
+
+### Deterministic ranking semantics (unchanged, now proven at HTTP level)
+
+Three plain, explainable comparison keys, no ML/embedding/LLM-generated
+relevance score: an exact `series_id` match always surfaces first;
+among non-exact matches, persisted candidates rank ahead of FRED-only
+ones (a tiebreaker, not a claim of semantic correctness); within each
+tier, FRED's own `search_rank` order is preserved. Verified directly at
+the HTTP layer with a mocked FRED response and a persisted local row
+deliberately ordered last in the mock list -- the exact match still
+came first, `limit` was applied *after* the merge (not before, which
+would have silently dropped a real match), and identical requests
+against identical data produced byte-identical responses.
+
+### Local/FRED merge semantics
+
+A series present in both sources returns once, `persisted=true`, with
+FRED's richer metadata (frequency, seasonal adjustment, observation
+range, popularity) layered onto the local match -- `discovery_source`
+becomes `"local_and_fred"`. Verified explicitly: persisted status is
+never downgraded by an external search result, and a series known only
+locally or only via FRED reports `persisted=true`/`false` respectively,
+correctly.
+
+### Degradation behavior (unchanged, now proven at HTTP level)
+
+FRED timeout, auth failure, or upstream failure all degrade the same
+way: `external_search_available=false`, local results still returned,
+`200` -- never an error response, confirmed for all three exception
+types plus a fourth case (`FRED_API_KEY` simply unconfigured). The one
+edge case worth naming explicitly: local results empty **and** FRED
+search fails -- the existing service contract (unchanged, just newly
+locked down by a permanent test) returns `200` with `candidates: []`
+and `external_search_available: false`, never raises. This was
+deliberately preserved rather than "fixed" into an error response --
+"no matches were confidently found" and "something went wrong" are
+different situations, and this project's read paths consistently treat
+an honestly empty result as success, not failure.
+
+### No-ingestion contract (ADR-016, now directly testable)
+
+A `persisted=false` candidate found via FRED is never written to
+`economic_series`/`economic_observations` -- verified two ways: a
+before/after row-count-and-value snapshot around a search request
+(identical), and an explicit check that a FRED-only candidate's
+`series_id` does not exist in `economic_series` immediately after being
+returned in a search response. Searching for a series and syncing it
+(`POST /{series_id}/sync`, unchanged, unrelated) remain two entirely
+separate actions.
+
+### AI and analytics independence
+
+Discovery works identically with `OPENAI_API_KEY` unset (locked down
+directly). A static guard confirms `app/services/discovery.py` and
+`app/models/discovery.py` import neither `openai`/`app.services.ai*` nor
+`app.services.analysis`/`app.domain.*` -- discovery finds series
+metadata only, never touches comparison, transformation, or correlation
+math. A dynamic guard confirms the same for the live request path: a
+search with `EconomicDataService.get_transformed_observations` patched
+to raise if called still returns `200`.
+
+### Tests and results
+
+46 new tests: 36 in `tests/api/test_series_search_api.py` (success
+paths including merge/dedup/persisted-semantics/ranking/limit,
+degraded-external-search including the no-local-and-FRED-fails case,
+validation, error-safety, route-collision, AI/analytics independence,
+non-mutation, no-ingestion, and metadata normalization including the
+one genuinely-undefined case -- `observation_start`/`observation_end`
+are plain, unvalidated strings, so a malformed value from FRED passes
+through as-is rather than being rejected, documented as current
+behavior rather than assumed) + 10 in
+`tests/integration/test_discovery_service.py` (merge/dedup/ranking-
+stability/degradation proven directly against the service, below HTTP,
+per the brief's own guidance not to duplicate what's already proven at
+the API layer).
+
+One existing Increment 011 test needed a narrow, deliberate adjustment,
+not a weakening: `TestAIAndNetworkIndependence`'s blanket "no file in
+tests/integration/ imports FREDClient/httpx" guard was written before
+any discovery capability existed in that suite and is now split into
+two separate checks -- AI (`openai`/`app.services.ai`) remains forbidden
+in every file in the directory, without exception; the FRED/httpx
+restriction remains in force for every file except
+`test_discovery_service.py`, which legitimately imports `FREDClient`
+only to mock its `search_series` method, exactly as this increment's
+own brief required ("mock at the FREDClient boundary"). The underlying
+guarantee -- no live network call anywhere in this suite -- is
+unchanged and still fully enforced; only the previous, accidentally-
+too-broad implementation of one static check was corrected.
+
+Full suite: **273/273 passing** (230 pre-existing + 43 new), repeatable
+across multiple full runs, and confirmed order-independent (each new
+file also runs correctly standalone).
+
+### Tradeoffs
+
+`observation_start`/`observation_end` remain unvalidated strings passed
+through verbatim from FRED -- a real, minor gap (a malformed provider
+value would reach a client as-is) that predates this increment and
+wasn't introduced or fixed by it; noted, not addressed, since fixing it
+was not this increment's job and the brief was explicit not to "fix"
+discovered behavior without stopping to report first. No production bug
+was found, so no stop was warranted -- this is a documented, pre-
+existing characteristic, not a defect discovered mid-implementation.

@@ -20,7 +20,9 @@ from app.clients.fred import (
 )
 from app.core.config import settings
 from app.db.session import session_scope
+from app.models.discovery import SeriesSearchResponse
 from app.models.series import SeriesObservationsResponse, SeriesResponse, SeriesTransformResponse, TransformationType
+from app.services.discovery import SeriesDiscoveryService
 from app.services.economic_data import (
     EconomicDataService,
     InvalidDateRangeError,
@@ -29,6 +31,52 @@ from app.services.economic_data import (
 )
 
 router = APIRouter(prefix="/series", tags=["series"])
+
+
+@router.get("/search", response_model=SeriesSearchResponse)
+def search_series(
+    q: str = Query(..., min_length=1, max_length=200, description="An economic concept or phrase, e.g. 'unemployment'."),
+    limit: int = Query(default=10, ge=1, le=50),
+) -> SeriesSearchResponse:
+    """Discover candidate economic series by concept or phrase -- no AI
+    required. Searches locally persisted metadata and (if FRED is
+    configured) FRED's public catalog, merged into one deduplicated,
+    deterministically ranked list.
+
+    This is discovery, not semantic judgment: it finds real, verified
+    candidates and reports each one's actual metadata (including
+    whether it's already persisted, i.e. usable by the other endpoints
+    in this router right now) -- it never decides which candidate is
+    "the" correct answer to a concept, never invents a series, and
+    never persists anything. `persisted=False` candidates are reported
+    exactly as such; discovering one never syncs it (see
+    `POST /{series_id}/sync` for the explicit, separate action that
+    does). Declared before `/{series_id}` in this router so `search`
+    itself is never captured as a `series_id` path parameter.
+
+    Read-only and database-backed for local metadata; FRED reachability
+    is optional here (unlike `GET /{series_id}`/`POST /{series_id}/sync`,
+    where it's required) -- a search with no `FRED_API_KEY` configured,
+    or with FRED unreachable, degrades to local-only results rather
+    than failing (see `SeriesDiscoveryService.search`).
+    """
+    query = q.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="q must contain non-whitespace text.")
+
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Database is not configured on this server.")
+
+    fred_client = FREDClient(api_key=settings.fred_api_key, timeout=settings.fred_timeout_seconds) if settings.fred_api_key else None
+    service = SeriesDiscoveryService(fred_client)
+
+    try:
+        with session_scope() as session:
+            return service.search(query, limit, session)
+    except OperationalError:
+        raise HTTPException(status_code=503, detail="Database is currently unavailable.")
+    except SQLAlchemyError:
+        raise HTTPException(status_code=500, detail="Database error while searching series metadata.")
 
 
 @router.get("/{series_id}", response_model=SeriesResponse)

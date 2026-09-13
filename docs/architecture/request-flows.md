@@ -22,6 +22,9 @@ component picture.
 - Flow 16 — AI Query: single-tool round (`get_observations`/`transform_series`) — new in Increment 008
 - Flow 17 — AI Query: two-series tool call (`analyze_series`) — new in Increment 008
 - Flow 18 — AI Query Failure Scenarios: invalid tool arguments, missing series, provider failure, tool-round limit — new in Increment 008
+- Flow 19 — Series Discovery: local + FRED merge — new in Increment 013
+- Flow 20 — Series Discovery: FRED degradation, local results survive — new in Increment 013
+- Flow 21 — Series Discovery: no local match and FRED failure — new in Increment 013
 
 ## Flow 1 — Health Check
 
@@ -834,3 +837,108 @@ Also verified: a client that always requests another tool call was
 stopped exactly at round 4 (`ToolRoundLimitExceededError`), never running
 indefinitely; the round counter counts *rounds* (one round may contain
 several parallel tool calls, verified separately), not individual calls.
+
+## Flow 19 — Series Discovery: local + FRED merge
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/series.py)
+    participant DS as SeriesDiscoveryService
+    participant Repo as SeriesRepository
+    participant FC as FREDClient
+    participant FRED as FRED REST API
+    participant DB as PostgreSQL
+
+    C->>R: GET /api/v1/series/search?q=unemployment&limit=10
+    R->>R: q.strip() non-empty? database configured?
+    R->>DS: search("unemployment", 10, session)
+    DS->>Repo: search_series("unemployment", 10)
+    Repo->>DB: ILIKE '%unemployment%' on series_id OR title
+    DB-->>Repo: [UNRATE]  (local match)
+    Repo-->>DS: [UNRATE]
+    DS->>FC: search_series("unemployment", limit=10)
+    FC->>FRED: GET fred/series/search?search_text=unemployment&search_type=full_text&...
+    FRED-->>FC: 200 {"seriess": [UNRATE, UNRATENSA, U6RATE, ...]}
+    FC-->>DS: raw FRED rows (catalog metadata only)
+    DS->>DS: merge by series_id (UNRATE deduplicated: persisted=true, discovery_source=local_and_fred)
+    DS->>DS: rank: exact-id tier, then persisted tier, then FRED search_rank order; limit applied last
+    DS-->>R: SeriesSearchResponse(candidates=[...], external_search_available=true)
+    R-->>C: 200 JSON
+```
+
+Route ordering matters here: `GET /search` is declared before
+`GET /{series_id}` in `app/api/series.py` specifically so `"search"`
+is never captured as a `series_id` path parameter — verified directly
+(not just by reading the declaration order) by mocking
+`FREDClient.get_series_info` to raise if ever called and
+`FREDClient.search_series` to succeed, then confirming a real request
+to `/series/search` returns a clean discovery response with
+`get_series_info` never invoked.
+
+Verified with a real FRED response and a persisted local row: searching
+"unemployment" surfaces `UNRATE` as a single, deduplicated,
+`persisted: true`, `discovery_source: "local_and_fred"` candidate with
+FRED's richer metadata (frequency, seasonal adjustment, observation
+range, popularity) layered onto the local match — never two separate
+rows for the same series.
+
+## Flow 20 — Series Discovery: FRED degradation, local results survive
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route
+    participant DS as SeriesDiscoveryService
+    participant Repo as SeriesRepository
+    participant FC as FREDClient
+    participant FRED as FRED REST API
+
+    C->>R: GET /api/v1/series/search?q=unemployment
+    R->>DS: search("unemployment", 10, session)
+    DS->>Repo: search_series(...)
+    Repo-->>DS: [UNRATE]  (local match still found)
+    DS->>FC: search_series("unemployment", limit=10)
+    FC->>FRED: GET fred/series/search?...
+    Note over FC,FRED: timeout, auth rejection, or upstream failure
+    FC->>FC: raise FREDTimeoutError / FREDAuthError / FREDUpstreamError
+    DS->>DS: except FREDError -> external_search_available = False
+    DS-->>R: SeriesSearchResponse(candidates=[UNRATE], external_search_available=false)
+    R-->>C: 200 JSON  -- NOT an error; local results are still useful
+```
+
+Verified directly for all three FRED exception types, plus the
+`FRED_API_KEY`-unconfigured case (no `FREDClient` even constructed):
+every one degrades identically — `200`, local candidates intact,
+`external_search_available: false`. The search endpoint never becomes
+unavailable merely because FRED's catalog search is unavailable when a
+useful local result exists.
+
+## Flow 21 — Series Discovery: no local match and FRED failure
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route
+    participant DS as SeriesDiscoveryService
+    participant Repo as SeriesRepository
+    participant FC as FREDClient
+
+    C->>R: GET /api/v1/series/search?q=totallyunknownXYZ
+    R->>DS: search("totallyunknownXYZ", 10, session)
+    DS->>Repo: search_series(...)
+    Repo-->>DS: []  (no local match)
+    DS->>FC: search_series("totallyunknownXYZ", limit=10)
+    FC->>FC: raise FREDUpstreamError (or any FREDError)
+    DS->>DS: except FREDError -> external_search_available = False
+    DS-->>R: SeriesSearchResponse(candidates=[], external_search_available=false)
+    R-->>C: 200 {"query": "...", "candidates": [], "external_search_available": false}
+```
+
+This is the existing `SeriesDiscoveryService` contract, unchanged,
+newly locked down by a permanent test: no local match combined with a
+FRED failure is **not** an error — it's an honestly empty result. The
+service never raises here; "nothing was confidently found" and
+"something went wrong" are deliberately different outcomes, consistent
+with how every other read path in this project treats an empty result
+as success, not failure.
