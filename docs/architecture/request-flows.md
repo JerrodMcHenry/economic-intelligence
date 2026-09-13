@@ -1013,3 +1013,129 @@ other PostgreSQL-backed route in this project already makes.
 
 No scenario in this table ever substitutes a different series, fetches
 from FRED, triggers ingestion, or calls AI to resolve a gap.
+
+## Flow 24 — Inflation What Changed (`inflation_what_changed_v1.0`)
+
+`GET /api/v1/monitors/inflation/changes` reads only from PostgreSQL,
+for the exact same four canonical series as Flow 22. It computes a
+**month-over-month** comparison, section by section, each independently
+anchored per
+[docs/methodology/inflation-what-changed-v1.0.md](../methodology/inflation-what-changed-v1.0.md):
+ordinary sections (primary momentum, target, headline PCE, headline
+CPI) anchor to that series' own `latest_observation_period`; the
+confirmation section anchors to `latest_shared_observation_period` (a
+NEW period-selection concept this contract introduces — see the note
+below) — never to `inflation_v1.0`'s own "latest valid" concepts, so an
+unclassifiable current period is correctly reported as an availability
+change rather than silently skipped.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/inflation.py)
+    participant S as InflationMonitorService
+    participant SS as session_scope()
+    participant Repo as SeriesRepository
+    participant DB as PostgreSQL
+    participant D as app.domain.inflation (pure)
+    participant W as app.domain.inflation_what_changed (pure)
+
+    C->>R: GET /api/v1/monitors/inflation/changes
+    R->>R: database_url present?
+    R->>SS: enter session_scope()
+    R->>S: get_what_changed_result(session)
+    loop for each of PCEPILFE, CPILFESL, PCEPI, CPIAUCSL
+        S->>Repo: get_series_by_series_id / get_observations_in_range
+        Repo->>DB: SELECT ...
+        DB-->>Repo: rows (or none -- observations = [], never an error)
+        Repo-->>S: list[Observation]
+    end
+    Note over S,D: period selection, per section -- NOT the comparator's job
+    S->>D: month_over_month_series_momentum(primary_obs, "PCEPILFE")
+    D-->>S: (previous_period, current_period, previous_evidence, current_evidence)
+    S->>D: month_over_month_target(target_obs)
+    D-->>S: (previous_period, current_period, previous_evidence, current_evidence)
+    S->>D: month_over_month_series_momentum(target_obs, "PCEPI")  %% headline PCE
+    D-->>S: (...)
+    S->>D: month_over_month_series_momentum(headline_cpi_obs, "CPIAUCSL")
+    D-->>S: (...)
+    S->>D: month_over_month_confirmation(primary_obs, confirmation_obs)
+    Note over D: current_confirmation_period = latest_shared_observation_period(...)<br/>-- date-set intersection only, NOT inflation_v1.0's latest_common_period
+    D-->>S: (previous_period, current_period, 4x SeriesMomentumResult, 2x relationship)
+    S->>D: compute_inflation_monitor_result(...)  %% optional convenience snapshot only
+    D-->>S: InflationMonitorResult
+    Note over S,W: comparison -- the ONLY step touching app.domain.inflation_what_changed
+    S->>W: compare_series_momentum_section / compare_target_section / compare_confirmation_section (x5)
+    Note over W: pure diffing only -- W never imports app.domain.inflation<br/>(enforced by the architectural-independence test)
+    W-->>S: 5x SectionChanges
+    S->>W: assemble_what_changed_result(...)
+    W-->>S: InflationWhatChangedResult
+    S-->>R: InflationWhatChangedResult
+    R->>SS: exit session_scope() normally
+    SS->>DB: COMMIT (no-op for a read)
+    R-->>C: 200 JSON (5 sections, flattened ordered `changes`, summary flags)
+```
+
+**`latest_shared_observation_period`** (new, this contract only): the
+latest calendar month for which *both* Core PCE and Core CPI have *any*
+observation row, regardless of classifiability — a plain intersection
+of the two already-fetched observation date sets, `max()`. It never
+modifies `inflation_v1.0`, never replaces `latest_common_period` in the
+Monitor (Flow 22 is completely unaffected), and requires no new
+repository query — both observation lists are already in memory from
+the loop above.
+
+Missing or insufficient economic data for any section is **not** an
+error: each section reports its own `comparison_available`/
+`INSUFFICIENT_DATA`/`UNAVAILABLE` evidence inside a normal `200`
+response. Only a genuine database/infrastructure failure produces a
+non-`200` response.
+
+### Flow 25 — Inflation What Changed Failure Scenarios
+
+| Scenario | Where it's caught | HTTP status |
+|---|---|---|
+| `DATABASE_URL` not configured | Checked in the route before a session is opened | `503` |
+| Database unreachable | `sqlalchemy.exc.OperationalError` | `503` |
+| Any other database-layer failure | `sqlalchemy.exc.SQLAlchemyError` (base class) | `500` |
+| A section's series has no observation at all (no current anchor) | *(no exception — `comparison_available: false`, both periods `null`, `changes: []`)* | `200` |
+| A section's current period is classifiable but its exact previous calendar month is not (e.g. July valid / August missing) | *(no exception — `availability_lost: true`, no fabricated state transition)* | `200` |
+| A section's current period is itself unclassifiable (e.g. August missing, latest observed) | *(no exception — `current_evidence.state: "INSUFFICIENT_DATA"`, still `comparison_available: true`)* | `200` |
+| Confirmation has a shared observation row but one side's canonical state fails there | *(no exception — `current_relationship: "UNAVAILABLE"`, `confirmation_availability_lost: true`)* | `200` |
+| Core PCE and Core CPI share no observation date anywhere in history | *(no exception — `confirmation_changes.comparison_available: false`)* | `200` |
+
+No scenario in this table ever searches backward past the exact
+previous calendar month, substitutes a different series, fetches from
+FRED, triggers ingestion, or calls AI to resolve a gap.
+
+## Flow 26 — Frontend Local Development Proxy (Increment #16A)
+
+Not a product data flow — Increment #16A's `/inflation` route is a
+static placeholder that fetches nothing (see
+`docs/architecture/current-architecture.md`'s "Frontend architecture").
+This documents the infrastructure path a request *would* take once a
+frontend page calls a real backend endpoint (Increment #16B onward):
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant V as Vite dev server (localhost:5173)
+    participant F as FastAPI (localhost:8000)
+
+    B->>V: GET /api/v1/monitors/inflation
+    Note over V: frontend/vite.config.ts's server.proxy --<br/>matches the "/api" prefix, forwards unchanged
+    V->>F: GET /api/v1/monitors/inflation
+    F-->>V: 200 JSON (canonical InflationMonitorResult)
+    V-->>B: 200 JSON (proxied through, unmodified)
+```
+
+Because the proxy makes every request same-origin from the browser's
+perspective, **no backend CORS configuration exists or is required**.
+Application code never hardcodes `http://localhost:8000` — it calls
+relative paths, and the proxy target
+(`frontend/vite.config.ts`'s `BACKEND_PROXY_TARGET`, default
+`http://localhost:8000`) is a Node-side, dev-only setting, never bundled
+into the browser. In production, the built frontend instead uses the
+explicit, non-secret `VITE_API_BASE_URL` (`frontend/.env.example`) to
+address the deployed API directly — no proxy exists outside local
+development.

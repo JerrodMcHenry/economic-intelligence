@@ -1,0 +1,20 @@
+import { Route, Routes } from "react-router-dom";
+
+import { AppShell } from "./layouts/AppShell";
+import { InflationPage } from "./pages/Inflation";
+import { NotFoundPage } from "./pages/NotFound";
+import { OverviewPage } from "./pages/Overview";
+
+export function App() {
+  return (
+    <Routes>
+      <Route element={<AppShell />}>
+        <Route index element={<OverviewPage />} />
+        <Route path="inflation" element={<InflationPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+    </Routes>
+  );
+}
+
+export default App;

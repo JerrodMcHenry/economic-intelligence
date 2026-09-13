@@ -166,6 +166,32 @@ def find_latest_common_period(primary_index: dict[date, float], confirmation_ind
     return None
 
 
+def latest_shared_observation_period(
+    primary_observations: list[Observation],
+    confirmation_observations: list[Observation],
+) -> date | None:
+    """NEW period-selection concept, defined and used only by
+    `inflation_what_changed_v1.0` (`docs/methodology/inflation-what-changed-v1.0.md`)
+    -- NOT part of `inflation_v1.0` itself, and never used by the
+    Monitor's own confirmation logic (`find_latest_common_period`,
+    above, is unmodified and continues to serve it).
+
+    The latest calendar month for which BOTH Core PCE and Core CPI have
+    ANY observation row, regardless of classifiability -- deliberately
+    weaker than `find_latest_common_period`, which requires both sides
+    to already have a VALID canonical state. Because "valid state"
+    implies "observation exists" but not the reverse,
+    `find_latest_common_period(...) <= latest_shared_observation_period(...)`
+    always. This is pure date-set arithmetic over the same two
+    observation lists already fetched elsewhere; it introduces no new
+    formula and requires no repository change.
+    """
+    primary_dates = {obs.date for obs in primary_observations}
+    confirmation_dates = {obs.date for obs in confirmation_observations}
+    shared = primary_dates & confirmation_dates
+    return max(shared) if shared else None
+
+
 # ---------------------------------------------------------------------
 # Evidence and classification
 # ---------------------------------------------------------------------
@@ -335,6 +361,33 @@ def compute_series_momentum(
     )
 
 
+def compute_series_momentum_at(
+    observations: list[Observation],
+    series_id: str,
+    calculation_period: date | None,
+    neutral_band_pp: float = NEUTRAL_BAND_PP,
+) -> SeriesMomentumResult:
+    """One series' canonical momentum result at an EXPLICIT
+    `calculation_period` -- never searched for. The primitive
+    `inflation_what_changed_v1.0` needs for its own, observation-based
+    anchors (as opposed to `compute_series_momentum`'s "latest valid"
+    search, which the Monitor uses). `latest_observation_period`/
+    `latest_valid_state_period` are still reported on the result
+    (informational, per `inflation_v1.0`'s existing
+    `SeriesMomentumResult` contract) but do not influence which period
+    is actually classified here -- that is entirely the caller's
+    decision. Delegates to the exact same `classify_period` primitive
+    `compute_series_momentum` uses; `calculation_period=None` yields
+    `INSUFFICIENT_DATA` with no evidence, exactly as `classify_period`
+    already defines."""
+    index = build_index(observations)
+    latest_observation_period = latest_observation_date(observations)
+    latest_valid_state_period = find_latest_valid_state_period(index)
+    return classify_period(
+        index, series_id, calculation_period, latest_observation_period, latest_valid_state_period, neutral_band_pp
+    )
+
+
 def classify_confirmation_relationship(
     primary_state: InflationState | None, confirmation_state: InflationState | None
 ) -> ConfirmationRelationship:
@@ -415,17 +468,45 @@ def compute_confirmation(
     )
 
 
-def compute_target(
-    observations: list[Observation],
-    fed_objective_percent: float = FED_OBJECTIVE_PERCENT,
+def compute_confirmation_at(
+    primary_observations: list[Observation],
+    confirmation_observations: list[Observation],
+    calculation_period: date | None,
+    neutral_band_pp: float = NEUTRAL_BAND_PP,
+) -> tuple[SeriesMomentumResult, SeriesMomentumResult, ConfirmationRelationship]:
+    """Core PCE's and Core CPI's canonical momentum, both at the exact
+    SAME explicit `calculation_period`, plus the resulting relationship
+    -- the primitive `inflation_what_changed_v1.0`'s confirmation
+    section needs. Never a mismatched pair: both `classify_period`
+    calls (via `compute_series_momentum_at`) receive the identical
+    `calculation_period`. This function does not select which period
+    to evaluate -- normally the caller supplies
+    `latest_shared_observation_period(...)` or the exact calendar month
+    before it; `calculation_period=None` (no shared anchor at all)
+    propagates straight through to two `INSUFFICIENT_DATA` results and
+    an `UNAVAILABLE` relationship, via the same primitives used
+    everywhere else -- no special-casing needed here."""
+    primary_state = compute_series_momentum_at(primary_observations, PRIMARY_SERIES_ID, calculation_period, neutral_band_pp)
+    confirmation_state = compute_series_momentum_at(
+        confirmation_observations, CONFIRMATION_SERIES_ID, calculation_period, neutral_band_pp
+    )
+    relationship = classify_confirmation_relationship(primary_state.state, confirmation_state.state)
+    return primary_state, confirmation_state, relationship
+
+
+def _build_target_result(
+    index: dict[date, float],
+    period: date | None,
+    fed_objective_percent: float,
 ) -> TargetResult:
-    """Headline PCE YoY vs. the Fed's longer-run objective. No
-    categorical target state -- the numeric gap is the canonical
-    target-relative output. `available=False`/nulls if `r_12m` cannot
-    be calculated at any period in the supported history; never
-    substitutes CPI."""
-    index = build_index(observations)
-    period = find_latest_period_with_valid_12m(index)
+    """Shared assembly for `compute_target`/`compute_target_at`: given
+    an index and an ALREADY-DECIDED period (found by search, or
+    supplied explicitly by a caller), build the `TargetResult`.
+    `period=None` yields an unavailable result directly -- never
+    fabricates a period to anchor to. Factored out so the target-gap
+    formula (`headline_pce_yoy - fed_objective_percent`) and evidence
+    construction exist in exactly one place, regardless of which
+    period-selection strategy chose `period`."""
     if period is None:
         return TargetResult(
             calculation_period=None,
@@ -450,6 +531,36 @@ def compute_target(
     )
 
 
+def compute_target(
+    observations: list[Observation],
+    fed_objective_percent: float = FED_OBJECTIVE_PERCENT,
+) -> TargetResult:
+    """Headline PCE YoY vs. the Fed's longer-run objective, at the
+    LATEST period for which `r_12m` is calculable. No categorical
+    target state -- the numeric gap is the canonical target-relative
+    output. `available=False`/nulls if `r_12m` cannot be calculated at
+    any period in the supported history; never substitutes CPI."""
+    index = build_index(observations)
+    period = find_latest_period_with_valid_12m(index)
+    return _build_target_result(index, period, fed_objective_percent)
+
+
+def compute_target_at(
+    observations: list[Observation],
+    calculation_period: date | None,
+    fed_objective_percent: float = FED_OBJECTIVE_PERCENT,
+) -> TargetResult:
+    """Target evidence at an EXPLICIT `calculation_period` -- never
+    searched for. The primitive `inflation_what_changed_v1.0`'s target
+    and headline-PCE sections need (as opposed to `compute_target`'s
+    "latest valid" search, which the Monitor uses).
+    `calculation_period=None` yields an unavailable result directly,
+    via the same `_build_target_result` assembly `compute_target` uses
+    -- no duplicated target-gap formula."""
+    index = build_index(observations)
+    return _build_target_result(index, calculation_period, fed_objective_percent)
+
+
 def compute_headline_context(
     headline_pce_observations: list[Observation],
     headline_cpi_observations: list[Observation],
@@ -462,6 +573,111 @@ def compute_headline_context(
     return HeadlineContextResult(
         headline_pce=compute_series_momentum(headline_pce_observations, TARGET_SERIES_ID, neutral_band_pp),
         headline_cpi=compute_series_momentum(headline_cpi_observations, HEADLINE_CPI_SERIES_ID, neutral_band_pp),
+    )
+
+
+# ---------------------------------------------------------------------
+# What Changed period selection + exact-period construction
+# (inflation_what_changed_v1.0 -- docs/methodology/inflation-what-changed-v1.0.md)
+#
+# These combine period SELECTION (this contract's own, e.g.
+# latest_observation_period / latest_shared_observation_period) with
+# exact-period EVALUATION (inflation_v1.0's existing, unmodified
+# primitives above) -- both legitimately belong to the inflation
+# methodology/construction layer per the frozen What Changed contract,
+# which explicitly reserves "zero formula knowledge" for the separate
+# pure comparator (app.domain.inflation_what_changed) alone. Nothing
+# below is reused by, or changes the behavior of, inflation_v1.0's own
+# "latest" functions above.
+# ---------------------------------------------------------------------
+
+
+def month_over_month_series_momentum(
+    observations: list[Observation],
+    series_id: str,
+    neutral_band_pp: float = NEUTRAL_BAND_PP,
+) -> tuple[date | None, date | None, SeriesMomentumResult | None, SeriesMomentumResult | None]:
+    """The exact period pair + exact-period evidence
+    `inflation_what_changed_v1.0` needs for one ordinary series
+    (primary momentum, headline PCE, or headline CPI):
+    `current_period` = this series' own `latest_observation_period`
+    (a row exists, regardless of validity -- never
+    `latest_valid_state_period`); `previous_period` = the exact
+    calendar month before it, never searched. Returns
+    `(previous_period, current_period, previous_evidence,
+    current_evidence)` -- all four `None` only when the series has no
+    observation at all."""
+    current_period = latest_observation_date(observations)
+    if current_period is None:
+        return None, None, None, None
+    previous_period = month_before(current_period, 1)
+    previous_evidence = compute_series_momentum_at(observations, series_id, previous_period, neutral_band_pp)
+    current_evidence = compute_series_momentum_at(observations, series_id, current_period, neutral_band_pp)
+    return previous_period, current_period, previous_evidence, current_evidence
+
+
+def month_over_month_target(
+    observations: list[Observation],
+    fed_objective_percent: float = FED_OBJECTIVE_PERCENT,
+) -> tuple[date | None, date | None, TargetResult | None, TargetResult | None]:
+    """The exact period pair + exact-period evidence
+    `inflation_what_changed_v1.0`'s target section needs.
+    `current_period` = Headline PCE's own `latest_observation_period`;
+    `previous_period` = the exact calendar month before it, never
+    searched."""
+    current_period = latest_observation_date(observations)
+    if current_period is None:
+        return None, None, None, None
+    previous_period = month_before(current_period, 1)
+    previous_evidence = compute_target_at(observations, previous_period, fed_objective_percent)
+    current_evidence = compute_target_at(observations, current_period, fed_objective_percent)
+    return previous_period, current_period, previous_evidence, current_evidence
+
+
+def month_over_month_confirmation(
+    primary_observations: list[Observation],
+    confirmation_observations: list[Observation],
+    neutral_band_pp: float = NEUTRAL_BAND_PP,
+) -> tuple[
+    date | None,
+    date | None,
+    SeriesMomentumResult | None,
+    SeriesMomentumResult | None,
+    ConfirmationRelationship | None,
+    SeriesMomentumResult | None,
+    SeriesMomentumResult | None,
+    ConfirmationRelationship | None,
+]:
+    """The exact period pair + exact-period evidence
+    `inflation_what_changed_v1.0`'s confirmation section needs.
+    `current_confirmation_period` = `latest_shared_observation_period`
+    (defined above -- NEVER `inflation_v1.0`'s own
+    `latest_common_period`); `previous_confirmation_period` = the exact
+    calendar month before it, never searched. Returns
+    `(previous_period, current_period, previous_primary_state,
+    previous_confirmation_state, previous_relationship,
+    current_primary_state, current_confirmation_state,
+    current_relationship)` -- all eight `None` only when Core PCE and
+    Core CPI share no observation date anywhere in history."""
+    current_period = latest_shared_observation_period(primary_observations, confirmation_observations)
+    if current_period is None:
+        return None, None, None, None, None, None, None, None
+    previous_period = month_before(current_period, 1)
+    previous_primary, previous_confirmation, previous_relationship = compute_confirmation_at(
+        primary_observations, confirmation_observations, previous_period, neutral_band_pp
+    )
+    current_primary, current_confirmation, current_relationship = compute_confirmation_at(
+        primary_observations, confirmation_observations, current_period, neutral_band_pp
+    )
+    return (
+        previous_period,
+        current_period,
+        previous_primary,
+        previous_confirmation,
+        previous_relationship,
+        current_primary,
+        current_confirmation,
+        current_relationship,
     )
 
 

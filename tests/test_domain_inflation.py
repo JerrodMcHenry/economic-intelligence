@@ -33,15 +33,22 @@ from app.domain.inflation import (
     classify_period,
     classify_state,
     compute_confirmation,
+    compute_confirmation_at,
     compute_headline_context,
     compute_inflation_monitor_result,
     compute_series_momentum,
+    compute_series_momentum_at,
     compute_target,
+    compute_target_at,
     find_latest_common_period,
     find_latest_period_with_valid_12m,
     find_latest_valid_state_period,
     latest_observation_date,
+    latest_shared_observation_period,
     month_before,
+    month_over_month_confirmation,
+    month_over_month_series_momentum,
+    month_over_month_target,
 )
 from app.models.inflation import (
     CONFIRMATION_SERIES_ID,
@@ -1114,3 +1121,290 @@ class TestHeadlineContext:
         cpi_obs = [_obs(date(2024, 1, 1), 200.0)]
         result = compute_headline_context(pce_obs, cpi_obs)
         assert set(type(result).model_fields.keys()) == {"headline_pce", "headline_cpi"}
+
+
+# ---------------------------------------------------------------------
+# inflation_what_changed_v1.0's period-selection + exact-period
+# construction primitives -- these still live in app.domain.inflation
+# (pure inflation_v1.0 construction, per the frozen What Changed
+# contract's own architecture note), reusing classify_period/
+# _metric_evidence/classify_confirmation_relationship unmodified.
+# ---------------------------------------------------------------------
+
+
+class TestComputeSeriesMomentumAt:
+    """`compute_series_momentum_at` evaluates EXACTLY the given period
+    -- never searches, unlike `compute_series_momentum`."""
+
+    FULL = [
+        _obs(date(2024, 1, 1), 100.0),
+        _obs(date(2024, 7, 1), 103.0),
+        _obs(date(2024, 10, 1), 106.0),
+        _obs(date(2025, 1, 1), 110.0),
+    ]
+
+    def test_evaluates_exactly_the_requested_period_even_if_insufficient(self):
+        # 2024-07 lacks its own t-12 (2023-07) -- INSUFFICIENT_DATA there,
+        # even though 2025-01 (the series' actual latest valid period) exists.
+        result = compute_series_momentum_at(self.FULL, "PCEPILFE", date(2024, 7, 1))
+        assert result.calculation_period == date(2024, 7, 1)
+        assert result.state == "INSUFFICIENT_DATA"
+
+    def test_never_substitutes_latest_valid_state_period(self):
+        result = compute_series_momentum_at(self.FULL, "PCEPILFE", date(2024, 7, 1))
+        assert result.calculation_period != date(2025, 1, 1)
+        # but the series-level metadata fields still correctly report the true latest:
+        assert result.latest_valid_state_period == date(2025, 1, 1)
+        assert result.latest_observation_period == date(2025, 1, 1)
+
+    def test_none_period_yields_insufficient_data(self):
+        result = compute_series_momentum_at(self.FULL, "PCEPILFE", None)
+        assert result.calculation_period is None
+        assert result.state == "INSUFFICIENT_DATA"
+
+    def test_matches_classify_period_exactly(self):
+        """No duplicated formula: compute_series_momentum_at is a thin
+        wrapper, byte-for-byte identical to classify_period given the
+        same index/period."""
+        index = build_index(self.FULL)
+        direct = classify_period(index, "PCEPILFE", date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
+        via_at = compute_series_momentum_at(self.FULL, "PCEPILFE", date(2025, 1, 1))
+        assert direct == via_at
+
+
+class TestComputeTargetAt:
+    FULL = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 110.0)]
+
+    def test_evaluates_exactly_the_requested_period(self):
+        result = compute_target_at(self.FULL, date(2025, 1, 1))
+        expected_yoy = (110.0 / 100.0 - 1) * 100
+        assert result.headline_pce_yoy == pytest.approx(expected_yoy)
+        assert result.available is True
+
+    def test_insufficient_at_a_period_lacking_t12(self):
+        result = compute_target_at(self.FULL, date(2024, 6, 1))
+        assert result.available is False
+        assert result.headline_pce_yoy is None
+        assert result.target_gap_pp is None
+
+    def test_none_period_is_unavailable(self):
+        result = compute_target_at(self.FULL, None)
+        assert result.available is False
+        assert result.calculation_period is None
+
+    def test_no_duplicated_target_gap_formula(self):
+        """compute_target and compute_target_at share _build_target_result
+        -- verified indirectly: both report the identical target_gap_pp
+        for the same period/data."""
+        latest = compute_target(self.FULL)
+        at_same_period = compute_target_at(self.FULL, latest.calculation_period)
+        assert latest == at_same_period
+
+
+class TestLatestSharedObservationPeriod:
+    """The NEW inflation_what_changed_v1.0-only period-selection
+    concept -- deliberately weaker than find_latest_common_period (any
+    observation row vs. a VALID canonical state)."""
+
+    def test_latest_shared_when_both_have_the_same_latest_row(self):
+        primary = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 110.0)]
+        confirmation = [_obs(date(2024, 1, 1), 50.0), _obs(date(2025, 1, 1), 55.0)]
+        assert latest_shared_observation_period(primary, confirmation) == date(2025, 1, 1)
+
+    def test_uses_the_intersection_not_either_series_own_max(self):
+        primary = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 2, 1), 111.0)]  # latest: 2025-02
+        confirmation = [_obs(date(2024, 1, 1), 50.0), _obs(date(2025, 1, 1), 55.0)]  # latest: 2025-01
+        # Neither series' own max (2025-02 / 2025-01) is shared with the other --
+        # the only shared date is 2024-01:
+        assert latest_shared_observation_period(primary, confirmation) == date(2024, 1, 1)
+
+    def test_row_existence_is_sufficient_even_with_a_null_value(self):
+        primary = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 110.0)]
+        confirmation = [_obs(date(2024, 1, 1), 50.0), _obs(date(2025, 1, 1), None)]  # row exists, value null
+        assert latest_shared_observation_period(primary, confirmation) == date(2025, 1, 1)
+
+    def test_no_shared_dates_at_all(self):
+        primary = [_obs(date(2024, 1, 1), 100.0)]
+        confirmation = [_obs(date(2010, 1, 1), 50.0)]
+        assert latest_shared_observation_period(primary, confirmation) is None
+
+    def test_never_earlier_than_find_latest_common_period(self):
+        """Structural invariant the frozen contract states explicitly:
+        latest_common_period <= latest_shared_observation_period always,
+        since a VALID state requires an observation to exist, but not
+        the reverse. Uses full monthly coverage (2024-01 .. 2025-01) so
+        every month has a genuine 12-month trailing window, except the
+        deliberately null-valued final confirmation row."""
+        months = [month_before(date(2025, 1, 1), -i) for i in range(-24, 1)]  # 2023-01 .. 2025-01
+        primary = [_obs(d, 100.0 + i * 0.5) for i, d in enumerate(months)]
+        confirmation = [_obs(d, 50.0 + i * 0.2) for i, d in enumerate(months) if d != date(2025, 1, 1)]
+        confirmation_partial = confirmation + [_obs(date(2025, 1, 1), None)]  # row exists, value null -> INSUFFICIENT_DATA there
+
+        common = find_latest_common_period(build_index(primary), build_index(confirmation_partial))
+        shared = latest_shared_observation_period(primary, confirmation_partial)
+        assert shared == date(2025, 1, 1)  # a row exists for confirmation at 2025-01 (even though null)
+        assert common == date(2024, 12, 1)  # but that row isn't VALID, so the Monitor's own anchor stays earlier
+        assert common < shared
+
+
+class TestComputeConfirmationAt:
+    PRIMARY = [
+        _obs(date(2024, 1, 1), 100.0),
+        _obs(date(2024, 7, 1), 103.0),
+        _obs(date(2024, 10, 1), 106.0),
+        _obs(date(2025, 1, 1), 110.0),
+    ]
+    CONFIRMATION = [
+        _obs(date(2024, 1, 1), 50.0),
+        _obs(date(2024, 7, 1), 51.5),
+        _obs(date(2024, 10, 1), 53.0),
+        _obs(date(2025, 1, 1), 55.0),
+    ]
+
+    def test_both_series_evaluated_at_the_exact_same_period(self):
+        primary_state, confirmation_state, relationship = compute_confirmation_at(
+            self.PRIMARY, self.CONFIRMATION, date(2025, 1, 1)
+        )
+        assert primary_state.calculation_period == confirmation_state.calculation_period == date(2025, 1, 1)
+        assert relationship in ("CONFIRMS", "DIVERGES", "INCONCLUSIVE", "UNAVAILABLE")
+
+    def test_worked_example_from_frozen_spec_confirms_becomes_unavailable(self):
+        """The frozen contract's own motivating worked example: Core CPI
+        has an observation in the current month but its t-3 endpoint is
+        missing -- the relationship there is UNAVAILABLE even though an
+        earlier period (with full history) would CONFIRM."""
+        primary = [
+            _obs(date(2024, 1, 1), 100.0),
+            _obs(date(2024, 4, 1), 100.5),
+            _obs(date(2024, 7, 1), 101.0),
+            _obs(date(2024, 10, 1), 101.5),
+            _obs(date(2025, 1, 1), 102.0),  # July-equivalent: full history
+            _obs(date(2025, 2, 1), 102.2),  # August-equivalent: full history too (primary stays valid)
+        ]
+        confirmation = [
+            _obs(date(2024, 1, 1), 50.0),
+            _obs(date(2024, 4, 1), 50.2),
+            _obs(date(2024, 7, 1), 50.4),
+            _obs(date(2024, 10, 1), 50.6),
+            _obs(date(2025, 1, 1), 50.8),
+            # 2025-02's t-3 endpoint (2024-11) is missing entirely -> INSUFFICIENT_DATA at 2025-02
+        ]
+        confirmation_with_gap = confirmation + [_obs(date(2025, 2, 1), 51.0)]
+
+        _, _, relationship_at_july_equivalent = compute_confirmation_at(primary, confirmation_with_gap, date(2025, 1, 1))
+        _, confirmation_state_at_august_equivalent, relationship_at_august_equivalent = compute_confirmation_at(
+            primary, confirmation_with_gap, date(2025, 2, 1)
+        )
+        assert relationship_at_july_equivalent != "UNAVAILABLE"
+        assert confirmation_state_at_august_equivalent.state == "INSUFFICIENT_DATA"
+        assert relationship_at_august_equivalent == "UNAVAILABLE"
+
+    def test_none_period_yields_unavailable(self):
+        primary_state, confirmation_state, relationship = compute_confirmation_at(self.PRIMARY, self.CONFIRMATION, None)
+        assert primary_state.state == "INSUFFICIENT_DATA"
+        assert confirmation_state.state == "INSUFFICIENT_DATA"
+        assert relationship == "UNAVAILABLE"
+
+
+class TestMonthOverMonthSeriesMomentum:
+    def test_current_period_is_latest_observation_not_latest_valid(self):
+        """The exact bug this contract was designed to fix: a series
+        whose true latest observation is INSUFFICIENT_DATA must still
+        be selected as `current_period` -- never silently resolved back
+        to an earlier valid period."""
+        observations = [
+            _obs(date(2024, 1, 1), 100.0),
+            _obs(date(2024, 7, 1), 103.0),
+            _obs(date(2024, 10, 1), 106.0),
+            _obs(date(2025, 1, 1), 110.0),  # July-equivalent: valid
+            _obs(date(2025, 2, 1), None),  # August-equivalent: row exists, value null -> INSUFFICIENT_DATA
+        ]
+        previous_period, current_period, previous_evidence, current_evidence = month_over_month_series_momentum(
+            observations, "PCEPILFE"
+        )
+        assert current_period == date(2025, 2, 1)  # NOT date(2025, 1, 1)
+        assert previous_period == date(2025, 1, 1)
+        assert current_evidence.state == "INSUFFICIENT_DATA"
+        assert previous_evidence.state != "INSUFFICIENT_DATA"
+
+    def test_no_observations_at_all_returns_all_none(self):
+        result = month_over_month_series_momentum([], "PCEPILFE")
+        assert result == (None, None, None, None)
+
+    def test_previous_is_exact_calendar_month_never_a_search(self):
+        observations = [
+            _obs(date(2024, 1, 1), 100.0),
+            _obs(date(2025, 1, 1), 110.0),
+            # nothing at 2024-12 -- previous_period must be exactly 2024-12, not a search back to 2024-01
+        ]
+        previous_period, current_period, previous_evidence, current_evidence = month_over_month_series_momentum(
+            observations, "PCEPILFE"
+        )
+        assert current_period == date(2025, 1, 1)
+        assert previous_period == date(2024, 12, 1)
+        assert previous_evidence.state == "INSUFFICIENT_DATA"  # 2024-12 has no observation at all
+
+
+class TestMonthOverMonthTarget:
+    def test_current_period_is_latest_observation(self):
+        observations = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 110.0), _obs(date(2025, 2, 1), None)]
+        previous_period, current_period, previous_evidence, current_evidence = month_over_month_target(observations)
+        assert current_period == date(2025, 2, 1)
+        assert current_evidence.available is False
+        assert previous_evidence.available is True
+
+    def test_empty_observations_returns_all_none(self):
+        assert month_over_month_target([]) == (None, None, None, None)
+
+
+class TestMonthOverMonthConfirmation:
+    def test_anchors_to_latest_shared_observation_not_latest_common_period(self):
+        primary = [
+            _obs(date(2024, 1, 1), 100.0),
+            _obs(date(2024, 7, 1), 103.0),
+            _obs(date(2024, 10, 1), 106.0),
+            _obs(date(2025, 1, 1), 110.0),
+        ]
+        confirmation = [
+            _obs(date(2024, 1, 1), 50.0),
+            _obs(date(2024, 7, 1), 51.5),
+            _obs(date(2024, 10, 1), 53.0),
+            _obs(date(2025, 1, 1), None),  # row exists, value null
+        ]
+        (
+            previous_period,
+            current_period,
+            previous_primary,
+            previous_confirmation,
+            previous_relationship,
+            current_primary,
+            current_confirmation,
+            current_relationship,
+        ) = month_over_month_confirmation(primary, confirmation)
+
+        assert current_period == date(2025, 1, 1)  # NOT the Monitor's own latest_common_period (2024-10)
+        assert current_relationship == "UNAVAILABLE"
+        assert current_confirmation.state == "INSUFFICIENT_DATA"
+        assert previous_period == date(2024, 12, 1)
+
+    def test_no_shared_observation_returns_all_none(self):
+        primary = [_obs(date(2024, 1, 1), 100.0)]
+        confirmation = [_obs(date(2010, 1, 1), 50.0)]
+        result = month_over_month_confirmation(primary, confirmation)
+        assert result == (None, None, None, None, None, None, None, None)
+
+    def test_both_series_at_exact_same_period_never_mismatched(self):
+        primary = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 110.0)]
+        confirmation = [_obs(date(2024, 1, 1), 50.0), _obs(date(2025, 1, 1), 55.0)]
+        (
+            previous_period,
+            current_period,
+            previous_primary,
+            previous_confirmation,
+            previous_relationship,
+            current_primary,
+            current_confirmation,
+            current_relationship,
+        ) = month_over_month_confirmation(primary, confirmation)
+        assert current_primary.calculation_period == current_confirmation.calculation_period == current_period
+        assert previous_primary.calculation_period == previous_confirmation.calculation_period == previous_period

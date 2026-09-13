@@ -12,3 +12,15 @@ __pycache__/
 # itself, its tests, and STUDY_RESULTS.md ARE tracked.
 research/inflation_momentum/data/
 research/inflation_momentum/outputs/
+
+# Frontend (frontend/, Increment #16A): installed packages and the
+# production build are both fully regenerable (`npm install` /
+# `npm run build`) -- not committed. frontend/.env.example IS tracked
+# (a placeholder-only template); a real frontend/.env is developer-
+# local and never committed, same discipline as the backend's own
+# .env/.env.example pair.
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/*.local
+frontend/coverage/

@@ -4717,3 +4717,422 @@ invariants (cases 12/13: the Monitor's own valid-state anchor is always
 at or before What Changed's observation-based anchor). No new ambiguity
 found. Contract remains **FROZEN**, `inflation_what_changed_v1.0`,
 version `1.0`.
+
+## Increment 015 — Deterministic Inflation "What Changed?" Engine
+
+Implements `inflation_what_changed_v1.0` (the frozen contract above)
+exactly as specified. One new, narrow, read-only endpoint:
+`GET /api/v1/monitors/inflation/changes`. No reinterpretation of the
+contract was needed; no line of `inflation_v1.0`'s existing
+classification logic was modified.
+
+### Files
+
+New: `app/domain/inflation_what_changed.py` (pure comparator, zero
+`inflation_v1.0` knowledge -- does not import `app.domain.inflation`,
+enforced by an extended architectural-independence test),
+`app/models/inflation_what_changed.py` (`InflationWhatChangedResult`
+and its five section models, `ChangeEvent` -- reuses `inflation_v1.0`'s
+own `SeriesMomentumResult`/`TargetResult` verbatim, no new economic
+type), `tests/test_domain_inflation_what_changed.py` (32 comparator
+tests), `tests/integration/test_inflation_what_changed_service.py` (12
+PostgreSQL-backed service tests), `tests/api/test_inflation_what_changed_api.py`
+(22 HTTP tests). Modified: `app/domain/inflation.py` (additive: the new
+period-selection function `latest_shared_observation_period`, the
+exact-period siblings `compute_series_momentum_at`/`compute_target_at`/
+`compute_confirmation_at`, the `month_over_month_*` orchestration
+helpers, and one small justified refactor -- `compute_target`'s
+assembly logic extracted into `_build_target_result` so
+`compute_target_at` shares it rather than duplicating the target-gap
+formula), `app/services/inflation.py` (`InflationMonitorService.get_what_changed_result`),
+`app/api/inflation.py` (the new route), `app/main.py` unchanged (same
+router, new route on it), `tests/test_domain_inflation.py` (+24 tests
+for the new domain-layer primitives), `tests/test_domain_architectural_independence.py`
+(added `app/domain/inflation_what_changed.py` to the guarded file list
+plus one dedicated test asserting it never imports
+`app.domain.inflation`), `docs/architecture/current-architecture.md`,
+`docs/architecture/request-flows.md` (Flow 24/25). One small,
+non-semantic clarification to the already-frozen
+`docs/methodology/inflation-what-changed-v1.0.md`: the "Deterministic
+change event model" section's `ChangeEvent` field list was missing an
+explicit `delta` field, even though the earlier "Metric change" section
+already required `absolute_delta` to be reported -- added `delta:
+current_value - previous_value when both numeric and available, else
+null` to make the two sections consistent; no rule changed. No ADR:
+nothing here is a new durable architectural decision beyond what the
+frozen contract and ADR-009/010/011/017 already establish.
+
+### Architecture implemented
+
+```
+persisted observations (SeriesRepository, unmodified)
+        ↓
+InflationMonitorService.get_what_changed_result (NEW method)
+        ↓
+inflation_v1.0 exact-period canonical component construction
+    (app.domain.inflation: month_over_month_series_momentum /
+     month_over_month_target / month_over_month_confirmation --
+     period SELECTION plus a call into the EXISTING classify_period /
+     _metric_evidence / classify_confirmation_relationship primitives,
+     unmodified)
+        ↓
+pure deterministic What Changed comparator
+    (app.domain.inflation_what_changed -- zero formula knowledge,
+     architecturally forbidden from importing app.domain.inflation)
+        ↓
+typed InflationWhatChangedResult
+        ↓
+GET /api/v1/monitors/inflation/changes
+```
+
+### Exact-period canonical construction
+
+The smallest clean extension identified during the freeze review turned
+out to be exactly as small as predicted: `classify_period`/
+`_metric_evidence`/`classify_confirmation_relationship` already accepted
+an explicit period with no search -- what was missing was a public,
+convenient way to call them that way. `compute_series_momentum_at`/
+`compute_target_at`/`compute_confirmation_at` are thin wrappers that
+build the index and call those existing functions directly, at a
+caller-supplied period, instead of searching for "latest valid." Zero
+formula duplication: `compute_target`'s own logic was refactored into a
+shared `_build_target_result(index, period, fed_objective_percent)`
+helper so `compute_target` (search then build) and `compute_target_at`
+(build directly) can never drift apart.
+
+### Period selection behavior
+
+Three `month_over_month_*` orchestration functions (still inside
+`app.domain.inflation` -- period selection plus construction is
+`inflation_v1.0`'s job, per the frozen contract's own architecture
+note) each: resolve `current_period` from the relevant series' own
+`latest_observation_period` (ordinary sections) or the new
+`latest_shared_observation_period` (confirmation); compute
+`previous_period` as the exact calendar month before it via the
+existing `month_before`; then evaluate both periods through the
+exact-period primitives above. No backward search anywhere in this
+path -- verified directly by a real-database integration test
+(`test_july_august_september_missing_month_never_bridged`) using a
+genuine three-month gap scenario.
+
+### `latest_shared_observation_period` implementation
+
+`{obs.date for obs in primary_observations} & {obs.date for obs in
+confirmation_observations}`, then `max()` (or `None` if empty) -- pure
+date-set arithmetic over the same two observation lists the service
+already has in memory from `_load`. No new repository method, no new
+query, no migration. Proved structurally later-than-or-equal-to
+`inflation_v1.0`'s own `find_latest_common_period` both at the
+domain-unit level (`TestLatestSharedObservationPeriod.test_never_earlier_than_find_latest_common_period`)
+and end-to-end against real Postgres
+(`test_anchors_to_latest_shared_observation_period_not_latest_common_period`,
+which reproduces the frozen contract's own worked example: Monitor
+still shows `CONFIRMS` at `latest_common_period`, while What Changed's
+later `latest_shared_observation_period` correctly shows `UNAVAILABLE`).
+
+### Comparator behavior
+
+`app/domain/inflation_what_changed.py` receives only already-computed
+`SeriesMomentumResult`/`TargetResult`/`ConfirmationRelationship` values
+and does field reads plus arithmetic/equality/membership checks --
+nothing else. Verified this is architecturally true, not just
+documented as true: a dedicated test parses the module's own AST and
+asserts it never imports `app.domain.inflation`. The pure-domain test
+suite for this module hand-constructs every evidence object directly
+from the Pydantic models (never by calling `classify_period`), proving
+the comparator is fully exercisable with zero economic construction
+code in the loop at all.
+
+### Change event model
+
+Exactly the five frozen event types (`METRIC_CHANGED`/`STATE_CHANGED`/
+`AVAILABILITY_LOST`/`AVAILABILITY_RESTORED`/`CONFIRMATION_CHANGED`), no
+interpretation-heavy ones. Deterministic ordering implemented as a pure
+three-level sort key (component, then event type, then field) against
+fixed tuples (`COMPONENT_ORDER`/`EVENT_TYPE_ORDER`/`FIELD_ORDER`) --
+never dict iteration order, database row order, or judgment.
+
+### Missing-data behavior
+
+`comparison_available` is derived solely from whether a section's
+current anchor period is non-`None` -- proven, not merely asserted, to
+never depend on whether the evidence itself classified: a `COOLING`→
+`INSUFFICIENT_DATA` comparison and an `INSUFFICIENT_DATA`→
+`INSUFFICIENT_DATA` comparison both report `comparison_available: true`
+with correctly different `changes` (an `AVAILABILITY_LOST` event vs.
+none at all). The July/August/September missing-month invariant holds
+exactly as specified: whichever month is latest-observed is always
+"current," and its immediate predecessor is always "previous" -- never
+a wider search, so a genuinely absent month can never disappear from
+the transition history by being silently bridged over.
+
+### API behavior
+
+`GET /api/v1/monitors/inflation/changes`, no request body, added
+alongside the existing `GET /api/v1/monitors/inflation` on the same
+router. Same infrastructure-error mapping as every other PostgreSQL-
+backed route (`OperationalError` → 503, `SQLAlchemyError` → 500, no
+SQL/credentials/paths/stack traces in any error body -- verified with
+the same synthetic-marker-leak test pattern as the Monitor endpoint).
+Missing economic data is a normal `200` with per-section unavailable
+evidence, never an error.
+
+### AI/FRED independence
+
+Zero AI imports anywhere in the new files (grep-confirmed and already
+covered by the existing `test_no_deterministic_route_file_imports_aiservice`
+guard, since the new route lives in the already-guarded
+`app/api/inflation.py`). Works with `OPENAI_API_KEY` unset. `FREDClient`
+construction fails fast if attempted, proven at both the service and
+HTTP layers -- never triggered by any test.
+
+### Tests
+
+Pure domain (comparator): 32, in `tests/test_domain_inflation_what_changed.py`,
+covering all 21 categories named in the increment brief plus
+`comparison_available` semantics and the no-change/no-comparison
+distinction. Pure domain (new `app.domain.inflation` primitives): +24
+in `tests/test_domain_inflation.py`. Architectural: +1 dedicated
+import-boundary test. Integration (PostgreSQL): 12, in
+`tests/integration/test_inflation_what_changed_service.py`, including
+the exact `latest_common_period`-older-than-`latest_shared_observation_period`
+scenario against a real database. HTTP: 22, in
+`tests/api/test_inflation_what_changed_api.py`. **Total new: 91.**
+
+### Verification
+
+`TEST_DATABASE_URL=... .venv/bin/pytest tests/ -q`, run twice: **604
+passed** both times (up from the pre-Increment-015 baseline of 513; all
+91 new tests are additive -- nothing existing was modified to
+accommodate this increment, apart from one pre-existing integration
+test file's own architectural guard, which this increment's own new
+test file was written to respect rather than expand: the FRED-client
+fail-fast proof for the new endpoint lives at the HTTP layer only,
+matching this repository's existing, deliberately narrow convention
+that only `test_discovery_service.py` may import `FREDClient` inside
+`tests/integration/`).
+
+### Reusable lesson
+
+A "smallest clean extension" claim made during a freeze review is worth
+re-verifying empirically at implementation time, not just trusted: the
+frozen contract predicted that `classify_period`'s existing explicit-
+period parameter would be sufficient, and it was -- but discovering
+*exactly* where the thin wrapper belonged (a `_build_target_result`
+extraction for target, not a new duplicate formula) only became obvious
+while writing the code, not while writing the specification. Freezing
+the *behavior* before implementation did its job even though the
+*exact* internal shape of the reuse was decided later, during
+implementation -- which is the correct division of labor between a
+frozen contract and the code that satisfies it.
+
+## Increment 016 (attempt) — Inflation Monitor Product UI: STOPPED
+
+Attempted per the standing "facts are sourced, calculations are
+deterministic" principle extended to the UI layer. Inspected the full
+repository before writing anything: no `package.json`, no `.tsx`/`.jsx`
+file, no `frontend/`/`web/`/`ui/`/`client/` directory, no frontend
+dependency in `pyproject.toml`, no `StaticFiles`/`Jinja2Templates`/CORS
+middleware in `app/main.py`, and zero mentions of any frontend
+framework anywhere in 18 ADRs or the architecture docs. Confirmed this
+was a genuine absence, not an oversight, before stopping. Zero files
+were changed. Reported the smallest recommended foundation (React +
+Vite + TypeScript, grounded in this project's own demonstrated
+preferences — typed contracts, minimal justified tooling, no premature
+abstraction) as a recommendation, explicitly not a decision, per the
+task's own instruction not to introduce a framework unilaterally.
+
+## Increment 016A — Frontend Foundation
+
+The architecture decision from the stopped attempt above is now made
+explicitly: **React + Vite + TypeScript + Tailwind CSS + Vitest + React
+Testing Library**, no Next.js. This entry records building the
+foundation only — no Inflation product UI (that is Increment #16B).
+
+### Why this stack
+
+FastAPI already owns every backend/application concern this project
+has (routing, validation, persistence, deterministic domain logic) —
+there is no server-rendering or backend-routing responsibility for a
+second framework to take on, so Next.js was rejected as unneeded
+complexity for what is fundamentally a thin, interactive presentation
+client. Vite provides that thin client build tool. TypeScript gives the
+API-contract boundary real type safety. Tailwind gives a lightweight
+styling foundation without inventing a component-library/design-token
+system this project doesn't need yet. Vitest + React Testing Library
+reuse Vite's own toolchain for tests rather than adding a second,
+separately-configured runner. **Frontend is non-canonical. Backend owns
+all economic truth** — restated here as the explicit architectural
+principle this and every future frontend increment must preserve.
+
+### Environment and versions
+
+Node v26.7.0, npm 11.19.0 (both far above Vite's minimum requirements;
+no compatibility issue found). Scaffolded via `npm create vite@latest
+frontend -- --template react-ts`, then added Tailwind/React Router/
+Vitest/RTL explicitly. Installed versions: React 19.3.0, Vite 8.3.0,
+TypeScript 6.0.3, Tailwind CSS 4.3.3 (with its official `@tailwindcss/vite`
+plugin — no separate `tailwind.config.js`/`postcss.config.js` needed for
+v4's CSS-based configuration), React Router 7.18.3, Vitest 5.0.0,
+`@testing-library/react` 16.3.3. The scaffold's own linter, `oxlint`
+1.82.0 (a single Rust binary, no plugin ecosystem), was kept rather than
+adding ESLint — already minimal, already established by the template
+itself.
+
+### Runtime dependencies added, and why
+
+- `react`/`react-dom` — the framework itself.
+- `react-router-dom` — client-side routing; justified now because the
+  product will soon have multiple pages (Inflation, and later
+  dimensions), not introduced speculatively for a single route.
+- `@tailwindcss/vite`/`tailwindcss` — the styling foundation.
+
+No state-management library, no data-fetching library (React Query/SWR),
+no chart library, no component library, no analytics SDK, no
+authentication library — none demonstrably required yet; each would be
+premature for a two-endpoint, one-page-to-come foundation.
+
+### Directory structure
+
+```
+frontend/
+  src/
+    api/         client.ts (apiGet<T>), errors.ts (ApiError)
+    components/  PageContainer.tsx
+    layouts/     AppShell.tsx
+    pages/       Overview.tsx, Inflation.tsx (placeholder), NotFound.tsx
+    styles/      globals.css
+    test/        setup.ts, no-economic-logic.test.ts
+    App.tsx, App.test.tsx, main.tsx
+  public/favicon.svg
+  index.html, package.json, tsconfig*.json, vite.config.ts, .env.example
+```
+
+Only the primitives clearly justified now were created — no `Card`,
+`Badge`, `LoadingSkeleton`, or `ErrorMessage` component yet; those
+belong to whichever increment first needs them (likely #16B), per the
+brief's explicit instruction to avoid speculative component-library
+engineering.
+
+### API client foundation
+
+`apiGet<T>(path)` (`frontend/src/api/client.ts`): resolves
+`VITE_API_BASE_URL` (empty string in development, so requests use
+relative paths against the dev-proxy origin), issues the request,
+verifies `response.ok`, parses JSON. Raises `ApiError`
+(`frontend/src/api/errors.ts`) with `kind: "network"` (fetch itself
+threw) or `kind: "http"` (non-2xx status) — never for a successful
+response, regardless of its body. This preserves, at the frontend
+boundary, the exact infrastructure-failure-vs-economic-unavailability
+distinction the backend methodology documents already establish: a 200
+response containing `INSUFFICIENT_DATA`/`UNAVAILABLE`/
+`comparison_available: false` is a normal, successfully-parsed value,
+never converted into an error. No inflation-specific types or requests
+exist yet, per the brief's explicit "prefer waiting for #16B."
+
+### Local development proxy
+
+`frontend/vite.config.ts`'s `server.proxy` forwards `/api/*` to
+`http://localhost:8000` by default (FastAPI's `uvicorn` default port),
+overridable via a plain `BACKEND_PROXY_TARGET` environment variable
+read only by the Node-side Vite config process — never a `VITE_`-
+prefixed variable, so it is never bundled into the browser. Verified
+directly, not just configured: started both `uvicorn app.main:app` and
+the Vite dev server, confirmed `GET http://localhost:5173/api/v1/monitors/inflation`
+returns the real backend's canonical JSON through the proxy unchanged,
+then stopped both processes. Because the proxy makes every request
+same-origin from the browser's perspective, **no backend CORS
+configuration was added** — `app/main.py` is completely untouched.
+
+### Application shell and routing
+
+`AppShell` (header with the product name and primary navigation, a
+skip-link, a `<main>` landmark) wraps two real routes — `/` (Overview,
+a "frontend foundation ready" placeholder) and `/inflation` (a
+placeholder that explicitly does not fetch or render any inflation
+data) — plus a catch-all not-found route, via React Router's nested-route
+layout pattern. `PageContainer` is the one reusable max-width/padding
+primitive every page's content sits inside.
+
+### Styling foundation
+
+`frontend/src/styles/globals.css`: Tailwind's `@import "tailwindcss";`
+plus a handful of global rules (body background/text color, an explicit
+`:focus-visible` outline). No custom `@theme` token extension — Tailwind's
+own neutral palette is used directly and consistently in components,
+deliberately avoiding "arbitrary giant theme/configuration systems."
+Economic-state color/iconography (COOLING/STABLE/HEATING/MIXED/
+INSUFFICIENT_DATA) is explicitly deferred to Increment #16B — nothing
+in this foundation encodes economic meaning into color.
+
+### No economic logic in the frontend (architectural guard)
+
+`frontend/src/test/no-economic-logic.test.ts` scans every non-test
+`.ts`/`.tsx` file under `frontend/src/` for three deliberately narrow,
+high-signal patterns: the compounded-annualization exponent shape
+(`** (12 / n)`), its `Math.pow` equivalent, and the frozen 0.10
+percentage-point neutral-band boundary arithmetic. Currently passes by
+verifying genuine absence across the real foundation source tree (no
+inflation code exists yet to false-negative against) — not a
+placeholder assertion. Documented as a durable regression guard to be
+extended alongside whichever inflation-specific display components
+Increment #16B adds.
+
+### Tests, typecheck, lint, build
+
+24 frontend tests across three files (`App.test.tsx`: shell/routing/
+navigation/not-found, 9 tests; `api/client.test.ts`: success parsing,
+network vs. HTTP failure, no-retry, economic-unavailable-response
+handling, 5 tests; `test/no-economic-logic.test.ts`: the guard above, 10
+tests covering the discovered source files). One real bug caught and
+fixed while writing these: React Testing Library's automatic post-test
+DOM cleanup only self-registers when it finds an ambient `afterEach`
+(Vitest/Jest "globals" mode); this project deliberately runs Vitest
+*without* `globals: true` (explicit imports over ambient test globals,
+matching the backend's own explicitness convention), so cleanup had to
+be registered explicitly in `frontend/src/test/setup.ts` — without it,
+renders leaked across tests within a file and multi-element query
+errors appeared. `npx vitest run`, run twice: **24 passed** both times.
+`npm run typecheck` (`tsc -b --noEmit`, `strict: true` plus
+`noUncheckedIndexedAccess` explicitly set in `tsconfig.app.json` —
+`exactOptionalPropertyTypes` was tried and reverted: it produced
+friction against React Router's own (correct) optional-prop types
+rather than catching a real bug in this project's code): clean, zero
+errors. `npm run lint` (`oxlint`): clean, exit 0. `npm run build`
+(`tsc -b && vite build`): succeeds — `dist/` output ~262 KB JS / ~10 KB
+CSS before gzip.
+
+### Backend verification
+
+`TEST_DATABASE_URL=... .venv/bin/pytest tests/ -q`: **604 passed**,
+unchanged from the pre-#16A baseline — no backend file was touched by
+this increment.
+
+### Security
+
+No `.env` contents were read. No secret value appears anywhere in
+`frontend/` — `frontend/.env.example` documents only the non-secret
+`VITE_API_BASE_URL` (with an explicit comment that everything
+`VITE_`-prefixed is bundled into client-visible JavaScript and must
+never hold a secret), and `frontend/vite.config.ts` reads only
+`BACKEND_PROXY_TARGET`, a plain local-dev routing setting.
+
+### Deferred to Increment #16B
+
+The entire Inflation Monitor product UI: primary Core PCE state, What
+Changed, target/level, confirmation, headline context, evidence
+disclosure — all consuming `GET /api/v1/monitors/inflation` and
+`.../inflation/changes` for real, preserving their independent period
+semantics rather than flattening every component onto one page-wide
+date. No chart library, no AI, no live FRED calls exist anywhere in the
+frontend yet.
+
+### Reusable lesson
+
+A frontend "no economic logic" guard is only meaningful if it can
+genuinely fail — writing it against an empty foundation (nothing to
+false-negative on) still has value as a *documented commitment* and a
+*mechanism already wired in*, but its real test comes the moment #16B
+adds the first inflation display component. Recording that expectation
+explicitly here (and in `docs/architecture/current-architecture.md`) is
+itself part of making the guard durable rather than decorative.

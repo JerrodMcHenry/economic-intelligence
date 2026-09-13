@@ -1,0 +1,25 @@
+/* Global visual foundation for Economic Intelligence.
+ *
+ * Deliberately small: Tailwind's own default neutral palette and
+ * spacing scale are used directly in components rather than an
+ * extended/custom `@theme` -- there is nothing product-specific to
+ * encode yet. Economic-state color/iconography (COOLING/STABLE/
+ * HEATING/MIXED/INSUFFICIENT_DATA) is explicitly deferred to the
+ * Inflation Monitor UI (#16B) -- see docs/architecture/current-architecture.md.
+ */
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-neutral-50 text-neutral-900 antialiased;
+}
+
+/* Visible keyboard focus everywhere -- state must never be conveyed by
+   color alone, and that starts with focus itself being unmistakable. */
+:focus-visible {
+  outline: 2px solid #171717;
+  outline-offset: 2px;
+}

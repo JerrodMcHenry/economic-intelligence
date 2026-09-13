@@ -18,6 +18,7 @@ DOMAIN_FILES = [
     Path("app/domain/transformations.py"),
     Path("app/domain/analysis.py"),
     Path("app/domain/inflation.py"),
+    Path("app/domain/inflation_what_changed.py"),
 ]
 
 # Forbidden if an imported module IS one of these, or is a submodule of
@@ -82,3 +83,15 @@ class TestDomainLayerArchitecturalIndependence:
                     or any(module_name.startswith(p) for p in allowed_prefixes)
                 )
                 assert is_allowed, f"{file_path}: '{module_name}' is not on the domain-layer allowlist"
+
+    def test_what_changed_comparator_has_zero_inflation_formula_knowledge(self):
+        """The frozen `inflation_what_changed_v1.0` contract's central
+        architectural boundary, checked explicitly (not just as an
+        incidental side effect of the generic allowlist test above):
+        the pure comparator must never import `app.domain.inflation` --
+        it must not know how CPI/PCE annualization, boundary
+        classification, or confirmation-relationship rules work, only
+        how to diff two already-computed evidence objects."""
+        imported = _imported_module_names(Path("app/domain/inflation_what_changed.py"))
+        forbidden = {m for m in imported if m == "app.domain.inflation" or m.startswith("app.domain.inflation.")}
+        assert forbidden == set(), f"app/domain/inflation_what_changed.py must never import app.domain.inflation: {forbidden}"

@@ -397,6 +397,10 @@ event_type        : one of the five above
 field             : e.g. "r_3m_annualized", "state", "relationship", "target_gap_pp"
 previous_value    : the previous canonical value/state (typed per field)
 current_value     : the current canonical value/state (typed per field)
+delta             : current_value - previous_value when both are numeric and available
+                    (per "Metric change"'s absolute_delta above); null otherwise --
+                    never fabricated across an availability boundary or for a
+                    state/relationship field
 previous_period   : the exact period previous_value was computed at (this section's own)
 current_period    : the exact period current_value was computed at (this section's own)
 methodology_id    : "inflation_v1.0"

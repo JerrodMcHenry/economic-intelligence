@@ -16,11 +16,11 @@ discovery" section below and ADR-015/016/017's status notes for why.
 | Application | `app/main.py` | Creates the `FastAPI` app, mounts routers, defines `/health` |
 | Series route | `app/api/series.py` | HTTP layer for `/api/v1/series/search`, `/{series_id}`, `.../sync`, `.../observations`, and `.../transform`: request/query-parameter handling, exception → status code translation |
 | Analysis route | `app/api/analysis.py` | HTTP layer for `/api/v1/analysis/compare` and `.../pipeline`: request/body validation, exception → status code translation |
-| Inflation Monitor route | `app/api/inflation.py` | HTTP layer for `GET /api/v1/monitors/inflation`: no request parameters, exception → status code translation. Read-only; no FRED, no AI. |
+| Inflation Monitor route | `app/api/inflation.py` | HTTP layer for `GET /api/v1/monitors/inflation` and `GET /api/v1/monitors/inflation/changes`: no request parameters on either, exception → status code translation. Read-only; no FRED, no AI. |
 | AI route | `app/api/ai.py` | HTTP layer for `/api/v1/ai/query`: request validation, `AIService` failures → status code translation. Frozen at Increment 008 behavior (three tools, no discovery) — see above. |
 | Economic data service | `app/services/economic_data.py` (`EconomicDataService`) | Single-series use-case logic: fetch + normalize a series from FRED; orchestrate fetch-then-persist for sync; validate and coordinate a persisted-observations query; validate and orchestrate a transformation (including boundary-context retrieval) |
 | Analysis service | `app/services/analysis.py` (`AnalysisService`) | Multi-series use-case logic: look up two persisted series, retrieve and date-filter each independently, optionally transform each side (pipeline only), delegate alignment/spread/correlation to the analysis domain module. No FRED dependency at all. |
-| Inflation Monitor service | `app/services/inflation.py` (`InflationMonitorService`) | Looks up the four canonical series (`PCEPILFE`, `CPILFESL`, `PCEPI`, `CPIAUCSL`) independently; a series not persisted at all yields an empty observation list rather than an error. Delegates every calculation to `app.domain.inflation`. No FRED dependency; never mutates persisted data. |
+| Inflation Monitor service | `app/services/inflation.py` (`InflationMonitorService`) | Looks up the four canonical series (`PCEPILFE`, `CPILFESL`, `PCEPI`, `CPIAUCSL`) independently; a series not persisted at all yields an empty observation list rather than an error. `get_result` delegates every calculation to `app.domain.inflation` (latest snapshot, `inflation_v1.0`); `get_what_changed_result` additionally selects each section's exact current/previous calendar periods (`app.domain.inflation`'s `month_over_month_*` helpers) and delegates comparison to `app.domain.inflation_what_changed` (`inflation_what_changed_v1.0`). No FRED dependency; never mutates persisted data. |
 | Discovery service | `app/services/discovery.py` (`SeriesDiscoveryService`) | Finds candidate series by concept/phrase: searches local persisted metadata and (if FRED is configured) FRED's catalog, merges and deterministically ranks the results. No AI, no ML/embedding relevance score, no analysis math, no ingestion — metadata only. See "Deterministic discovery" below. |
 | AI service | `app/services/ai.py` (`AIService`) | Owns the OpenAI Responses API boundary and the bounded tool-calling loop (max 4 rounds). No transformation/analysis math, no direct database access — delegates every tool call to `app.services.ai_tools`. Frozen at Increment 008 behavior. |
 | AI tool boundary | `app/services/ai_tools.py` | The explicit tool dispatcher: three tools (`get_observations`, `transform_series`, `analyze_series`), each validated (Pydantic) then executed via the existing `EconomicDataService`/`AnalysisService` methods. Read-only; no `FREDClient` reachable from here. Frozen at Increment 008 behavior. |
@@ -28,8 +28,9 @@ discovery" section below and ADR-015/016/017's status notes for why.
 | Series repository | `app/repositories/series_repository.py` (`SeriesRepository`) | All SQL for series/observations: upserts series metadata and observations within a caller-owned transaction; series lookup; local metadata search (`search_series`); filtered/ordered/paginated observation queries; unpaginated range queries and preceding-context queries. Reused as-is by every consumer added since Increment 005 — no analysis-, pipeline-, or discovery-specific repository methods were ever needed beyond `search_series` itself. |
 | Transformation engine | `app/domain/transformations.py` (`absolute_change`, `percent_change`, `moving_average`) | Pure, deterministic math over one series' observation list — no FastAPI, SQLAlchemy, FRED, environment, or I/O of any kind. Unmodified since Increment 005; reused as-is by the pipeline. |
 | Analysis engine | `app/domain/analysis.py` (`align_series`, `calculate_spread`, `count_usable_pairs`, `pearson_correlation`) | Pure, deterministic math over two series' observation lists — same no-I/O discipline as the transformation engine. Unmodified since Increment 006; reused as-is by the pipeline. |
-| Inflation Monitor engine | `app/domain/inflation.py` (`classify_state`, `classify_period`, `compute_series_momentum`, `compute_confirmation`, `compute_target`, `compute_headline_context`, `compute_inflation_monitor_result`, and their calendar/index helpers) | Pure, deterministic implementation of the frozen `inflation_v1.0` methodology — same no-I/O discipline as the other domain engines, plus one departure from `app/domain/transformations.py`'s convention: every horizon here resolves by an exact calendar-month lookup against a `{date: value}` index, never by row position, per the frozen specification. |
-| Response models | `app/models/series.py`, `app/models/analysis.py` (see prior increments), `app/models/discovery.py` (`SeriesCandidate`, `SeriesSearchResponse`), `app/models/ai.py` (`AIQueryRequest`, `AIQueryResponse`, `ToolCallRecord`, `GetObservationsArgs`, `TransformSeriesArgs`), `app/models/inflation.py` (`InflationMonitorResult` and its nested evidence/coverage/period models; the one canonical definition of `inflation_v1.0`'s constants and enums) | The application's own, provider-independent API response contract; AI tool argument models double as that (frozen) path's validation boundary |
+| Inflation Monitor engine | `app/domain/inflation.py` (`classify_state`, `classify_period`, `compute_series_momentum`, `compute_confirmation`, `compute_target`, `compute_headline_context`, `compute_inflation_monitor_result`, and their calendar/index helpers, plus the exact-period siblings `compute_series_momentum_at`/`compute_target_at`/`compute_confirmation_at`, the new period-selection function `latest_shared_observation_period`, and the `month_over_month_*` convenience wrappers) | Pure, deterministic implementation of the frozen `inflation_v1.0` methodology — same no-I/O discipline as the other domain engines, plus one departure from `app/domain/transformations.py`'s convention: every horizon here resolves by an exact calendar-month lookup against a `{date: value}` index, never by row position, per the frozen specification. The exact-period siblings and `month_over_month_*` helpers exist for `inflation_what_changed_v1.0` (below) but reuse every existing classification primitive unmodified — no second methodology. |
+| Inflation What Changed comparator | `app/domain/inflation_what_changed.py` (`compare_series_momentum_section`, `compare_target_section`, `compare_confirmation_section`, `assemble_what_changed_result`) | Pure, deterministic comparison layer for the frozen `inflation_what_changed_v1.0` contract — architecturally forbidden from importing `app.domain.inflation` (enforced by the architectural-independence test), so it structurally cannot know how CPI/PCE annualization, boundary classification, or confirmation-relationship rules work; it only diffs two already-canonical evidence objects (built by the engine above, at periods the service selects) and assembles the deterministically-ordered result. |
+| Response models | `app/models/series.py`, `app/models/analysis.py` (see prior increments), `app/models/discovery.py` (`SeriesCandidate`, `SeriesSearchResponse`), `app/models/ai.py` (`AIQueryRequest`, `AIQueryResponse`, `ToolCallRecord`, `GetObservationsArgs`, `TransformSeriesArgs`), `app/models/inflation.py` (`InflationMonitorResult` and its nested evidence/coverage/period models; the one canonical definition of `inflation_v1.0`'s constants and enums), `app/models/inflation_what_changed.py` (`InflationWhatChangedResult`, its five section models, and `ChangeEvent` — reuses `SeriesMomentumResult`/`TargetResult` verbatim as canonical evidence, introduces no new economic type) | The application's own, provider-independent API response contract; AI tool argument models double as that (frozen) path's validation boundary |
 | ORM models | `app/db/models.py` (`EconomicSeries`, `EconomicObservation`) | The relational shape of persisted data |
 | DB engine/session | `app/db/session.py` | Lazily-created SQLAlchemy engine (connection pool) and `session_scope()` transaction boundary |
 | Configuration | `app/core/config.py` (`Settings`) | Reads `FRED_API_KEY`, `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, and request timeouts from the environment |
@@ -493,6 +494,104 @@ structurally, not just by convention, and were each verified directly
   same, unmodified `EconomicDataService`/`AnalysisService` methods every
   HTTP endpoint already uses.
 
+## Frontend architecture (Increment #16A: foundation only)
+
+```
+Browser
+    ↓
+React / Vite / TypeScript  (frontend/)
+    ↓
+typed frontend API client  (frontend/src/api/)
+    ↓
+FastAPI  (app/api/*, unchanged)
+    ↓
+services → deterministic domain → PostgreSQL  (unchanged)
+```
+
+A dedicated `frontend/` directory at the repository root holds a
+separate, independent presentation application — never mixed into
+`app/`. **FastAPI remains the canonical application/backend layer; the
+frontend is a presentation client, not a second domain/application
+layer.** It contains, and must always contain, zero economic formulas,
+classifications, scoring rules, methodology thresholds, or canonical
+calculations — every conclusion the UI will ever show is computed once,
+by the backend, and only formatted/labeled/arranged/visualized/
+progressively-disclosed on the client. A narrow, automated guard test
+(`frontend/src/test/no-economic-logic.test.ts`) scans the frontend's
+own source tree for the shapes this would take (the compounded-
+annualization exponent, the frozen 0.10pp neutral-band arithmetic) and
+fails if any appear — currently trivially true (Increment #16A adds no
+inflation-specific code at all), and meant to be extended alongside
+whatever inflation-specific components Increment #16B adds.
+
+**Stack, and why:** React + Vite + TypeScript + Tailwind CSS, chosen
+explicitly (not Next.js) because FastAPI already owns every backend/
+application concern this project has — there is no server-rendering or
+routing responsibility for a second framework to take on; Vite provides
+a thin, fast presentation-layer build tool for what is fundamentally an
+interactive client-side research application. TypeScript gives the
+API-contract boundary real type safety (no `any` for canonical economic
+response objects). Tailwind gives a lightweight styling foundation with
+no component-library or design-token system to invent yet. Vitest +
+React Testing Library provide frontend regression coverage using the
+same Vite toolchain, rather than a second, separately-configured test
+runner.
+
+**Directory structure:**
+
+```
+frontend/
+  src/
+    api/         typed API-client foundation (client.ts, errors.ts)
+    components/  small, clearly-reusable primitives (PageContainer)
+    layouts/     the application shell (AppShell: header, nav, main)
+    pages/       one component per route (Overview, Inflation, NotFound)
+    styles/      global.css (Tailwind entry + minimal visual foundation)
+    test/        Vitest setup + the no-economic-logic architectural guard
+    App.tsx      route table
+    main.tsx     React root, router provider
+  public/
+  index.html
+  package.json
+  tsconfig*.json
+  vite.config.ts  (Vite + Vitest config, merged; dev proxy configuration)
+```
+
+**API client foundation** (`frontend/src/api/client.ts`): a single
+`apiGet<T>(path)` function — resolves the configured base URL, issues
+the request, verifies HTTP success, parses JSON. It distinguishes
+exactly two infrastructure-failure kinds via `ApiError`
+(`frontend/src/api/errors.ts`) — `"network"` (the request never
+reached the server) and `"http"` (a non-2xx response) — and never
+converts a successful, economically "unavailable" response
+(`state: "INSUFFICIENT_DATA"`, `relationship: "UNAVAILABLE"`,
+`comparison_available: false`) into an error: that distinction between
+*infrastructure failure* and *economic-data unavailability* is exactly
+the one `docs/methodology/inflation-monitor-v1.0.md` and
+`docs/methodology/inflation-what-changed-v1.0.md` already establish on
+the backend, and the frontend must preserve it, never collapse it. No
+inflation-specific types or requests exist yet — `apiGet` is generic
+and endpoint-agnostic; Increment #16B adds the first real caller.
+
+**Local development** (see [Flow 26](./request-flows.md#flow-26--frontend-local-development-proxy-increment-16a)):
+the Vite dev server proxies `/api/*` requests to
+the local FastAPI backend (`frontend/vite.config.ts`, default target
+`http://localhost:8000`, overridable via a plain — not `VITE_`-prefixed
+— `BACKEND_PROXY_TARGET` environment variable read only by the Node-side
+Vite config, never bundled into the browser). This means application
+code always calls relative paths like `/api/v1/monitors/inflation`,
+never a hardcoded hostname, and **no backend CORS configuration was
+added** — the proxy makes every request same-origin from the browser's
+perspective. Production base-URL configuration is explicit and
+non-secret: `VITE_API_BASE_URL` (`frontend/.env.example`), documented
+as client-visible (everything prefixed `VITE_` ships in the browser
+bundle) and never used for a real secret.
+
+**No AI, no charts, no live FRED calls, no additional product
+dimensions** exist anywhere in the frontend as of Increment #16A — see
+"Future direction" below for what's deliberately deferred to Increment
+#16B and beyond.
+
 ## What is deliberately NOT part of this architecture yet
 
 The following are intentionally absent — not overlooked:
@@ -605,3 +704,38 @@ enforced by simply never calling AI from this path, not by a
 disableable flag), no freshness/staleness policy beyond exposing raw
 dates, no ALFRED-style point-in-time historical vintages, and no UI —
 this increment is the deterministic backend foundation only.
+
+**Increment #15** extends the Inflation Monitor with a second,
+independent deterministic contract: `GET /api/v1/monitors/inflation/changes`
+implements `inflation_what_changed_v1.0` exactly as specified in
+[docs/methodology/inflation-what-changed-v1.0.md](../methodology/inflation-what-changed-v1.0.md)
+(see "Components" above and
+[Flow 24](./request-flows.md#flow-24--inflation-what-changed-inflation_what_changed_v10)).
+It is a comparison layer, not a second methodology: every economic
+value it reports comes from re-evaluating `inflation_v1.0`'s own,
+unmodified classification primitives at explicit calendar periods this
+contract selects (`latest_observation_period` for ordinary series,
+the new `latest_shared_observation_period` for confirmation — both
+deliberately distinct from `inflation_v1.0`'s own "latest valid"
+concepts, precisely so an unclassifiable current period is reported as
+an availability change rather than silently skipped). The comparator
+itself (`app/domain/inflation_what_changed.py`) is architecturally
+forbidden from importing `app.domain.inflation`, so "zero inflation
+formula knowledge" is a checked fact, not a convention. Same scope
+discipline as Increment #14: no AI, no live FRED reads, no new
+repository method, no migration, no UI.
+
+**Increment #16A** adds the frontend *foundation* only (see "Frontend
+architecture" above) — a working shell, routing, styling, and API-client
+scaffolding, deliberately with no inflation product UI: `/inflation` is
+a static placeholder route that fetches nothing. **Increment #16B**
+(not started) is expected to build the actual Inflation Monitor UI on
+top of this foundation, consuming both `GET /api/v1/monitors/inflation`
+and `.../inflation/changes` for real — primary Core PCE state, What
+Changed, target/level, confirmation, headline context, and evidence
+disclosure, each preserving the backend's independent period semantics
+rather than flattening them into one page-wide "as of" date. No
+charting library exists yet; one will only be added if evaluated
+against real deterministic API requirements at that time (see the
+frontend's own dependency list in `frontend/package.json` for exactly
+what is installed today).
