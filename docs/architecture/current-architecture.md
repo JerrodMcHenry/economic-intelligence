@@ -800,3 +800,23 @@ until a deterministic historical monitor API exists — and no AI, live
 FRED call, or second product dimension exists anywhere in the frontend
 (see the frontend's own dependency list in `frontend/package.json` for
 exactly what is installed today).
+
+**Increment #17 (Release Intelligence)** is, as of this writing, a
+**frozen specification only** —
+[docs/architecture/release-intelligence-v1.md](./release-intelligence-v1.md)
+(status: FROZEN FOR #17A/#17B), backed by
+[ADR-019](../adr/019-release-calendar-structurally-separate.md) and
+[ADR-020](../adr/020-fred-v1-date-level-releases-no-provider-abstraction.md)
+— the same "frozen contract before implementation" pattern the
+Inflation Monitor methodology already established (see below). No
+`EconomicRelease`/`ReleaseOccurrence` model, migration, service,
+repository, or `/releases` route exists in `app/` or `frontend/` yet.
+When #17A/#17B are implemented, the frozen spec is normative: a release
+calendar (curated catalog + date-only occurrences, `SCHEDULED`/
+`PAST_DUE` derived at read time from an explicitly-passed comparison
+date, never persisted) with **zero write path to
+`economic_observations` or any monitor result** — a scheduled date
+passing must never itself change a canonical economic conclusion. A
+release→series mapping, observation-availability proof, and any
+release-driven monitor recomputation are explicitly deferred to a
+later increment (#18), not designed yet.

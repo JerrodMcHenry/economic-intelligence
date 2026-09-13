@@ -5359,3 +5359,109 @@ No architecture doc update was needed -- this pass changed no data flow,
 no component boundary, and no endpoint; `current-architecture.md`'s
 "Frontend architecture" section already documents the same component
 list and page composition this pass refined the styling of.
+
+## Increment #17 — Release Intelligence: Architecture Audit and Frozen Spec
+
+Two-part, documentation-only increment. No production code, migration,
+test, or frontend file was touched at any point -- confirmed both times
+by `git status` scoped to `app/`, `frontend/`, `tests/`, `research/`.
+
+**Part 1 (audit)**: a read-only architecture audit of the repository
+(`app/clients/fred.py`, `app/db/models.py`,
+`app/repositories/series_repository.py`, `app/services/`, `alembic/`,
+`docs/adr/`, `tests/`, and more) against the product's stated long-term
+intent for release intelligence (what's coming up, what was just
+released, did new data actually appear, what changed as a result).
+Grounded every recommendation in an actual existing convention rather
+than a generic best practice: extending `FREDClient` instead of a new
+provider abstraction (ADR-004's own stated reversal condition, not yet
+triggered), an internal-ID-vs-provider-ID split (mirroring
+`EconomicSeries.id`/`series_id`), derived-not-persisted status
+(mirroring `app/domain/`'s pure-function convention), and a static
+AST-based test guard already in `tests/integration/test_transaction_and_safety.py`
+as the direct precedent for structurally forbidding release code from
+touching canonical observations. One question was explicitly left
+open rather than guessed at: whether FRED's release-dates API exposes
+a stable per-occurrence identifier -- flagged as a blocking
+verification item rather than assumed either way, since static
+inspection of the (nonexistent) client method couldn't answer it and a
+live call was out of the audit's scope.
+
+**Part 2 (freeze)**: the open FRED question was independently verified
+against FRED's official API documentation and the spec was frozen with
+several corrections that *narrow* the audit's own proposal, not extend
+it:
+
+- `fred/release/dates` returns `(release_id, date)` only -- no stable
+  per-occurrence ID, confirming the audit's fallback identity strategy
+  as the *only* strategy, not one of two options.
+- FRED's data is date-only, not time-of-day -- `scheduled_at`,
+  `source_timezone`, and any time-precision field are removed from
+  #17A entirely (the audit had proposed them as always-present-but-
+  often-null columns; the frozen spec has no such columns at all).
+  `CANCELLED` and `UNKNOWN` schedule statuses, and `published_at`, are
+  likewise dropped -- none are reliably sourceable from FRED's
+  date-only feed in #17A, and inventing any of them would violate the
+  new, explicit "missing precision stays explicit, never fabricated"
+  invariant.
+- `ReleaseSeriesMapping` is deferred to #18 entirely (the audit had
+  scoped it into #17A) -- #17A's calendar functionality doesn't need
+  it, and `EconomicSeries` rows depend on ingestion state, which
+  release-calendar persistence should not be coupled to.
+- The API surface is narrowed to one endpoint, `GET /api/v1/releases`,
+  with `/upcoming`/`/recent` explicitly pushed to be frontend views
+  over date-range filters rather than separate backend routes (the
+  audit had left this as an open evaluation; the freeze decided it).
+- `classify_schedule_status` must take `as_of_date` as an explicit
+  parameter, never read the system clock internally -- stated as a
+  hard requirement, not left as a testing-strategy suggestion.
+
+Result: `docs/architecture/release-intelligence-v1.md` (status: FROZEN
+FOR #17A/#17B), covering purpose, permanent invariants, verified source
+limitations, the `EconomicRelease`/`ReleaseOccurrence` contracts,
+occurrence identity, derived status semantics, idempotent sync
+semantics, the API contract, failure isolation, a worked shutdown/
+missing-data example, frozen #17A/#17B scope, explicitly deferred #18
+scope, the news boundary, deferred time/provider enrichment, and an
+acceptance-invariant checklist for whoever implements #17A/#17B.
+
+Two ADRs, not three -- the audit's proposed "B" (date-level occurrence
+identity, no invented time) and "C" (extend `FREDClient`, no provider
+abstraction yet) were merged into one
+([ADR-020](adr/020-fred-v1-date-level-releases-no-provider-abstraction.md))
+on the judgment that both are the same underlying decision -- "don't
+model or build for a FRED capability that doesn't exist" -- applied to
+the data model and the client code respectively; splitting them would
+have been two ADRs for one judgment call. "A" (the permanent
+calendar/observation separation) got its own ADR
+([ADR-019](adr/019-release-calendar-structurally-separate.md)) because
+it's a different kind of decision -- a permanent invariant that outlives
+#17A specifically, not a V1-scoped implementation choice.
+
+`docs/architecture/current-architecture.md`'s "Future direction"
+section gained one paragraph pointing at the frozen spec and both new
+ADRs, mirroring exactly how the Inflation Monitor methodology was
+introduced there before Increment #14 implemented it -- no other
+change to that document, since nothing about the actually-running
+architecture changed.
+
+### Verification
+
+No backend, frontend, test, or research file was created or modified --
+only `docs/architecture/release-intelligence-v1.md` (new),
+`docs/adr/019-*.md` (new), `docs/adr/020-*.md` (new),
+`docs/architecture/current-architecture.md` (one paragraph appended),
+and this journal entry. No migration run, no dependency added, no live
+FRED call made, no secret read.
+
+### Deferred to #17A (implementation, not yet authorized)
+
+Everything in `release-intelligence-v1.md`'s §12: the actual
+`EconomicRelease`/`ReleaseOccurrence` SQLAlchemy models, migration,
+repository, service, `FREDClient` extension, `GET /api/v1/releases`
+route, and full test suite (pure domain, repository/service
+integration, HTTP, provider-client, and an extended architectural
+guard). #17B (the `/releases` frontend page) and #18 (release-driven
+observation updates, monitor recomputation, release-driven What
+Changed) remain further out, per the frozen spec's own explicit scope
+boundaries.
