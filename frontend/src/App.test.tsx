@@ -19,17 +19,30 @@ describe("App", () => {
   });
 
   it("renders", () => {
+    // The Overview route now fetches real data (Increment #19A) --
+    // stubbed to never resolve, since only the shell landmarks are
+    // under test here (see pages/Overview.test.tsx for data behavior).
+    // Overview's own page <header> (nested in <main>, matching the
+    // same per-page-header convention Inflation.tsx/Releases.tsx
+    // already use) is also picked up as an additional "banner" by this
+    // testing environment's role computation -- getAllByRole scopes to
+    // the outer, site-wide one deliberately, first in document order.
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/");
-    expect(screen.getByRole("banner")).toBeInTheDocument();
+    expect(screen.getAllByRole("banner")[0]).toBeInTheDocument();
     expect(screen.getByRole("main")).toBeInTheDocument();
   });
 
   it("shows the application name in the header", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/");
-    expect(within(screen.getByRole("banner")).getByText("Economic Intelligence")).toBeInTheDocument();
+    // "Economic Intelligence" (the site name) is unique on the page --
+    // Overview's own <h1> reads "Economic Overview", a different string.
+    expect(screen.getByText("Economic Intelligence")).toBeInTheDocument();
   });
 
   it("exposes accessible, keyboard-reachable primary navigation", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/");
     const nav = screen.getByRole("navigation", { name: "Primary" });
     const overviewLink = within(nav).getByRole("link", { name: "Overview" });
@@ -47,9 +60,11 @@ describe("App", () => {
   });
 
   it("renders the Overview route at /", () => {
+    // Only routing is under test here -- pages/Overview.test.tsx covers
+    // the page's own data loading and rendering behavior in full.
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/");
-    expect(screen.getByRole("heading", { level: 1, name: "Economic Intelligence" })).toBeInTheDocument();
-    expect(screen.getByText("Frontend foundation ready.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Economic Overview" })).toBeInTheDocument();
   });
 
   it("renders the Inflation product route at /inflation", () => {

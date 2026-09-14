@@ -1479,3 +1479,74 @@ It never persists a full `InflationMonitorResult`. It never writes to
 `ReleaseOccurrence.schedule_status` or infers publication from the
 occurrence's scheduled date. Nothing in this flow's call graph imports
 AI or news.
+
+## Flow 33 — `/` Economic Overview Page Load (Increment #19A)
+
+`frontend/src/pages/Overview.tsx` calls `useApiResource(getInflationMonitor)`,
+`useApiResource(getInflationWhatChanged)`, `useApiResource(fetchUpcomingReleases)`,
+and `useApiResource(fetchRecentReleases)` in the same render — four
+independent resources, each owning its own `loading`/`success`/`error`
+state, extending exactly the pattern Flow 27 already established for
+two. There is no aggregate endpoint and no `Promise.all` anywhere in
+this flow.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (OverviewPage)
+    participant H1 as useApiResource(getInflationMonitor)
+    participant H2 as useApiResource(getInflationWhatChanged)
+    participant H3 as useApiResource(fetchUpcomingReleases)
+    participant H4 as useApiResource(fetchRecentReleases)
+    participant API as FastAPI (via Flow 26's proxy in dev)
+
+    par four independent requests
+        B->>H1: mount
+        H1->>API: GET /api/v1/monitors/inflation
+    and
+        B->>H2: mount
+        H2->>API: GET /api/v1/monitors/inflation/changes
+    and
+        B->>H3: mount
+        H3->>API: GET /api/v1/releases?start_date&end_date&order=asc
+    and
+        B->>H4: mount
+        H4->>API: GET /api/v1/releases?start_date&end_date&order=desc
+    end
+    API-->>H1: 200 InflationMonitorResult (or a network/HTTP failure)
+    API-->>H2: 200 InflationWhatChangedResult (or a network/HTTP failure)
+    API-->>H3: 200 ReleaseListResponse (or a network/HTTP failure)
+    API-->>H4: 200 ReleaseListResponse (or a network/HTTP failure)
+    Note over B: Each of the four renders independently --<br/>CurrentStateSection/WhatChangedPreview/<br/>UpcomingReleasesPreview/RecentReleasePreview<br/>truncate and format only, never reclassify.
+```
+
+Rendering is per-resource, identical in shape to Flow 27/30's own
+tables — any one of the four in `loading`/`success`/`error` renders
+independently of the other three; there is no combination in which one
+resource's failure prevents another's success from rendering (proven
+directly: four dedicated single-resource-failure tests plus one
+all-four-fail test, the latter still rendering one intact page title
+and four independently truthful error messages, never a blanked page).
+
+`CurrentStateSection` renders `underlying_momentum.state` exactly as
+returned (via the same `Badge`/`WhyThisState` Flow 27 already uses) —
+labeled explicitly as "Inflation," never as a page-wide "economy"
+conclusion. `WhatChangedPreview` renders `whatChanged.changes.slice(0, 3)`
+— the flat, already deterministically-ordered event list `inflation_what_changed_v1.0`
+itself assembles — and never synthesizes a narrative from an event's
+*absence* the way `/inflation`'s own `WhatChangedSection` does for its
+own per-section summaries. `UpcomingReleasesPreview`/`RecentReleasePreview`
+slice the already-backend-ordered release arrays to 3 and 1
+respectively, reusing Flow 30's own `ReleaseDateBadge`/`ReleaseRow`/
+`ScheduleStatusBadge` components unmodified, alongside the same
+mandatory schedule-vs-publication disclosure sentence Flow 30 requires
+(centralized in `components/releases/ReleaseScheduleDisclosure.tsx` as
+of this increment, rendered on both pages).
+
+Increment #18's release-driven detected-change/analytical-consequence
+evidence does not appear anywhere in this flow — no endpoint exists to
+read it yet (see `docs/architecture/release-processing-v1.md`); that is
+explicitly deferred to a future increment, once a read-only endpoint
+for it is designed. Nothing in this flow's call graph imports AI or
+news, and nothing calls a sync/mutation endpoint of any kind — the
+Overview page is exactly as read-only as `/inflation` and `/releases`
+already are.

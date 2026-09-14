@@ -502,7 +502,7 @@ structurally, not just by convention, and were each verified directly
   same, unmodified `EconomicDataService`/`AnalysisService` methods every
   HTTP endpoint already uses.
 
-## Frontend architecture (Increment #17C: Explainability & Economic Education UX Foundation)
+## Frontend architecture (Increment #19A: Economic Overview UI V1)
 
 ```
 Browser
@@ -577,7 +577,16 @@ frontend/
                    WhyThisState -- the one result-explanation component,
                    Increment #17C)
       releases/    presentation-only release calendar components (ScheduleStatusBadge,
-                   ReleaseDateBadge, ReleaseRow, ReleaseCalendarSection)
+                   ReleaseDateBadge, ReleaseRow, ReleaseCalendarSection,
+                   ReleaseScheduleDisclosure -- the one mandatory schedule-vs-
+                   publication sentence, extracted for reuse by /releases AND
+                   Overview in Increment #19A)
+      overview/    small, Overview-specific presentation components (Increment
+                   #19A) -- CurrentStateSection, WhatChangedPreview,
+                   UpcomingReleasesPreview, RecentReleasePreview; each only
+                   truncates/formats already-canonical backend values, reusing
+                   Badge/WhyThisState/ReleaseRow/ReleaseDateBadge rather than
+                   re-deriving anything
     content/
       explanations/  curated, static explanation copy (Increment #17C) --
                       types.ts (the one Explanation shape), inflation.ts,
@@ -588,11 +597,12 @@ frontend/
                  date math + same-date grouping + compact date display -- never a
                  status classification), releasePresentation.ts (frontend-only
                  short-label/category map for the curated V1 releases)
-    pages/       one component per route (Overview, Inflation, Releases, NotFound)
+    pages/       one component per route (Overview -- the real Economic
+                 Overview as of Increment #19A, Inflation, Releases, NotFound)
     styles/      global.css (Tailwind entry + minimal visual foundation)
     test/        Vitest setup, fixtures/, the no-economic-logic,
-                 no-release-sync-or-coupling, and
-                 no-explanation-classification-logic architectural guards
+                 no-release-sync-or-coupling, no-explanation-classification-logic,
+                 and no-overview-mutation architectural guards
     App.tsx      route table
     main.tsx     React root, router provider
   public/
@@ -748,6 +758,50 @@ two surfaces — `InflationHero`/`MomentumMetrics`/`TargetPanel`/
 and `Releases`/`ReleaseCalendarSection`/`ReleaseRow` on `/releases` —
 establishing the pattern for later features to reuse rather than
 applying it to every existing page in this increment.
+
+**The Economic Overview page** (`frontend/src/pages/Overview.tsx`,
+Increment #19A) is the real `/` route, replacing the Increment #16A
+placeholder. It composes exactly four existing, unmodified canonical
+read functions — `getInflationMonitor`/`getInflationWhatChanged`/
+`fetchUpcomingReleases`/`fetchRecentReleases` — each through its own
+independent `useApiResource` call, the identical pattern `/inflation`
+already established for two resources. There is deliberately **no**
+`GET /api/v1/overview` aggregate endpoint and no `Promise.all`: a
+failure in any one resource never blanks, blocks, or fabricates any of
+the other three (proven directly by dedicated partial-failure tests,
+one per resource, including all four failing at once). Hierarchy is
+Current State → What Changed → Releases. `components/overview/CurrentStateSection.tsx`
+is a small, purpose-built presentation component — not `InflationHero`
+reused wholesale, which would have made Overview a second `/inflation`
+— showing only the state Badge, an explicit "Inflation" label beside it
+(so the page reads as "Inflation is MIXED," never "the economy is
+MIXED"), the period, `WhyThisState` (reused unmodified, including its
+existing contradictory-evidence guarantee), and one restrained sentence
+noting more monitor dimensions are being added — never five Coming-Soon
+cards for dimensions that don't exist yet. `components/overview/WhatChangedPreview.tsx`
+renders only real `ChangeEvent`s from the flat, already
+deterministically-ordered `InflationWhatChangedResult.changes` array,
+truncated to 3 and never reordered — deliberately **not** replicating
+`/inflation`'s own `WhatChangedSection`, which synthesizes a "State
+remains X" sentence from the *absence* of a `STATE_CHANGED` event for
+its own, separately-reviewed per-section summaries; Overview must never
+invent that inference. `components/overview/UpcomingReleasesPreview.tsx`/
+`RecentReleasePreview.tsx` show the first 3 upcoming occurrences (from
+the raw, already-ordered response, grouped by date only for display)
+and at most 1 recent occurrence as a compact line, reusing `ReleaseDateBadge`/
+`ReleaseRow`/`ScheduleStatusBadge` unmodified. The mandatory release-
+schedule disclosure sentence, previously hardcoded inline only in
+`pages/Releases.tsx`, was extracted into a new shared
+`components/releases/ReleaseScheduleDisclosure.tsx` so both pages
+render the identical sentence. A new, narrowly-scoped
+`test/no-overview-mutation.test.ts` proves every Overview file imports
+no AI/news module, references no sync/process endpoint, never calls
+`fetch` directly, and (for `pages/Overview.tsx` specifically) imports
+only the four documented read functions from `api/*` — Increment #18's
+release-processing evidence is deliberately not surfaced anywhere on
+this page yet; that requires a read-only endpoint that doesn't exist
+today (see [docs/architecture/release-processing-v1.md](./release-processing-v1.md)),
+and is deferred to a future increment.
 
 **Local development** (see [Flow 26](./request-flows.md#flow-26--frontend-local-development-proxy-increment-16a)):
 the Vite dev server proxies `/api/*` requests to
@@ -995,3 +1049,16 @@ deliberately **no public HTTP process endpoint** (this project has no
 authentication anywhere; see [docs/architecture/release-processing-v1.md](./release-processing-v1.md)
 §18). The frontend remains completely read-only and untouched — zero
 frontend production changes in this increment.
+
+**Increment #19A (Economic Overview UI V1)** replaces the Increment
+#16A placeholder at `/` with the real Economic Overview — see "The
+Economic Overview page" above for the full breakdown. Preceded by a
+read-only product + architecture audit (Increment #19) that
+recommended, and #19A then implemented exactly: no aggregate backend
+endpoint, no surfacing of #18's release-processing evidence yet (no
+read endpoint exists for it — deferred to a future increment), and no
+fabricated Labor/Growth/Consumer/Housing/Financial-Conditions
+dimensions. Zero backend production changes — confirmed directly
+(`git status` shows every change confined to `frontend/` plus
+documentation) and by an unchanged 785-passed/0-skipped backend
+regression run.

@@ -4,6 +4,7 @@ import { ErrorMessage } from "../components/ErrorMessage";
 import { ExplanationTrigger } from "../components/explanations/ExplanationTrigger";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { ReleaseCalendarSection } from "../components/releases/ReleaseCalendarSection";
+import { ReleaseScheduleDisclosure } from "../components/releases/ReleaseScheduleDisclosure";
 import { ECONOMIC_RELEASE } from "../content/explanations/releases";
 
 const UPCOMING_ERROR_MESSAGE = "Upcoming releases could not be loaded.";
@@ -33,10 +34,9 @@ export function ReleasesPage() {
         <p className="mt-2 max-w-prose text-neutral-600">
           Scheduled dates for the economic releases Economic Intelligence tracks.
         </p>
-        <p className="mt-3 max-w-prose text-xs text-neutral-400">
-          Release dates indicate scheduled publication dates. They do not confirm that new data has been published,
-          ingested, or reflected in Economic Intelligence analysis.
-        </p>
+        <div className="mt-3">
+          <ReleaseScheduleDisclosure />
+        </div>
       </header>
 
       <div className="mt-8 divide-y divide-neutral-200 [&>*]:pt-8 [&>*:first-child]:pt-0">

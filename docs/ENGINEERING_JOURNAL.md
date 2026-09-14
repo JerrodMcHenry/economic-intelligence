@@ -6567,3 +6567,172 @@ Sales mappings, pending a real deterministic consumer for any of them;
 provider abstraction of any kind; and any frontend explanation content
 for #18's new concepts (a future increment's job, reusing #17C's
 existing canonical-result-to-explanation rule unchanged).
+
+## Increment #19A — Economic Overview UI V1
+
+Preceded by a read-only product + architecture audit (Increment #19,
+no production code touched) that inventoried what could be shown
+truthfully with today's canonical capabilities -- exactly one complete
+monitor (Inflation) plus a real, presentation-layer-only release
+calendar -- and recommended against an aggregate `GET /api/v1/overview`
+endpoint, against surfacing #18's release-processing evidence yet (no
+read endpoint exists for it), and against faking five more monitor
+dimensions. #19A implements exactly that recommendation: presentation
+only, zero backend changes, `/` becomes the real Economic Overview.
+
+### Hierarchy: Current State -> What Changed -> Releases
+
+Retired the Increment #16A placeholder (`pages/Overview.tsx` was five
+lines: a heading and "Frontend foundation ready."). The real page
+composes exactly four existing, unmodified canonical read functions --
+`getInflationMonitor`/`getInflationWhatChanged`/`fetchUpcomingReleases`/
+`fetchRecentReleases` -- each via its own independent `useApiResource`
+call, the identical pattern `/inflation` already established for two
+resources, extended here to four. No `Promise.all`, no aggregate
+endpoint, no global loading state: one resource failing never blanks,
+blocks, or fabricates any other section (proven directly: four
+dedicated partial-failure tests, one per resource, plus a fifth proving
+all four failing simultaneously still renders four independently
+truthful error messages under one intact page title, never a blanked
+page).
+
+### Current State: a dimension, not an economy score
+
+`components/overview/CurrentStateSection.tsx` is a **new, small,
+Overview-specific presentation component** -- deliberately NOT
+`InflationHero` reused wholesale, which would have made Overview a
+second `/inflation` (no 3M/6M/12M strip, no target/confirmation/
+headline detail; those stay `/inflation`-only). The one design decision
+treated as load-bearing: a bold "Inflation" label sits directly beside
+the state Badge, so the page reads as "Inflation is MIXED," never
+"the economy is MIXED" -- the exact distinction the frozen spec
+required. Reuses `Badge`/`WhyThisState` unmodified, including
+`WhyThisState`'s existing contradictory-evidence guarantee (verified
+live against the real backend during visual review: a genuine `MIXED`
+reading where 3M sat below the neutral band and 6M sat above it --
+numbers a human might read as two different directions -- rendered
+`MIXED`, never recomputed). The "more dimensions" note is one
+restrained sentence, never five Coming-Soon cards.
+
+### What Changed: no invented narrative
+
+`components/overview/WhatChangedPreview.tsx` renders only real
+`ChangeEvent`s from `InflationWhatChangedResult.changes` -- the flat,
+already deterministically-ordered list `inflation_what_changed_v1.0`
+itself assembles across all five sections (component order, then
+event-type order, then field order) -- truncated to 3 via `.slice(0, 3)`
+and never reordered. Deliberately does **not** replicate `/inflation`'s
+own `WhatChangedSection`, which synthesizes a "State remains X"
+sentence from the *absence* of a `STATE_CHANGED` event for its own,
+separately-reviewed per-section summaries -- that synthesis is a
+frontend inference the frozen #19A spec explicitly forbade for
+Overview. A dedicated test proves it: state is `MIXED`, the mocked
+`changes` list contains only a metric event, and the page renders that
+metric event and nothing resembling "remains"/"unchanged"/"stayed."
+The empty-state copy ("No canonical Inflation changes were reported
+for this comparison.") was chosen specifically because it stays true
+whether zero events happened or a comparison was genuinely unavailable
+-- it never claims "Inflation was unchanged," a stronger fact the
+response contract doesn't always support.
+
+### Releases: compact, ordered, never reclassified
+
+`components/overview/UpcomingReleasesPreview.tsx` takes the first 3
+occurrences from the *raw*, already-backend-ordered array before any
+date-grouping, then reuses `groupReleasesByDate`/`ReleaseDateBadge`/
+`ReleaseRow` unmodified -- the identical presentation `/releases`
+already renders, just fewer of them. `components/overview/RecentReleasePreview.tsx`
+shows at most one recent occurrence as one compact line; if none
+exists, it renders nothing at all rather than inventing a "no recent
+activity" claim. The mandatory release-schedule disclosure was
+previously hardcoded inline in `pages/Releases.tsx` -- extracted
+byte-for-byte into a new shared `components/releases/ReleaseScheduleDisclosure.tsx`
+(a presentation-only refactor; `Releases.test.tsx`'s existing exact-
+string assertions against this sentence needed no changes, since the
+rendered text is unchanged) so `/releases` and Overview render the
+identical sentence rather than two independently-typed copies that
+could drift.
+
+### Architectural guards
+
+Two of the required checks were already covered for free: `no-economic-logic.test.ts`
+and `no-release-sync-or-coupling.test.ts` both scan recursively (the
+former all of `src/`, the latter every file whose path contains
+"release"), so all five new Overview-adjacent files were picked up
+automatically the moment they existed, with zero edits to either guard
+file. A new, narrowly-scoped `test/no-overview-mutation.test.ts` covers
+the remaining property those two don't: every `components/overview/*`
+file plus `pages/Overview.tsx` imports no AI/news module, references no
+sync/process endpoint, never calls `fetch` directly (network calls must
+go through an `api/*` client module), contains no #18 release-processing
+identifier (deferred to #19B/#19C, not #19A), and `pages/Overview.tsx`
+imports only the four documented canonical read functions (plus
+`useApiResource`) from `api/*` -- nothing else. One real, if narrow,
+false positive was caught and fixed while writing this guard: the
+page's own doc comment, explaining in prose that #18's release-
+processing model names are deliberately not surfaced, itself matched
+the very regex checking for those names -- fixed by rewording the
+comment (not weakening the guard), the same resolution this project has
+applied to the identical class of self-referential collision before.
+
+### Tests
+
+64 new frontend tests (354 -> **418**): 25 in `pages/Overview.test.tsx`
+(loading; Current State including the contradictory-evidence proof and
+the no-fake-dimension-label checks; What Changed including the non-
+inference proof and the event-ordering proof; Releases including the
+release-ordering proof, the schedule-does-not-mean-publication proof,
+and both empty states; five independent partial-failure scenarios;
+navigation exposing exactly three real CTAs and no dead links to
+Explore/Compare/Research/Ask EI/News/Watchlist; page structure), 22 in
+the new `no-overview-mutation.test.ts` guard, and the remainder from
+the two existing guards' automatic recursive pickup of the new files.
+`App.test.tsx`'s five-year-old placeholder assertion ("Frontend
+foundation ready.") was replaced with a routing-only check matching
+the exact pattern already used for `/inflation`/`/releases`; three
+other `App.test.tsx` cases needed a `fetch` stub added (Overview now
+fetches real data, where the placeholder never did) and two needed a
+query fix after Overview's own per-page `<header>` -- the same
+convention `/inflation`/`/releases` already use -- caused this test
+environment's role computation to report two "banner" landmarks
+instead of one; resolved by scoping the query to the outer, site-wide
+header specifically, not by changing production markup.
+
+### Verification
+
+Frontend: `npx vitest run`, run twice: **418 passed** both times.
+`npm run typecheck`, `npm run lint`, `npm run build`: all clean.
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`: **785 passed**, 0
+skipped -- unchanged, confirming zero backend impact (`git status`
+shows every change confined to `frontend/` plus this documentation).
+
+### Visual review
+
+Checked live in a real browser against the running development
+backend, real synced data: the state Badge, "Inflation" label, `Why
+Mixed?` evidence panel (showing a genuine real-world contradictory-
+looking 3M/6M/12M reading, MIXED rendered correctly), What Changed's
+three real metric events, and the Upcoming/Recent Releases block with
+real schedule-status badges and category tags all rendered exactly as
+designed -- credible, scannable, not card-heavy, clearly distinct from
+`/inflation` rather than a second copy of it. Narrow/mobile visual
+verification could not be completed in this session -- the browser
+automation's window-resize call reports success but does not actually
+change the captured screenshot's viewport width in this environment,
+the same limitation already noted in the #16B.1/#17B/#17C journal
+entries. Responsive safety instead rests on inspecting the actual
+markup: every new Overview component reuses the identical `flex-wrap`/
+no-fixed-width Tailwind patterns already verified not to overflow on
+`/inflation`/`/releases`, and the page container uses the same
+`max-w-3xl` wrapper both of those pages already use.
+
+### Deferred (named explicitly, not built here)
+
+#18's release-processing evidence (no read endpoint exists yet -- that
+is #19B); any aggregate `GET /api/v1/overview` endpoint (deliberately
+rejected in the #19 audit; revisit only if request count materially
+grows once a second monitor exists); Explore/Compare/Research/Ask EI/
+News/Watchlist (none exist as frontend product surfaces); a fifth+
+monitor dimension shown as anything other than the one quiet sentence
+already present; any economy-wide score, health rating, or importance/
+attention ranking.
