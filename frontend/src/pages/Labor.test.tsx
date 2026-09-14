@@ -419,6 +419,18 @@ describe("Relevant Release", () => {
     expect(screen.getAllByText("Employment Situation").length).toBeGreaterThanOrEqual(1);
   });
 
+  it("Increment #22B: never renders ReleaseRow's per-row 'View Labor →' CTA here -- it would be circular, already on /labor", async () => {
+    resolveAll({
+      upcoming: buildReleaseListResponse({
+        releases: [buildReleaseOccurrenceItem({ name: "Employment Situation", provider_release_id: "50", scheduled_date: "2026-10-02" })],
+      }),
+    });
+    renderPage();
+
+    await screen.findByText("Next scheduled");
+    expect(screen.queryByRole("link", { name: "View Labor →" })).not.toBeInTheDocument();
+  });
+
   it("the mandatory release schedule disclosure is byte-identical to the canonical sentence", async () => {
     resolveAll();
     renderPage();

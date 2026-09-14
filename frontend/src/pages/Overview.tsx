@@ -9,7 +9,7 @@ import { ErrorMessage } from "../components/ErrorMessage";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { CurrentStateSection } from "../components/overview/CurrentStateSection";
 import { LaborWhatChangedPreview } from "../components/overview/LaborWhatChangedPreview";
-import { LatestDataDetected } from "../components/overview/LatestDataDetected";
+import { RecentDataUpdates } from "../components/overview/RecentDataUpdates";
 import { RecentReleasePreview } from "../components/overview/RecentReleasePreview";
 import { UpcomingReleasesPreview } from "../components/overview/UpcomingReleasesPreview";
 import { WhatChangedPreview } from "../components/overview/WhatChangedPreview";
@@ -36,19 +36,27 @@ const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
  * never hides Labor's card, and vice versa, at every section
  * (docs/architecture/labor-ui-v1.md §33/§38).
  *
- * Hierarchy: Current State -> What Changed -> Latest Data Detected ->
- * Releases. Inflation and Labor are peers within Current State and
- * What Changed -- never subordinate to one another, and never combined
- * into an aggregate "Economy State"/score (docs/architecture/labor-ui-v1.md
- * §29/§30's own absolute prohibition). Latest Data Detected and
- * Releases remain the SAME generic, already-multi-domain-capable
- * sections #19C/#17B built -- no Labor-specific logic was added to
- * either; Employment Situation's own evidence already flows through
- * them once the generic component-typing fix lands (see
- * components/overview/LatestDataDetected.tsx, lib/detectedChangeFormat.ts).
- * This page composes and formats only -- it never recalculates a
- * metric, reclassifies a state, derives economic significance, ranks
- * importance, or infers publication/data availability.
+ * Hierarchy: Current State -> What Changed -> Recent Data Updates ->
+ * Releases. Inflation and Labor are peers within Current State,
+ * What Changed, AND (Increment #22B) Recent Data Updates -- never
+ * subordinate to one another, and never combined into an aggregate
+ * "Economy State"/score (docs/architecture/labor-ui-v1.md §29/§30's own
+ * absolute prohibition, restated and extended by
+ * docs/product/overview-attention-model-v1.md). What Changed
+ * (Increment #22B) renders a deterministic 4-tier PRESENTATION
+ * salience over each domain's own already-canonical `changes[]`
+ * (lib/inflationSalience.ts/lib/laborSalience.ts) instead of a flat
+ * truncation -- never a score, never a magnitude ranking, never new
+ * economic semantics; see docs/product/overview-attention-model-v1.md
+ * for the frozen contract. Recent Data Updates (renamed from "Latest
+ * Data Detected", #19C) is restructured to one slot per canonical
+ * monitor domain (components/overview/RecentDataUpdates.tsx), keyed by
+ * `lib/releaseMonitorRelation.ts`'s migration-verified
+ * `CANONICAL_MONITOR_RELEASE_IDS` -- never the broader, unrelated
+ * `releaseCategory()` display tag. This page composes and formats
+ * only -- it never recalculates a metric, reclassifies a state,
+ * derives economic significance, ranks importance, or infers
+ * publication/data availability.
  */
 export function OverviewPage() {
   const monitor = useApiResource(getInflationMonitor);
@@ -79,22 +87,29 @@ export function OverviewPage() {
           <div className="mt-3 space-y-6">
             {whatChanged.status === "loading" && <LoadingSkeleton label="Loading Inflation what changed" heightClassName="h-24" />}
             {whatChanged.status === "error" && <ErrorMessage message={CHANGES_ERROR_MESSAGE} onRetry={whatChanged.reload} />}
-            {whatChanged.status === "success" && <WhatChangedPreview events={whatChanged.data.changes} />}
+            {whatChanged.status === "success" && (
+              <WhatChangedPreview
+                events={whatChanged.data.changes}
+                comparisonAvailable={whatChanged.data.primary_momentum_changes.comparison_available}
+              />
+            )}
 
             {laborWhatChanged.status === "loading" && <LoadingSkeleton label="Loading Labor what changed" heightClassName="h-24" />}
             {laborWhatChanged.status === "error" && <ErrorMessage message={LABOR_CHANGES_ERROR_MESSAGE} onRetry={laborWhatChanged.reload} />}
-            {laborWhatChanged.status === "success" && <LaborWhatChangedPreview events={laborWhatChanged.data.changes} />}
+            {laborWhatChanged.status === "success" && (
+              <LaborWhatChangedPreview events={laborWhatChanged.data.changes} comparisonAvailable={laborWhatChanged.data.comparison_available} />
+            )}
           </div>
         </section>
 
-        {/* Latest Data Detected */}
+        {/* Recent Data Updates (renamed/restructured from "Latest Data Detected", Increment #22B) */}
         {processingStatus.status === "loading" && (
-          <LoadingSkeleton label="Loading latest data detected" heightClassName="h-32" />
+          <LoadingSkeleton label="Loading recent data updates" heightClassName="h-32" />
         )}
         {processingStatus.status === "error" && (
           <ErrorMessage message={PROCESSING_STATUS_ERROR_MESSAGE} onRetry={processingStatus.reload} />
         )}
-        {processingStatus.status === "success" && <LatestDataDetected items={processingStatus.data.occurrences} />}
+        {processingStatus.status === "success" && <RecentDataUpdates items={processingStatus.data.occurrences} />}
 
         {/* Releases -- one section, two independently-loading parts */}
         <section aria-labelledby="overview-releases-heading">

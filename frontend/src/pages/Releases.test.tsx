@@ -114,6 +114,23 @@ describe("Upcoming Releases", () => {
     expect(await screen.findByText("Upcoming releases could not be loaded.")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Retry" }).length).toBeGreaterThanOrEqual(1);
   });
+
+  it("Increment #22B: never renders the per-row monitor/releases CTA here -- it would be circular, already on /releases (§17's rendering-context note)", async () => {
+    resolveBoth({
+      upcoming: buildReleaseListResponse({
+        releases: [
+          buildReleaseOccurrenceItem({ release_id: 1, name: "Consumer Price Index", provider_release_id: "10" }),
+          buildReleaseOccurrenceItem({ release_id: 2, name: "Job Openings and Labor Turnover Survey", provider_release_id: "192" }),
+        ],
+      }),
+    });
+    renderPage();
+
+    await screen.findByText("Consumer Price Index");
+    expect(screen.queryByRole("link", { name: "View Inflation →" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "View Labor →" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "View Releases →" })).not.toBeInTheDocument();
+  });
 });
 
 describe("Recent Releases", () => {

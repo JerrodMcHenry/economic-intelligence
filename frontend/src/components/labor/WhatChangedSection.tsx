@@ -2,6 +2,7 @@ import type { LaborChangeEvent, LaborWhatChangedResult } from "../../api/labor.t
 import { Disclosure } from "../../components/Disclosure";
 import { formatPeriodPair } from "../../lib/format";
 import { formatLaborMetricValue } from "../../lib/laborFormat";
+import { tierLaborChanges } from "../../lib/laborSalience";
 import {
   employmentConditionLabelOrRaw,
   employmentMomentumLabelOrRaw,
@@ -97,14 +98,18 @@ function MetricChangeRow({ event }: { event: LaborChangeEvent }) {
  * every event remains reachable in the tiered lists below (tier
  * membership is a filter, not a deletion -- an event appears in
  * exactly one tier, and every tier is always rendered when non-empty).
+ *
+ * The four-tier filter itself lives in `lib/laborSalience.ts`
+ * (Increment #22B) -- extracted, not reimplemented, so Overview's own
+ * compact preview (`components/overview/LaborWhatChangedPreview.tsx`)
+ * reuses the identical, already-tested logic rather than a second,
+ * potentially-diverging copy (docs/product/overview-attention-model-v1.md
+ * §7/§20).
  */
 export function WhatChangedSection({ whatChanged }: { whatChanged: LaborWhatChangedResult }) {
   const events = whatChanged.changes;
 
-  const laborTier = events.filter((e) => e.component === "LABOR");
-  const stateTier = events.filter((e) => e.component !== "LABOR" && e.field === "state" && e.event_type !== "METRIC_CHANGED");
-  const conditionMomentumTier = events.filter((e) => e.field === "condition" || e.field === "momentum");
-  const metricTier = events.filter((e) => e.event_type === "METRIC_CHANGED");
+  const { tier1: laborTier, tier2: stateTier, tier3: conditionMomentumTier, tier4: metricTier } = tierLaborChanges(events);
 
   const periodPair = formatPeriodPair(whatChanged.previous_period, whatChanged.current_period);
 

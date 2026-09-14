@@ -16,6 +16,14 @@ const MAX_UPCOMING = 3;
  * of a release's name, category, provider, or schedule status exists
  * here; this is exactly what `/releases` already renders, only fewer
  * of them.
+ *
+ * Increment #22B: the one context where `ReleaseRow`'s optional
+ * `showMonitorCta` renders (docs/product/overview-attention-model-v1.md
+ * §17) -- a row shown here always has a useful, non-circular next
+ * action (Overview is never itself `/inflation`/`/labor`/`/releases`),
+ * unlike `ReleaseCalendarSection` (already on `/releases`) or
+ * `RelevantRelease` (already on `/labor`), where the identical CTA
+ * would be circular and is deliberately omitted.
  */
 export function UpcomingReleasesPreview({ releases }: { releases: readonly ReleaseOccurrenceItem[] }) {
   const preview = releases.slice(0, MAX_UPCOMING);
@@ -34,7 +42,7 @@ export function UpcomingReleasesPreview({ releases }: { releases: readonly Relea
           <ul className="min-w-0 flex-1 space-y-3">
             {group.items.map((item) => (
               <li key={`${item.release_id}-${item.scheduled_date}`}>
-                <ReleaseRow item={item} />
+                <ReleaseRow item={item} showMonitorCta />
               </li>
             ))}
           </ul>

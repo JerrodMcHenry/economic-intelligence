@@ -18,22 +18,32 @@ import { ExplanationTrigger } from "../explanations/ExplanationTrigger";
 const MAX_CHANGES = 3;
 
 /**
- * The Economic Overview's "Latest Data Detected" section (Increment
- * #19C) -- the first frontend surface for Increment #18/#19B's
- * release-driven detected-change/analytical-consequence evidence.
- * Presentation only: this component computes nothing economic. It
- * reads `latest_check.status`, `detected_observation_changes`, and
+ * The per-occurrence content renderer behind the Economic Overview's
+ * "Recent Data Updates" section (Increment #19C, restructured #22B) --
+ * the first frontend surface for Increment #18/#19B's release-driven
+ * detected-change/analytical-consequence evidence. Presentation only:
+ * this component computes nothing economic. It reads
+ * `latest_check.status`, `detected_observation_changes`, and
  * `detected_analysis_changes` exactly as `GET
  * /api/v1/releases/processing-status` returned them (see
  * api/processingStatus.types.ts) and formats them.
  *
- * Receives the raw `items` array (Overview's already-loaded, already-
- * successful #19B response) and picks ONE item to show via
- * `selectLatestDataDetectedItem` (lib/selectLatestDataDetected.ts) --
- * see that module for why "first backend item" would be a poor
- * default. Loading/error states are handled by `pages/Overview.tsx`
- * itself, inline, exactly the same as the other four Overview
- * sections (CurrentStateSection/WhatChangedPreview/
+ * Increment #22B: this component no longer owns its own `<section>`/
+ * `<h2>` -- it is now a content-only "slot" renderer, called TWICE by
+ * `components/overview/RecentDataUpdates.tsx` (once per canonical
+ * monitor domain, each already pre-filtered by
+ * `lib/releaseMonitorRelation.ts`'s `CANONICAL_MONITOR_RELEASE_IDS`,
+ * never by the broader, unrelated `releaseCategory()` display tag --
+ * docs/product/overview-attention-model-v1.md §3A/§14). This file's own
+ * name, export, and `items`-array prop shape are otherwise UNCHANGED
+ * from #19C -- `RecentDataUpdates.tsx` owns the shared heading and
+ * per-domain labeling; this component still receives the raw `items`
+ * array for its own domain slot and picks ONE item to show via
+ * `selectLatestDataDetectedItem` (lib/selectLatestDataDetected.ts,
+ * itself unmodified) -- see that module for why "first backend item"
+ * would be a poor default. Loading/error states are handled by
+ * `pages/Overview.tsx` itself, inline, exactly the same as every other
+ * Overview section (CurrentStateSection/WhatChangedPreview/
  * UpcomingReleasesPreview/RecentReleasePreview) -- this component only
  * ever receives already-successful data, keeping every section's
  * loading/error handling visibly uniform in one file.
@@ -61,18 +71,10 @@ const MAX_CHANGES = 3;
 export function LatestDataDetected({ items }: { items: readonly ReleaseProcessingStatusItem[] }) {
   const selected = selectLatestDataDetectedItem(items);
 
-  return (
-    <section aria-labelledby="overview-latest-data-detected-heading">
-      <h2 id="overview-latest-data-detected-heading" className="text-sm font-medium text-neutral-500">
-        Latest Data Detected
-      </h2>
-
-      {selected === null ? (
-        <p className="mt-3 text-sm text-neutral-500">No tracked release processing records are available yet.</p>
-      ) : (
-        <SelectedOccurrence item={selected} />
-      )}
-    </section>
+  return selected === null ? (
+    <p className="mt-3 text-sm text-neutral-500">No tracked release processing records are available yet.</p>
+  ) : (
+    <SelectedOccurrence item={selected} />
   );
 }
 

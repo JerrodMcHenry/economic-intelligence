@@ -1523,7 +1523,7 @@ changed` already holds for Inflation. Never calls
 [docs/architecture/labor-release-integration-v1.md](./labor-release-integration-v1.md)
 for the full frozen contract.
 
-## Flow 33 — `/` Economic Overview Page Load (Increment #19A, extended #19C, extended #20E.2)
+## Flow 33 — `/` Economic Overview Page Load (Increment #19A, extended #19C, extended #20E.2, extended #22B)
 
 `frontend/src/pages/Overview.tsx` calls `useApiResource(getInflationMonitor)`,
 `useApiResource(getInflationWhatChanged)`, `useApiResource(getLaborMonitor)`,
@@ -1576,7 +1576,7 @@ sequenceDiagram
     API-->>H5: 200 ReleaseProcessingStatusResponse (or a network/HTTP failure)
     API-->>H3: 200 ReleaseListResponse (or a network/HTTP failure)
     API-->>H4: 200 ReleaseListResponse (or a network/HTTP failure)
-    Note over B: Each of the seven renders independently --<br/>CurrentStateSection (now a peer wrapper over<br/>InflationCurrentStateCard/LaborCurrentStateCard),<br/>WhatChangedPreview/LaborWhatChangedPreview,<br/>LatestDataDetected, UpcomingReleasesPreview,<br/>RecentReleasePreview truncate and format only,<br/>never reclassify.
+    Note over B: Each of the seven renders independently --<br/>CurrentStateSection (a peer wrapper over<br/>InflationCurrentStateCard/LaborCurrentStateCard),<br/>WhatChangedPreview/LaborWhatChangedPreview (#22B:<br/>4-tier PRESENTATION salience, never a score),<br/>RecentDataUpdates (#22B: two canonical-monitor-<br/>domain slots), UpcomingReleasesPreview,<br/>RecentReleasePreview format/classify-into-fixed-<br/>tiers only, never reclassify a canonical value or<br/>rank by magnitude.
 ```
 
 Rendering is per-resource, identical in shape to Flow 27/30/37's own
@@ -1599,29 +1599,59 @@ renders `LaborMonitorResult.state` exactly as returned (via `Badge`/
 `WhyLaborState`, Flow 37's own components), labeled explicitly as
 "Labor" — neither is a page-wide "economy" conclusion, and there is no
 combined score anywhere. `WhatChangedPreview`/`LaborWhatChangedPreview`
-render `whatChanged.changes.slice(0, 3)` from each family's own flat,
-already deterministically-ordered event list (`inflation_what_changed_v1.0`/
-`labor_what_changed_v1.0`) under one shared `<h2>What Changed</h2>`,
-and never synthesize a narrative from an event's *absence* the way
-`/inflation`'s or `/labor`'s own `WhatChangedSection` does for its own
-per-section summaries. `LatestDataDetected` (Increment #19C, unmodified
-by #20E.2) picks ONE occurrence from `processingStatus.data.occurrences`
-across every mapped release — including Employment Situation, which
-now flows through this same unfiltered feed automatically — via a
-deterministic status-priority selection rule (`lib/selectLatestDataDetected.ts`
--- see Flow 34's own entry and this file's "Components" table for why
-it is not simply the backend's first-returned item), then renders that
-occurrence's `latest_check.status`-driven message plus its sibling
+(Increment #22B, replacing the old `.slice(0, 3)` truncation) classify
+each family's own flat, already deterministically-ordered event list
+(`inflation_what_changed_v1.0`/`labor_what_changed_v1.0`) into 4 fixed
+presentation tiers by `component`/`field` membership only
+(`lib/inflationSalience.ts`/`lib/laborSalience.ts` — Labor's a straight
+extraction of `/labor`'s own already-shipped four-filter hierarchy) —
+Tier 1 (primary domain state) → Tier 2 (structural change) → Tier 3
+(secondary/corroborating signal) → Tier 4 (routine metric, collapsed
+behind a count-labeled disclosure) — under one shared `<h2>What
+Changed</h2>`. Tiers 1–3 render uncapped (the old fixed-3 truncation is
+retired for structural events, precisely because it could let routine
+Tier-4 noise from an earlier component crowd out a real state change
+from a later one — the defect #21's audit found and this flow now
+closes); Tier 4 stays collapsed but never capped or hidden from
+inspection. Never a score, never a magnitude-based sort, never a
+market-impact/severity concept — a dedicated architecture guard scans
+for exactly those smuggled-in shapes. Still never synthesizes a
+narrative from an event's *absence* the way `/inflation`'s or `/labor`'s
+own `WhatChangedSection` does for its own per-section summaries; a
+domain whose Tiers 1–3 are all empty but Tier 4 is not instead renders
+the exact copy "No structural change." `RecentDataUpdates` (Increment
+#19C as "Latest Data Detected", renamed/restructured #22B) now owns one
+shared `<h2>Recent Data Updates</h2>` over two independently-gated
+domain slots, each pre-filtering `processingStatus.data.occurrences` by
+`lib/releaseMonitorRelation.ts`'s migration-verified
+`CANONICAL_MONITOR_RELEASE_IDS` (`{"10","54"} → Inflation`, `{"50"} →
+Labor` — deliberately NOT the broader `releaseCategory()` display tag,
+which would incorrectly catch JOLTS) before calling the same,
+unmodified per-domain-filtered `selectLatestDataDetectedItem`
+(`lib/selectLatestDataDetected.ts` — see Flow 34's own entry and this
+file's "Components" table for why it is not simply the backend's
+first-returned item). Each selected occurrence renders its own
+`latest_check.status`-driven message plus its sibling
 `detected_observation_changes`/`detected_analysis_changes` lists,
 truncated to 3 each in backend order, using `analysisComponentLabel`/
 `analysisFieldLabel` (extended #20E.2 to humanize any family's values,
-not just Inflation's). `UpcomingReleasesPreview`/`RecentReleasePreview`
-slice the already-backend-ordered release arrays to 3 and 1
-respectively, reusing Flow 30's own `ReleaseDateBadge`/`ReleaseRow`/
-`ScheduleStatusBadge` components unmodified, alongside the same
-mandatory schedule-vs-publication disclosure sentence Flow 30 requires
-(centralized in `components/releases/ReleaseScheduleDisclosure.tsx`,
-rendered on all three of `/releases`, `/`, and `/labor`).
+not just Inflation's) — `components/overview/LatestDataDetected.tsx`
+itself is unchanged in substance, only stripped of its own former
+`<section>`/heading, now called twice as a content-only slot renderer.
+`UpcomingReleasesPreview`/`RecentReleasePreview` slice the
+already-backend-ordered release arrays to 3 and 1 respectively, reusing
+Flow 30's own `ReleaseDateBadge`/`ReleaseRow`/`ScheduleStatusBadge`
+components, alongside the same mandatory schedule-vs-publication
+disclosure sentence Flow 30 requires (centralized in
+`components/releases/ReleaseScheduleDisclosure.tsx`, rendered on all
+three of `/releases`, `/`, and `/labor`). As of #22B,
+`UpcomingReleasesPreview` also enables `ReleaseRow`'s optional
+`showMonitorCta` prop — each previewed row gets its own "View
+Inflation →"/"View Labor →"/"View Releases →" next action, keyed by the
+same `CANONICAL_MONITOR_RELEASE_IDS` constant, closing the release-row
+dead end #21's audit found (`ReleaseCalendarSection` on Flow 30 and
+`RelevantRelease` on Flow 37 deliberately leave the prop at its default
+`false`, since the identical CTA would be circular in either context).
 
 Nothing in this flow's call graph imports AI or news, and nothing
 calls a sync/mutation endpoint of any kind — the Overview page is

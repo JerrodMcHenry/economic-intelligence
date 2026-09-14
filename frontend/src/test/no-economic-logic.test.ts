@@ -83,6 +83,28 @@ const FORBIDDEN_PATTERNS: ReadonlyArray<{ name: string; pattern: RegExp }> = [
     name: "frozen 0.2pp unemployment-trend deadband comparison",
     pattern: /[<>]=?\s*[-+]?\s*0\.2\b/,
   },
+  // Increment #22B -- docs/product/overview-attention-model-v1.md §4's
+  // own explicit non-goals: PRESENTATION salience (lib/inflationSalience.ts,
+  // lib/laborSalience.ts) may classify already-canonical events into
+  // fixed tiers by `component`/`field` membership only -- it must never
+  // rank by magnitude, invent a score, or predict market impact. A
+  // `.sort(...)` call keyed by `delta`/`Math.abs` would be exactly a
+  // magnitude-based ranking smuggled in under the "salience" label; a
+  // declared `*Score`/`marketImpact` identifier would be exactly the
+  // significance-score/market-impact-prediction concept this document
+  // explicitly rejects. Deliberately excludes bare "bullish"/"bearish"
+  // -- those words appear only in this project's own correct, existing
+  // prose explicitly stating the ABSENCE of that framing (e.g.
+  // components/labor/LaborHero.tsx, lib/laborLabels.ts), so matching
+  // them bare would flag exactly the comments proving compliance.
+  {
+    name: "magnitude-based sort (.sort() keyed by delta/Math.abs -- a smuggled-in significance ranking)",
+    pattern: /\.sort\([^)]*\b(delta|Math\.abs)\b/,
+  },
+  {
+    name: "significance-score/market-impact identifier (severityScore/confidenceScore/importanceScore/significanceScore/marketImpact)",
+    pattern: /\b(severityScore|confidenceScore|importanceScore|significanceScore|marketImpact)\b/i,
+  },
 ];
 
 function collectSourceFiles(dir: string): string[] {

@@ -7914,3 +7914,144 @@ one). Any `/labor/employment`/`/labor/unemployment` sub-route. Any
 Growth/Housing/JOLTS/CIVPART nav placeholder. A distinct payroll-benchmark-revision
 disclosure sentence (none exists in the frozen methodology to
 transcribe — confirmed by #20E.1's own audit, not invented here).
+
+## Increment #22B — Overview Attention & Navigation Implementation
+
+Implements the frozen `docs/product/overview-attention-model-v1.md`
+contract (itself a corrected version of #22A's own first draft, see
+that document's own §3A correction record). Zero backend production
+changes — every decision was implementable from fields already on
+`ChangeEvent`/`LaborChangeEvent`/`ReleaseProcessingStatusItem`, plus a
+small frontend constant restating an already-committed backend fact.
+
+### The core defect, and the fix: PRESENTATION salience, never a score
+
+#21's audit found Overview's compact What Changed previews truncated
+each domain's flat, *canonically* (structurally, not importance)
+ordered `changes[]` to 3 — a section carrying only routine
+`METRIC_CHANGED` events could occupy all 3 visible slots ahead of a
+real `STATE_CHANGED` event in a later section. The fix is a
+deterministic 4-tier classification over each event's `component`/
+`field` membership only (`lib/inflationSalience.ts`,
+`lib/laborSalience.ts`) — Tier 1 (primary domain state) → Tier 2
+(structural change, including any-component availability) → Tier 3
+(secondary/corroborating signal) → Tier 4 (routine metric, collapsed
+behind a count-labeled disclosure, never capped). Labor's module is a
+**refactor, not a new hierarchy**: `/labor`'s own shipped
+`WhatChangedSection.tsx` already implemented this exact 4-way filter
+(#20E.2); it's extracted verbatim so Overview reuses the identical,
+already-tested logic. Inflation gets an analogous module implementing
+the frozen table for the first time — `/inflation`'s own full page
+uses fixed section order, not tiering, and stays untouched (out of
+scope, confirmed by re-reading #21's own strongest scores: Investigate
+and Explainability were never broken). Explicitly, by design: no score,
+no magnitude-based sort, no severity/confidence/market-impact concept
+anywhere — a new architecture guard (`no-economic-logic.test.ts`) scans
+for exactly those smuggled-in shapes.
+
+### Release category vs. canonical monitor relation — a real correction, not a hypothetical
+
+#22A's own first draft used `releaseCategory()` — the existing,
+honest-but-broad `/releases` display tag — as if it were equivalent to
+"this release's data feeds a canonical monitor." It isn't: JOLTS
+("192") carries the display category "Labor" but has zero seeded
+`ReleaseSeriesMapping` rows in either backend migration
+(`alembic/versions/09f4c0959e9f_...`/`cd476d227f99_...`, inspected
+directly) — it is deferred from `labor_v1.0` entirely. A new, small,
+separate constant (`lib/releaseMonitorRelation.ts`'s
+`CANONICAL_MONITOR_RELEASE_IDS = {INFLATION: {"10","54"}, LABOR:
+{"50"}}`) restates only the migration-verified fact, mirroring the
+identical pattern `components/labor/RelevantRelease.tsx` already used
+for Employment Situation alone. Every navigation/attribution decision
+in this increment goes through this constant, never `releaseCategory()`
+— enforced by a dedicated regression test
+(`Overview.test.tsx`'s "THE JOLTS-EXCLUSION REGRESSION TEST") that
+would have caught the original, corrected error.
+
+### Recent Data Updates — renamed and restructured, DATA/INTELLIGENCE split preserved
+
+"Latest Data Detected" → "Recent Data Updates" (matching the same
+page's own "Upcoming/Recent Releases" naming convention one section
+below it). Selection changed from one system-wide item
+(`lib/selectLatestDataDetected.ts`, itself unmodified) to one slot per
+canonical monitor domain — the same function called twice, pre-filtered
+by `CANONICAL_MONITOR_RELEASE_IDS`. `components/overview/LatestDataDetected.tsx`
+lost only its own `<section>`/`<h2>` wrapper (now a content-only slot
+renderer, same `items` prop, same internals, same exports
+`ObservationChangeRow`/`AnalysisChangeRow` that `components/labor/LatestDataDetected.tsx`
+already imports) — its own 294-line test file
+(`components/overview/LatestDataDetected.test.tsx`) required **zero
+changes**, since none of its assertions touched the now-removed
+heading. A new `components/overview/RecentDataUpdates.tsx` owns the
+one shared heading and two independently-gated domain slots, mirroring
+`CurrentStateSection`'s already-established peer-card pattern exactly.
+The DATA-changed vs. INTELLIGENCE-changed sibling-array split (ADR-023)
+is untouched.
+
+### Closing the two #21 dead ends
+
+`components/releases/ReleaseRow.tsx` gained an optional `showMonitorCta`
+prop (default `false`) — "View Inflation →"/"View Labor →" for a
+release with a real canonical monitor relation, "View Releases →" for
+one without (JOLTS/GDP/Advance Retail Sales), so a non-monitor release
+is never a hard dead end. Deliberately opt-in, not the default: the CTA
+would be circular inside `ReleaseCalendarSection` (already on
+`/releases`) and inside `RelevantRelease` (already on `/labor`,
+Employment-Situation-only) — only `components/overview/UpcomingReleasesPreview.tsx`
+(on Overview, never itself any of the three destinations) opts in.
+Regression-tested from both directions: a dedicated
+`pages/Releases.test.tsx` test proves the CTA never renders on
+`/releases` itself, and a `pages/Labor.test.tsx` test proves the same
+for `RelevantRelease`.
+
+### CTA wording
+
+"See full comparison →" → "View Inflation →"/"View Labor →" (What
+Changed and Recent Data Updates), aligned with the existing "Open
+Inflation →"/"Open Labor →" wording Current State already uses for the
+same destinations — deliberately kept as a distinct verb ("Open" for a
+compact-state card inviting exploration, "View" for a change/update
+list inviting a fuller list), not unified into one word. New "View
+Releases →" completes a consistent three-way "View {Destination} →"
+pattern for the one context where it renders.
+
+### Verification
+
+Frontend: `npx vitest run`, run twice (plus several additional runs
+while investigating one transient failure, see below): **731 passed**
+both times, 0 skipped, 0 failed. `npm run typecheck`: clean. `npm run
+lint` (oxlint): clean. `npm run build`: succeeds. Backend:
+`TEST_DATABASE_URL=... pytest tests/ -q`: **1,173 passed**, unchanged
+— confirmed zero backend files touched
+(`git status --porcelain -- app/ alembic/ tests/` empty).
+
+One frontend run, mid-increment, reported one failure in
+`Overview.test.tsx > Current State > Inflation monitor fails; Labor's
+own Current State card still renders` — a test this increment did not
+touch, in a component (`CurrentStateSection`/`InflationCurrentStateCard`)
+this increment did not modify. Five immediate re-runs of the full suite
+were clean (696/696, before the later additions brought the total to
+731). Per the explicit instruction to capture specifics rather than
+silently relabel a flake: the exact test name and error
+(`TestingLibraryElementError: Unable to find an element with the text:
+Inflation data could not be loaded.`) are recorded here; it did not
+reproduce again across eight subsequent full-suite runs this increment,
+including the two final identical 731/731 runs above.
+
+### New files
+
+`lib/inflationSalience.ts`/`.test.ts`, `lib/laborSalience.ts`/`.test.ts`,
+`lib/releaseMonitorRelation.ts`/`.test.ts`,
+`components/overview/RecentDataUpdates.tsx`.
+
+### Deferred (named explicitly, not built here)
+
+Any change to `/inflation`'s or `/labor`'s own full What Changed
+sections. Any backend field, endpoint, or migration. A release detail
+page. An `/inflation`-side scoped Recent-Data-Updates-equivalent
+section (the asymmetry with `/labor`'s own scoped section is disclosed
+in the frozen contract, not fixed here). Any cross-domain regime
+synthesis, aggregate score, historical context, Compare surface,
+Growth/third domain, chart, AI, notification, or account/save/watchlist
+— all explicitly out of scope per the frozen contract and this
+prompt's own scope guards.

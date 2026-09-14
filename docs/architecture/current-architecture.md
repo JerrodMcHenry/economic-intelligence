@@ -510,7 +510,7 @@ structurally, not just by convention, and were each verified directly
   same, unmodified `EconomicDataService`/`AnalysisService` methods every
   HTTP endpoint already uses.
 
-## Frontend architecture (Increment #19A: Economic Overview UI V1; extended #19C: Latest Data Detected UI; extended #20E.2: Labor UI + Overview Integration)
+## Frontend architecture (Increment #19A: Economic Overview UI V1; extended #19C: Latest Data Detected UI; extended #20E.2: Labor UI + Overview Integration; extended #22B: Overview Attention & Navigation, "Latest Data Detected" renamed "Recent Data Updates")
 
 ```
 Browser
@@ -607,12 +607,23 @@ frontend/
                    into a peer-domain wrapper over InflationCurrentStateCard/
                    LaborCurrentStateCard), WhatChangedPreview/
                    LaborWhatChangedPreview (peer cards under one shared
-                   heading), LatestDataDetected (generic, unfiltered --
-                   Employment Situation's own evidence flows through it
-                   automatically), UpcomingReleasesPreview, RecentReleasePreview;
-                   each only truncates/formats already-canonical backend
-                   values, reusing Badge/WhyThisState/WhyLaborState/ReleaseRow/
-                   ReleaseDateBadge rather than re-deriving anything
+                   heading; restructured #22B into a deterministic 4-tier
+                   PRESENTATION salience, see "Overview attention model"
+                   below, replacing the old flat truncate-to-3), RecentDataUpdates
+                   (Increment #22B -- renamed/restructured from "Latest Data
+                   Detected"; owns the one shared heading and two
+                   independently-gated per-monitor-domain slots, each fed by
+                   LatestDataDetected pre-filtered via
+                   lib/releaseMonitorRelation.ts's canonical-monitor-relation
+                   constant, never the broader releaseCategory() display tag),
+                   LatestDataDetected (Increment #19C -- as of #22B, a
+                   content-only slot renderer with no `<section>`/heading of
+                   its own; called twice by RecentDataUpdates rather than
+                   owning the page's evidence section directly),
+                   UpcomingReleasesPreview, RecentReleasePreview; each only
+                   truncates/formats already-canonical backend values, reusing
+                   Badge/WhyThisState/WhyLaborState/ReleaseRow/ReleaseDateBadge
+                   rather than re-deriving anything
     content/
       explanations/  curated, static explanation copy -- types.ts (the one
                       Explanation shape, Increment #17C), inflation.ts,
@@ -636,7 +647,18 @@ frontend/
                  (query-window date math + same-date grouping + compact date
                  display -- never a status classification), releasePresentation.ts
                  (frontend-only short-label/category map for the curated V1
-                 releases)
+                 releases), inflationSalience.ts/laborSalience.ts (Increment
+                 #22B -- deterministic PRESENTATION-only 4-tier classification
+                 of already-canonical change events into fixed tiers by
+                 component/field membership; Labor's is a refactor of
+                 components/labor/WhatChangedSection.tsx's own already-shipped
+                 filters, extracted for reuse, never a second hierarchy;
+                 see "Overview attention model" below), releaseMonitorRelation.ts
+                 (Increment #22B -- CANONICAL_MONITOR_RELEASE_IDS, a small
+                 frontend constant restating the backend's own seeded
+                 release-to-series mapping migrations; deliberately separate
+                 from, and never conflated with, releasePresentation.ts's
+                 releaseCategory() broad display tag -- see below)
     pages/       one component per route (Overview -- the real Economic
                  Overview, now genuinely multi-domain as of #20E.2; Inflation;
                  Labor, Increment #20E.2; Releases; NotFound)
@@ -852,77 +874,131 @@ applying it to every existing page in this increment.
 
 **The Economic Overview page** (`frontend/src/pages/Overview.tsx`,
 Increment #19A, extended by #19C, restructured to a genuine multi-domain
-peer layout by #20E.2) is the real `/` route, replacing the Increment
-#16A placeholder. It composes seven existing, unmodified canonical read
-functions — `getInflationMonitor`/`getInflationWhatChanged`/
-`getLaborMonitor`/`getLaborWhatChanged`/`fetchReleaseProcessingStatus`/
-`fetchUpcomingReleases`/`fetchRecentReleases` — each through its own
-independent `useApiResource` call, the identical pattern `/inflation`
-and `/labor` already established. There is deliberately **no**
-`GET /api/v1/overview` aggregate endpoint, no `Promise.all` across
-domains, and no aggregate "Economy Score": a failure in any one
-resource never blanks, blocks, or fabricates any of the other six
-(proven directly by dedicated partial-failure tests, one per resource,
-plus cross-domain failure-isolation tests added in #20E.2 — e.g. Labor
-failing never blanks Inflation's card, and vice versa). Hierarchy is
-Current State → What Changed → Latest Data Detected → Releases (NOW →
-CHANGED → DETECTED → NEXT), each still exactly one `<h2>` (proven by
-the unmodified `heading-sequence` test). `components/overview/CurrentStateSection.tsx`
-is now a thin peer-domain wrapper — one shared `<h2>Current State</h2>`
+peer layout by #20E.2, extended again by #22B's attention/navigation
+work) is the real `/` route, replacing the Increment #16A placeholder.
+It composes seven existing, unmodified canonical read functions —
+`getInflationMonitor`/`getInflationWhatChanged`/`getLaborMonitor`/
+`getLaborWhatChanged`/`fetchReleaseProcessingStatus`/`fetchUpcomingReleases`/
+`fetchRecentReleases` — each through its own independent `useApiResource`
+call, the identical pattern `/inflation` and `/labor` already
+established. There is deliberately **no** `GET /api/v1/overview`
+aggregate endpoint, no `Promise.all` across domains, and no aggregate
+"Economy Score": a failure in any one resource never blanks, blocks, or
+fabricates any of the other six (proven directly by dedicated
+partial-failure tests, one per resource, plus cross-domain
+failure-isolation tests added in #20E.2 — e.g. Labor failing never
+blanks Inflation's card, and vice versa). Hierarchy is Current State →
+What Changed → Recent Data Updates → Releases (NOW → CHANGED → DETECTED
+→ NEXT — "Recent Data Updates" renamed from "Latest Data Detected" in
+#22B, see below), each still exactly one `<h2>` (proven by the
+`heading-sequence` test, updated for the rename). `components/overview/CurrentStateSection.tsx`
+is a thin peer-domain wrapper — one shared `<h2>Current State</h2>`
 over two independently-gated `<div>` sub-cards, `InflationCurrentStateCard`
 and `LaborCurrentStateCard` (Increment #20E.2), neither owning the
 section heading; each card shows only its own state Badge, an explicit
 domain label beside it ("Inflation"/"Labor," so the page reads as
 "Inflation is MIXED"/"Labor is COOLING," never "the economy is X"), the
 period, and its own `WhyThisState`/`WhyLaborState` (each reused
-unmodified, including their existing contradictory-evidence guarantees)
-— the earlier single-domain "Inflation is the first fully deterministic
-monitor..." framing sentence was removed entirely as no longer true,
-not replaced. `components/overview/WhatChangedPreview.tsx`/
-`LaborWhatChangedPreview.tsx` follow the identical peer-card pattern
-under one shared `<h2>What Changed</h2>`, each rendering only real
-`ChangeEvent`s from its own flat, already deterministically-ordered
-`changes` array, truncated to 3 and never reordered — deliberately
+unmodified, including their existing contradictory-evidence guarantees).
+
+`components/overview/WhatChangedPreview.tsx`/`LaborWhatChangedPreview.tsx`
+(Increment #22B, replacing the old flat `.slice(0, 3)` truncation) follow
+the identical peer-card pattern under one shared `<h2>What Changed</h2>`,
+but now render a deterministic 4-tier PRESENTATION salience over each
+domain's own flat, already deterministically-ordered `changes` array —
+Tier 1 (primary domain state) → Tier 2 (structural change, any-component
+availability included) → Tier 3 (secondary/corroborating signal) → Tier
+4 (routine metric, collapsed behind a count-labeled `Metric updates (N)`
+disclosure, never capped, always inspectable) — computed by
+`lib/inflationSalience.ts`/`lib/laborSalience.ts` from each event's
+`component`/`field` membership only, never a score, a magnitude
+comparison, or an inference beyond the backend's own response (frozen
+by [docs/product/overview-attention-model-v1.md](../product/overview-attention-model-v1.md)).
+Labor's module is a straight extraction of `/labor`'s own already-shipped
+`WhatChangedSection.tsx` four-filter hierarchy (#20E.2), reused rather
+than reimplemented; Inflation's is new, since `/inflation`'s own full
+page uses fixed section order rather than tiering and was intentionally
+left untouched (#21's audit found it, unlike Overview's old truncation,
+not broken). Tiers 1–3 are always shown uncapped — the old
+`MAX_EVENTS = 3` truncation, which #21's audit found could let three
+routine metric updates crowd out a real state change from a later
+component, is retired for structural events entirely. Deliberately
 **not** replicating `/inflation`'s or `/labor`'s own `WhatChangedSection`,
 which synthesizes a "State remains X" sentence from the *absence* of a
 `STATE_CHANGED` event for its own, separately-reviewed per-section
-summaries; Overview must never invent that inference.
+summaries; Overview must never invent that inference — instead, a
+domain whose Tiers 1–3 are all empty (but Tier 4 is not) renders the
+exact copy "No structural change.", never "Nothing changed" (false,
+since metrics did move) and never a canonical-state word unless the
+backend's own current state literally equals it.
+
 `components/overview/UpcomingReleasesPreview.tsx`/`RecentReleasePreview.tsx`
 show the first 3 upcoming occurrences (from the raw, already-ordered
 response, grouped by date only for display) and at most 1 recent
 occurrence as a compact line, reusing `ReleaseDateBadge`/`ReleaseRow`/
-`ScheduleStatusBadge` unmodified. The mandatory release-schedule
-disclosure sentence, previously hardcoded inline only in
-`pages/Releases.tsx`, was extracted into a shared
-`components/releases/ReleaseScheduleDisclosure.tsx` so all three pages
-(`/releases`, `/`, `/labor`) render the identical sentence. A narrowly-
-scoped `test/no-overview-mutation.test.ts` proves every Overview file
-imports no AI/news module, references no sync/process endpoint, never
-calls `fetch` directly, and (for `pages/Overview.tsx` specifically)
-imports only the seven documented read functions from `api/*`.
+`ScheduleStatusBadge`. As of #22B, `UpcomingReleasesPreview` is the one
+place `ReleaseRow`'s new optional `showMonitorCta` prop is enabled — see
+below. The mandatory release-schedule disclosure sentence, previously
+hardcoded inline only in `pages/Releases.tsx`, was extracted into a
+shared `components/releases/ReleaseScheduleDisclosure.tsx` so all three
+pages (`/releases`, `/`, `/labor`) render the identical sentence. A
+narrowly-scoped `test/no-overview-mutation.test.ts` proves every
+Overview file imports no AI/news module, references no sync/process
+endpoint, never calls `fetch` directly, and (for `pages/Overview.tsx`
+specifically) imports only the seven documented read functions from
+`api/*`. A new `test/no-economic-logic.test.ts` guard (#22B) additionally
+proves the new salience modules contain no magnitude-based `.sort()` and
+no declared significance-score/market-impact identifier — the explicit
+non-goals `docs/product/overview-attention-model-v1.md` §4 freezes.
 
-**Latest Data Detected** (`components/overview/LatestDataDetected.tsx`,
-Increment #19C) is the first frontend surface for #18's release-driven
+**Recent Data Updates** (`components/overview/RecentDataUpdates.tsx`,
+Increment #19C, renamed and restructured #22B from "Latest Data
+Detected") is the first frontend surface for #18's release-driven
 evidence, consuming #19B's `GET /api/v1/releases/processing-status`
 exclusively through its public contract — never #18's internal ORM
 names (checked structurally; see `no-overview-mutation.test.ts`'s
-extended guard). It shows ONE occurrence, chosen by a deterministic
-PRODUCT priority rule (`lib/selectLatestDataDetected.ts`:
-`CHANGES_DETECTED` > `PARTIAL_CHECK` > `CHECK_FAILED` > `NO_CHANGE` >
-`NOT_CHECKED`, preserving the backend's own order within one tier) —
-not "the most recently scheduled occurrence," since #18/#19B processing
-is manual-only and the most-recently-scheduled item is almost always
-an uninformative future `NOT_CHECKED` row. `latest_check.status` alone
-drives the primary message (`lib/detectedChangeFormat.ts`'s
-`processingStatusLabel`); historical `detected_observation_changes`/
-`detected_analysis_changes` are shown separately and, for `NO_CHANGE`/
-`CHECK_FAILED` specifically, explicitly framed as "earlier" evidence —
-proven with a contradictory-fixture regression test (a `NO_CHANGE`
-item carrying real historical evidence must still show "No new data
-detected," never switch to "Data changes detected"). The two evidence
-lists render as sibling groups, "Source data changes"/"Tracked
-analysis changes," never nested and never implying causation between
-them (see [ADR-023](../adr/023-release-processing-read-model-no-causal-nesting.md)).
+extended guard). As of #22B it owns one shared `<h2>Recent Data
+Updates</h2>` over two independently-gated domain slots (mirroring
+`CurrentStateSection`'s own peer-card pattern), instead of showing one
+occurrence system-wide — each slot pre-filters the already-loaded
+`items` array by `lib/releaseMonitorRelation.ts`'s
+`CANONICAL_MONITOR_RELEASE_IDS` (a small, migration-verified constant:
+`{"10","54"} → Inflation`, `{"50"} → Labor`) before calling the SAME,
+unmodified `selectLatestDataDetectedItem` (`lib/selectLatestDataDetected.ts`)
+that previously ran once, globally. This is a deliberate correction,
+not an original design decision — an early #22A draft used
+`lib/releasePresentation.ts`'s existing, honest-but-broad `releaseCategory()`
+display tag for this filter instead, which would have (and, in that
+draft, did) attribute JOLTS ("192", display category "Labor") to the
+Labor monitor slot despite JOLTS having zero seeded series-mapping rows
+in either backend migration and being deferred from `labor_v1.0`
+entirely — corrected before implementation, and guarded by a dedicated
+regression test (`Overview.test.tsx`'s "THE JOLTS-EXCLUSION REGRESSION
+TEST"). `selectLatestDataDetectedItem` itself is completely unmodified
+by #22B: `CHANGES_DETECTED` > `PARTIAL_CHECK` > `CHECK_FAILED` >
+`NO_CHANGE` > `NOT_CHECKED`, preserving the backend's own order within
+one tier — not "the most recently scheduled occurrence," since #18/#19B
+processing is manual-only and the most-recently-scheduled item is
+almost always an uninformative future `NOT_CHECKED` row.
+`components/overview/LatestDataDetected.tsx` itself lost only its own
+`<section>`/`<h2>` wrapper in #22B — same `items` prop, same internals,
+same exported `ObservationChangeRow`/`AnalysisChangeRow`
+(`components/labor/LatestDataDetected.tsx` still imports both
+unmodified) — now a content-only slot renderer called twice by
+`RecentDataUpdates.tsx` rather than owning the page's evidence section
+directly; its own pre-existing 294-line test file required zero
+changes, since none of its assertions touched the now-removed heading.
+`latest_check.status` alone still drives each slot's own primary
+message (`lib/detectedChangeFormat.ts`'s `processingStatusLabel`);
+historical `detected_observation_changes`/`detected_analysis_changes`
+are shown separately and, for `NO_CHANGE`/`CHECK_FAILED` specifically,
+explicitly framed as "earlier" evidence — proven with a
+contradictory-fixture regression test (a `NO_CHANGE` item carrying real
+historical evidence must still show "No new data detected," never
+switch to "Data changes detected"). The two evidence lists render as
+sibling groups, "Source data changes"/"Tracked analysis changes," never
+nested and never implying causation between them (see
+[ADR-023](../adr/023-release-processing-read-model-no-causal-nesting.md)).
 `api/processingStatus.ts`/`.types.ts`, `lib/detectedChangeFormat.ts`,
 `lib/selectLatestDataDetected.ts`, and `content/explanations/processingStatus.ts`
 deliberately avoid the substring "release" in their file paths — an
@@ -950,7 +1026,28 @@ substring — see that guard's own docstring). Zero backend changes for
 Zero backend changes for #20E.2 either — the frontend type fix above
 brings this file back in sync with the backend's own #20D.2 widening;
 see `docs/architecture/labor-ui-v1.md` and the Increment #20E.2 journal
-entry.
+entry. Zero backend changes for #22B either — the per-domain restructuring
+above is a pure frontend call-site/filter change over fields the
+backend already returns; see
+[docs/product/overview-attention-model-v1.md](../product/overview-attention-model-v1.md)
+and the Increment #22B journal entry.
+
+**Release-row navigation** (`components/releases/ReleaseRow.tsx`,
+Increment #22B): an optional `showMonitorCta` prop (default `false`) —
+"View Inflation →"/"View Labor →" for a release with a real canonical
+monitor relation, "View Releases →" for one without (JOLTS/GDP/Advance
+Retail Sales), closing a dead end #21's audit found (release rows
+previously linked nowhere at all). Keyed by the same
+`lib/releaseMonitorRelation.ts` constant Recent Data Updates uses, never
+`releaseCategory()`. Deliberately opt-in rather than the default: the
+CTA would be circular inside `ReleaseCalendarSection` (already on
+`/releases`) and inside `RelevantRelease` (already on `/labor`,
+Employment-Situation-only, so a non-monitor release never even reaches
+it) — only `UpcomingReleasesPreview` (on Overview, never itself any of
+the three destinations) opts in, regression-tested from both directions
+(a `pages/Releases.test.tsx` test proves the CTA never renders on
+`/releases` itself; a `pages/Labor.test.tsx` test proves the same for
+`RelevantRelease`).
 
 **Local development** (see [Flow 26](./request-flows.md#flow-26--frontend-local-development-proxy-increment-16a)):
 the Vite dev server proxies `/api/*` requests to
@@ -1379,3 +1476,59 @@ directly (no files under `app/`, `alembic/`, or `tests/` touched) and
 by an unchanged 1,173-passed backend regression run; frontend suite
 grew 487 → 671 (run twice, identical), lint and typecheck clean, build
 succeeds. Full account: docs/ENGINEERING_JOURNAL.md's #20E.2 entry.
+
+**Increment #21 (Product Experience, Value & Workflow Audit)** is a
+read-only product audit — zero production code changed — producing
+[docs/product/product-experience-audit-v1.md](../product/product-experience-audit-v1.md).
+Its highest-leverage finding: Overview's compact What Changed previews
+truncate each domain's flat, canonically-ordered `changes[]` to 3
+events by fixed component/section order, not importance, so a section
+carrying only routine metric updates can crowd out a real state change
+from a later component — demonstrated directly from
+`app/domain/inflation_what_changed.py`'s own concatenation order, not
+assumed. Also found: "Latest Data Detected" is too pipeline-oriented a
+name; its single, system-wide occurrence selection can let one domain's
+fresh evidence hide another's; and both release rows and Latest-Data-
+Detected items were hard dead ends with no link anywhere.
+
+**Increment #22A (Overview Attention Model — Product/Frontend
+Architecture Audit + Contract Freeze, later corrected)** is a read-only
+audit/freeze turn that froze
+[docs/product/overview-attention-model-v1.md](../product/overview-attention-model-v1.md):
+a shared 4-tier PRESENTATION salience vocabulary (Primary domain state
+→ Structural change → Secondary/corroborating signal → Metric update),
+explicit separate per-domain event→tier mappings for Inflation and
+Labor, exact quiet-state copy, and navigation/CTA rules — explicitly
+rejecting any economic-significance score, magnitude ranking, or
+market-impact concept. A follow-up correction turn found the freeze's
+own first draft had conflated `lib/releasePresentation.ts`'s
+`releaseCategory()` (an honest but broad `/releases` display tag) with
+"this release feeds a canonical monitor" — concretely, JOLTS would have
+been incorrectly attributed to the Labor monitor despite having zero
+seeded series-mapping rows in either backend migration. Corrected
+before implementation by inspecting the actual migrations directly
+(`alembic/versions/cd476d227f99_...`/`09f4c0959e9f_...`) and freezing a
+separate, narrower, migration-verified constant instead.
+
+**Increment #22B (Overview Attention & Navigation Implementation)**
+implements that corrected contract exactly — see "The Economic Overview
+page" and "Release-row navigation" above for the full breakdown. New:
+`lib/inflationSalience.ts`/`lib/laborSalience.ts` (the latter a
+refactor of `/labor`'s own already-shipped `WhatChangedSection.tsx`
+filters, extracted for reuse), `lib/releaseMonitorRelation.ts`
+(`CANONICAL_MONITOR_RELEASE_IDS`), `components/overview/RecentDataUpdates.tsx`.
+`WhatChangedPreview.tsx`/`LaborWhatChangedPreview.tsx` replaced the old
+flat truncate-to-3 with the frozen 4-tier salience, uncapped for
+structural events; `LatestDataDetected.tsx` lost only its own
+`<section>`/heading (now a content-only slot renderer, its own
+294-line test file unchanged); `ReleaseRow.tsx` gained an opt-in
+`showMonitorCta` prop closing #21's dead-end finding. Zero backend
+production changes — confirmed directly (no files under `app/`,
+`alembic/`, or `tests/` touched) and by an unchanged 1,173-passed
+backend regression run; frontend suite grew 671 → 731 (run twice,
+identical), lint and typecheck clean, build succeeds. One transient,
+unrelated test failure was observed and investigated (not silently
+rerun-and-dismissed) mid-increment and did not reproduce across eight
+subsequent full-suite runs — see the Increment #22B journal entry for
+the exact test name and evidence. Full account:
+docs/ENGINEERING_JOURNAL.md's #22B entry.
