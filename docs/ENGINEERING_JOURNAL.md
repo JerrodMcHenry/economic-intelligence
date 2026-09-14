@@ -7105,3 +7105,238 @@ control (#19C adds no mutation path anywhere); a release-detail surface
 showing full per-occurrence history (the single-occurrence endpoint
 #19B itself deferred); any economic ranking, importance score, or
 cross-release comparison.
+
+## Increment #20B — Deterministic Labor Monitor V1 Backend
+
+The second canonical monitor. Implements `labor_v1.0` exactly as
+frozen in `research/labor_momentum/LABOR_V1_FROZEN_METHODOLOGY.md`
+(itself preceded by #20A's architecture audit, #20A.1's historical
+rejection of the original payroll formula, and #20A.2's redesigned,
+re-validated replacement — all research-only, all preserved unmodified
+in `research/labor_momentum/`). No methodology redesign happened in
+this increment; every formula, threshold, and table below is a direct
+transcription, verified against the frozen document and, independently,
+against the actual validated research code.
+
+### Route → Service → pure domain, mirroring Inflation exactly
+
+`app/models/labor.py` (constants, enums, `LaborObservationEvidence`/
+`EmploymentResult`/`UnemploymentResult`/`LaborMonitorResult`) →
+`app/domain/labor.py` (pure, deterministic; no SQLAlchemy, no FastAPI,
+no FRED, no import of any other domain module — checked structurally)
+→ `app/services/labor.py` (`LaborMonitorService`, reusing the
+*existing*, generic `SeriesRepository` — no Labor-specific repository
+was needed or created) → `app/api/labor.py` (`GET /api/v1/monitors/labor`,
+a new, separate router file rather than an addition to
+`app/api/inflation.py`, per the frozen spec's own "no premature generic
+monitor framework — implement Labor independently first" instruction).
+No `BaseMonitor`/`GenericEconomicMonitor` abstraction was introduced;
+Inflation's own files are completely unmodified.
+
+### PAYEMS units — converted exactly once
+
+FRED persists PAYEMS in "Thousands of Persons"; every `labor_v1.0`
+formula operates on actual persons/jobs. `app.domain.labor.build_jobs_index`
+is the ONE place the ×1,000 conversion happens — every `_jobs`-suffixed
+field downstream is already converted. A dedicated regression test
+(`TestUnits::test_a_native_50_never_means_50000_jobs`) pins the exact
+converted magnitude, not just the resulting classification, making the
+25-vs-25,000-style bug #20A.1's own research caught structurally
+harder to reintroduce here.
+
+### Employment condition/momentum/state — transcribed, not re-derived
+
+`current_3m_avg_jobs`/`prior_3m_avg_jobs` (non-overlapping 3-month
+windows), `condition_deadband_jobs = momentum_deadband_jobs = 50,000`,
+boundary-inclusive `FLAT`/`STEADY`. Vocabulary is `EXPANDING/FLAT/
+CONTRACTING` (condition) and `IMPROVING/STEADY/WORSENING` (momentum) —
+**not** `ACCELERATING`/`DECELERATING`, which appeared only in this
+increment's own framing prose, never in the validated research
+artifact; the frozen spec already resolved this discrepancy in the
+artifact's favor, and `app/domain/labor.py`/`tests/test_labor_architecture.py`
+both enforce it (an explicit negative test proves `ACCELERATING`/
+`DECELERATING` are absent from the enum). The full 9-cell
+condition×momentum table (`_EMPLOYMENT_STATE_TABLE`) is a direct,
+line-for-line transcription of `methodology_v2._CONDITION_MOMENTUM_TABLE`.
+
+### Unemployment trend — unchanged
+
+`current_3m_avg` vs. `prior_year_3m_avg` (exactly one year earlier),
+`unemployment_deadband_pp = 0.2`, boundary-inclusive `STABLE`. Not
+redesigned in #20A.2, not touched here.
+
+### Top-level `LaborState` — the frozen agreement table, four clean cells and one documented default
+
+Only `(EXPANDING, IMPROVING) → STRENGTHENING`, `(COOLING, DETERIORATING)
+→ COOLING`, `(CONTRACTING, DETERIORATING) → COOLING`, and `(STABLE,
+STABLE) → STABLE` resolve cleanly; every other combination — including
+every `RECOVERING` pairing — is `MIXED`, by an explicit `.get(...,
+"MIXED")` default, never a silent fallthrough. No weights, no score,
+no majority vote, no hidden tie-breaker anywhere in this call chain.
+
+### Shared `evaluation_period` — one rule, two owners, never two reference months
+
+`determine_evaluation_period` picks `min(latest PAYEMS date, latest
+UNRATE date)` — a deterministic bound, never a backward search for "a
+month that works." If either series has zero persisted observations,
+`evaluation_period` is `None` and the whole result is `INSUFFICIENT_DATA`
+with empty evidence lists (not a fabricated evaluation month). Once
+chosen, the SAME period is passed to both `compute_employment_result`
+and `compute_unemployment_result` — proven directly by a dedicated
+service-level test asserting every returned evidence date traces back
+to the one shared anchor.
+
+### Missing data — no hack, including for the real UNRATE 2025-10 gap
+
+No forward-fill, backfill, interpolation, or partial-window averaging
+anywhere. `condition` needs only 4 exact PAYEMS months (`t..t-3`);
+`momentum`/`state` need the full 7 (`t..t-6`) — a real, frozen
+distinction (§3 vs. §4 of the frozen spec), confirmed by a domain test
+that initially asserted the WRONG thing (that `condition` also goes
+`INSUFFICIENT_DATA` for every one of the 7 missing-month cases) and
+was corrected once the frozen spec's own narrower condition
+requirement was re-checked — see "Errors and fixes" below. A dedicated
+test mirrors the real, `#20A.1`-discovered UNRATE 2025-10 collection
+gap shape directly: the same missing month is inert when it falls
+outside the current evaluation's required window and correctly
+produces `INSUFFICIENT_DATA` when a later evaluation's window happens
+to include it — no special case anywhere in the code for that specific
+date.
+
+### Affected horizons — re-verified in production code, not just research
+
+The frozen spec's most important, most non-obvious finding — a single
+PAYEMS level revision affects `EmploymentState` at exactly `{M, M+3,
+M+6}` (not a contiguous range; the opposite-signed effects on two
+adjacent monthly-change values cancel exactly inside any 3-month
+average containing both) — was re-verified here two ways: first, a
+direct numerical comparison against `research/labor_momentum`'s own
+validated output (the exact `current_3m_avg_jobs`/`prior_3m_avg_jobs`
+figures for August 2009 and April–June 2021 match the shipped
+production code bit-for-bit); second, a dedicated pure-domain
+regression test (`TestPayemsAffectedHorizons`) that applies a
+synthetic revision to a real cached PAYEMS history and asserts the
+changed-offset set is exactly `{0, 3, 6}` — including an explicit
+assertion that offsets 1 and 2 show **zero** change (the cancellation
+itself, not merely "less change"). UNRATE's own `{0,1,2}∪{12,13,14}`
+disjoint set (no cancellation — it averages the rate directly) is
+proven the same way.
+
+### Historical regression — the exact real numbers, not a synthetic stand-in
+
+August 2009 and April/May/June 2021 fixtures use REAL PAYEMS values
+taken directly from `research/labor_momentum/data/PAYEMS.csv` (the
+exact data that validated `labor_v1.0`), not fabricated numbers.
+August 2009 locks `RECOVERING` (never `STRENGTHENING`); April/May 2021
+lock `EXPANDING`+`IMPROVING`; June 2021 locks `EXPANDING`+`STEADY` —
+matching the validated research output's exact figures
+(`current_3m_avg_jobs`/`prior_3m_avg_jobs` pinned to within rounding).
+
+### Evidence contract — one field decision beyond the frozen sketch
+
+The frozen spec's own evidence sketch (§12) listed BOTH a per-component
+`observations`-style evidence list AND a separate top-level
+`provenance: [...]` field. Since the per-component lists already
+constitute complete provenance (series_id/date/value for every exact
+required month), a separate top-level `provenance` field would only
+duplicate the same data — this implementation consolidates evidence
+into `employment.observations`/`unemployment.observations` alone and
+omits the redundant top-level field, consistent with the frozen spec's
+own "do not overbuild" instruction. `data_basis` uses
+`"latest_revised_data"` (the exact snake_case string
+`app.models.inflation.DATA_BASIS` already establishes as this
+project's actual convention), not the frozen document's own
+human-sentence example string ("Latest revised data") — reconciled in
+the established project convention's favor per this increment's own
+explicit instruction. Both are documented discrepancies, not silent
+deviations.
+
+### JOLTS / CIVPART / release-processing / frontend — all confirmed absent
+
+No `JTS*` series ID, no `CIVPART`, appears anywhere in the Labor call
+graph (`TestNoJoltsOrCivpartInV1`, a literal string-absence guard
+across every Labor file). No `ReleaseSeriesMapping` row was added, no
+migration was created, `app/services/release_processing` is not
+imported anywhere in the Labor call graph (checked structurally). No
+`frontend/` file was touched.
+
+### Errors and fixes
+
+Two real bugs were caught and fixed, both in this increment's OWN test
+code, never in the frozen methodology or the production domain module:
+(1) a synthetic test index built with perfectly linear values made
+every monthly change identically constant, so a test asserting "the
+current and prior 3-month windows differ" passed vacuously regardless
+of correctness — fixed by using a non-linear (quadratic) synthetic
+sequence; (2) a test asserted `condition == INSUFFICIENT_DATA` for
+every one of the 7 possible missing PAYEMS months, but the frozen
+spec's own §3 only requires 4 exact months for `condition` specifically
+(momentum/state need the full 7) — the test was over-asserting;
+production code was already correct, confirmed by re-reading the
+frozen spec's exact wording before deciding which side was wrong. A
+third, more valuable "failure": an integration test revising a PAYEMS
+month one offset away from the anchor initially failed because that
+specific offset falls exactly in the frozen cancellation zone — not a
+bug at all, but a live, unplanned confirmation of the `{0,3,6}`
+affected-horizon property inside the full service-integration path,
+not just the isolated domain functions. Fixed by revising a
+genuinely-affected offset instead.
+
+### Tests
+
+167 new backend tests (854 → **1,021**): 145 pure-domain unit tests
+across `tests/test_domain_labor.py` (units, calendar arithmetic,
+monthly-change/average construction, every condition/momentum boundary
+inclusive-and-just-outside, the full 9-cell employment-state table,
+every explicit top-level agreement branch plus every remaining
+default-MIXED combination, missing-month behavior for both the
+4-month condition requirement and the 7-month momentum requirement
+independently, the real 2025-10 UNRATE gap shape, determinism, the
+shared-evaluation-period rule under mismatched series availability,
+the two historical regressions with real PAYEMS values, and the
+`{0,3,6}`/`{0,1,2}∪{12,13,14}` affected-horizon proofs) and
+`tests/test_labor_architecture.py` (no AI/FRED import anywhere in the
+call graph, no release-processing-mutation import, pure domain layer,
+service imports only the one domain entry point, exactly one route
+registered, no JOLTS/CIVPART string anywhere, and every frozen
+vocabulary/threshold/methodology-id constant pinned exactly); one new
+test added to the existing `tests/test_domain_architectural_independence.py`
+(labor joins the domain-file allowlist and gets its own
+no-other-domain-module-import guard); 11 service-level integration
+tests (`tests/integration/test_labor_service.py`, real isolated
+Postgres: complete history, neither/one series persisted, PAYEMS
+newer than UNRATE and vice versa, a missing required month on each
+side independently, the real-gap-shape scenario, non-mutation, and a
+persisted revision changing the result deterministically); 17 API
+tests (`tests/api/test_labor_api.py`: exact response contract for both
+`employment`/`unemployment`, missing-data 200s, 503/500 infrastructure
+mapping with no leaked detail, determinism, non-mutation, no FRED
+client construction, no ingestion side effect, and no mutation route).
+
+### Verification
+
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run twice: **1,021
+passed** both times, 0 skipped. `alembic check`: no new upgrade
+operations detected — no migration, as expected (Labor reuses the
+existing generic `EconomicSeries`/`EconomicObservation` schema
+unmodified). No Python lint/typecheck tooling exists in this project
+(unchanged from every prior increment). Frontend: not touched;
+`git status` confined entirely to `app/models/labor.py`,
+`app/domain/labor.py`, `app/services/labor.py`, `app/api/labor.py`,
+`app/main.py` (router registration), and four new/one extended test
+file.
+
+### Deferred (named explicitly, not built here)
+
+JOLTS confirmation (no defensible deadband was ever established across
+#20A/#20A.1/#20A.2 — deferred to a dedicated future confirmation
+increment, per the frozen spec's own strong preference); `CIVPART`
+context (deferred to a #20B.1-style follow-on, the same precedent
+#17A's own curated-catalog follow-on established); Labor What Changed
+(principle-only in the frozen spec, no comparator built); Labor
+release-processing integration (`ReleaseSeriesMapping` rows for
+Employment Situation → PAYEMS/UNRATE — the frozen spec's own §13
+affected-horizon derivations exist specifically to make this
+integration correct when it happens, but it does not happen in #20B);
+any Overview frontend surface for Labor; any cross-monitor
+aggregation (frozen against, permanently, per #20A §28/§20A.3 §16).

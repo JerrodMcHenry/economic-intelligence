@@ -1624,3 +1624,74 @@ constructs a `FREDClient`, and never imports
 `app.services.release_processing`/`app.repositories.release_processing_repository`
 (#18's write path) — checked structurally, not just by convention (see
 `tests/test_release_processing_read_architecture.py`).
+
+## Flow 35 — Labor Monitor (`labor_v1.0`, Increment #20B)
+
+`GET /api/v1/monitors/labor` reads only from PostgreSQL, for exactly
+the two canonical series named in
+[research/labor_momentum/LABOR_V1_FROZEN_METHODOLOGY.md](../../research/labor_momentum/LABOR_V1_FROZEN_METHODOLOGY.md).
+`FREDClient` never appears anywhere in this flow, and no AI service is
+imported or called. Both series are fetched independently; a series
+that isn't persisted at all yields an empty observation list rather
+than an error — identical precedent to Flow 22's own Inflation Monitor
+flow.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/labor.py)
+    participant S as LaborMonitorService
+    participant SS as session_scope()
+    participant Repo as SeriesRepository
+    participant DB as PostgreSQL
+    participant D as app.domain.labor (pure)
+
+    C->>R: GET /api/v1/monitors/labor
+    R->>R: database_url present?
+    R->>SS: enter session_scope()
+    R->>S: get_result(session)
+    loop for each of PAYEMS, UNRATE
+        S->>Repo: get_series_by_series_id(series_id)
+        Repo->>DB: SELECT economic_series WHERE series_id = ?
+        DB-->>Repo: row or None
+        alt series persisted
+            Repo-->>S: EconomicSeries
+            S->>Repo: get_observations_in_range(economic_series_id, None, None)
+            Repo->>DB: SELECT * FROM economic_observations WHERE economic_series_id = ? ORDER BY observation_date
+            DB-->>Repo: all rows
+            Repo-->>S: list[Observation]
+        else series not persisted
+            S->>S: observations = [] (never SeriesNotFoundError)
+        end
+    end
+    S->>D: compute_labor_monitor_result(payems_observations, unrate_observations, deadbands...)
+    Note over D: pure -- no session, no HTTP, no FRED, no OpenAI.<br/>determine_evaluation_period(): min(latest PAYEMS date, latest UNRATE date),<br/>never a backward search. PAYEMS converted thousands->jobs<br/>exactly once (build_jobs_index). Exact-calendar-month<br/>endpoint resolution throughout (never row-position).
+    D-->>S: LaborMonitorResult
+    S-->>R: LaborMonitorResult
+    R->>SS: exit session_scope() normally
+    R-->>C: 200 JSON (methodology_id, data_basis, state,<br/>evaluation_period, employment, unemployment)
+```
+
+Missing or insufficient labor data is **not** an error:
+`compute_labor_monitor_result` always returns a complete, typed
+result — `employment`/`unemployment` each report their own
+`INSUFFICIENT_DATA` state when their required exact calendar months
+aren't all present, and the whole result is `INSUFFICIENT_DATA` with
+`evaluation_period: null` only when neither series has any persisted
+observation at all (no candidate period could even be chosen). Only a
+genuine database/infrastructure failure produces a non-`200` response.
+
+| Scenario | Where it's caught | HTTP status |
+|---|---|---|
+| `DATABASE_URL` not configured | Checked in the route before a session is opened | `503` |
+| Database unreachable | `OperationalError` | `503` |
+| Any other database-layer failure | `SQLAlchemyError` | `500` |
+| Neither PAYEMS nor UNRATE persisted at all | *(no exception)* | `200`, `state: "INSUFFICIENT_DATA"`, `evaluation_period: null` |
+| One series newer than the other (e.g. PAYEMS synced, UNRATE lagging) | *(no exception — `evaluation_period` bounded by the earlier series)* | `200` |
+| A required exact calendar month missing for PAYEMS's 7-month window | *(no exception — `employment.state: "INSUFFICIENT_DATA"`; `employment.condition` may still be a real value if only a momentum-only month is missing, per the frozen spec's §3-vs-§4 distinction)* | `200` |
+| A required exact calendar month missing for UNRATE's 6-month window (e.g. the real 2025-10 gap, when it falls inside the required set) | *(no exception — `unemployment.state: "INSUFFICIENT_DATA"`)* | `200` |
+
+`LaborMonitorService` has no method that accepts or constructs a
+`FREDClient`, and imports no AI module anywhere in its call graph —
+checked structurally, not just by convention (see
+`tests/test_labor_architecture.py`).

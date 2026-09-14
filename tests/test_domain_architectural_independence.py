@@ -21,6 +21,7 @@ DOMAIN_FILES = [
     Path("app/domain/inflation_what_changed.py"),
     Path("app/domain/releases.py"),
     Path("app/domain/release_processing.py"),
+    Path("app/domain/labor.py"),
 ]
 
 # Forbidden if an imported module IS one of these, or is a submodule of
@@ -110,3 +111,15 @@ class TestDomainLayerArchitecturalIndependence:
         imported = _imported_module_names(Path("app/domain/release_processing.py"))
         forbidden = {m for m in imported if m.startswith("app.domain.")}
         assert forbidden == set(), f"app/domain/release_processing.py must not import another domain module: {forbidden}"
+
+    def test_labor_domain_module_imports_no_other_domain_module(self):
+        """Increment #20B: app/domain/labor.py must contain no
+        Inflation formula/threshold logic of its own and must not
+        import app.domain.inflation (or any other domain module) --
+        its own calendar-arithmetic/index-building primitives are
+        deliberately self-contained (reimplemented, not imported),
+        the same "each domain module independent of every other one"
+        discipline release_processing's own guard already proves."""
+        imported = _imported_module_names(Path("app/domain/labor.py"))
+        forbidden = {m for m in imported if m.startswith("app.domain.")}
+        assert forbidden == set(), f"app/domain/labor.py must not import another domain module: {forbidden}"
