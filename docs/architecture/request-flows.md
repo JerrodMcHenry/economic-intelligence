@@ -1550,3 +1550,69 @@ for it is designed. Nothing in this flow's call graph imports AI or
 news, and nothing calls a sync/mutation endpoint of any kind — the
 Overview page is exactly as read-only as `/inflation` and `/releases`
 already are.
+
+## Flow 34 — Release Processing Status Read (`GET /api/v1/releases/processing-status`, Increment #19B)
+
+Database-only, exactly like Flow 28 — never calls FRED, never calls AI.
+Implements
+[docs/architecture/release-processing-read-model-v1.md](./release-processing-read-model-v1.md).
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/release_processing_read.py)
+    participant S as ReleaseProcessingReadService
+    participant SS as session_scope()
+    participant Repo as ReleaseProcessingReadRepository
+    participant DB as PostgreSQL
+
+    C->>R: GET /api/v1/releases/processing-status?occurrence_id&release_id&status&start_date&end_date&limit&offset
+    R->>R: database_url present?
+    R->>SS: enter session_scope()
+    R->>S: get_processing_status(session, filters...)
+    S->>S: start_date > end_date? raise InvalidDateRangeError
+    S->>Repo: list_mapped_occurrences(occurrence_id, release_id, start_date, end_date)
+    Repo->>DB: SELECT release_occurrences JOIN economic_releases<br/>WHERE economic_release_id IN (SELECT ... FROM release_series_mappings WHERE active)
+    DB-->>Repo: every mapped occurrence matching the filters (unpaginated)
+    Repo-->>S: [(ReleaseOccurrence, EconomicRelease), ...]
+    S->>Repo: list_check_runs_for_occurrences(occurrence_ids)
+    Repo->>DB: SELECT release_check_runs WHERE release_occurrence_id IN (...) ORDER BY completed_at DESC, id DESC
+    DB-->>Repo: every run ever recorded, for all candidates
+    Repo-->>S: [ReleaseCheckRun, ...]
+    Note over S: group by occurrence; first row per<br/>occurrence = its latest run (or None = NOT_CHECKED).<br/>Map internal status -> public 5-value ProcessingStatus.
+    S->>S: filter by status (if given); total = len(filtered); slice [offset : offset+limit]
+    S->>Repo: list_observation_updates_for_runs(run_ids for this page's occurrences, ALL runs not just latest)
+    Repo->>DB: SELECT release_observation_updates WHERE release_check_run_id IN (...) ORDER BY detected_at DESC, id DESC
+    DB-->>Repo: rows
+    S->>Repo: list_analysis_updates_for_runs(same run_ids)
+    Repo->>DB: SELECT release_analysis_updates WHERE release_check_run_id IN (...) ORDER BY created_at DESC, id DESC
+    DB-->>Repo: rows
+    S->>Repo: list_series_metadata(distinct series_ids from the observation rows)
+    Repo->>DB: SELECT economic_series WHERE series_id IN (...)
+    DB-->>Repo: {series_id: EconomicSeries}
+    Note over S: assemble ReleaseProcessingStatusItem per occurrence:<br/>latest_check + detected_observation_changes[] + detected_analysis_changes[]<br/>as SIBLING arrays (ADR-023) -- never one nested inside the other.
+    S-->>R: ReleaseProcessingStatusResponse (occurrences, pagination)
+    R->>SS: exit session_scope() normally
+    R-->>C: 200 JSON
+```
+
+A persisted `CHECK_FAILED`/`PARTIAL_CHECK` result is itself
+successfully-read product data — it returns `200`, the same as any
+other status; only a request-shape problem or a genuine database
+failure is an HTTP error:
+
+| Scenario | Where it's caught | HTTP status |
+|---|---|---|
+| `DATABASE_URL` not configured | Checked in the route before a session is opened | `503` |
+| `start_date > end_date` | `InvalidDateRangeError` | `400` |
+| Malformed query param (bad type, `limit`/`offset` out of bounds, invalid `status`) | FastAPI/Pydantic query validation, before the route body runs | `422` |
+| Database unreachable | `OperationalError` | `503` |
+| Any other database-layer failure | `SQLAlchemyError` | `500` |
+| Occurrence never checked | *(no exception)* | `200`, `latest_check.status == "NOT_CHECKED"`, `checked_at: null` |
+| Occurrence's release has zero active mappings | *(excluded at the repository layer)* | `200`, occurrence simply absent from the response |
+
+`ReleaseProcessingReadService` has no method that accepts or
+constructs a `FREDClient`, and never imports
+`app.services.release_processing`/`app.repositories.release_processing_repository`
+(#18's write path) — checked structurally, not just by convention (see
+`tests/test_release_processing_read_architecture.py`).

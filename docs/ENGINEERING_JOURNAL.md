@@ -6736,3 +6736,164 @@ News/Watchlist (none exist as frontend product surfaces); a fifth+
 monitor dimension shown as anything other than the one quiet sentence
 already present; any economy-wide score, health rating, or importance/
 attention ranking.
+
+## Increment #19B — Release Update Read Model V1
+
+Preceded by a focused, read-only contract audit (Increment #19B audit,
+no production code touched) built around one epistemic invariant: an
+occurrence that was never checked must never look the same as one that
+was checked and found unchanged. The audit's candidate contract nested
+analytical consequences inside each detected observation change and
+proposed a sixth `NOT_APPLICABLE` status plus two endpoints; this
+implementation follows the frozen spec's three corrections instead --
+sibling arrays, exactly five statuses, exactly one endpoint -- not the
+audit's own draft (see [ADR-023](adr/023-release-processing-read-model-no-causal-nesting.md)).
+
+### One endpoint, database-only, always 200 for a persisted result
+
+`GET /api/v1/releases/processing-status` is the only new route. It
+lives in a new file, `app/api/release_processing_read.py`, deliberately
+separate from `app/api/releases.py` -- the same reason #18 gave
+`app/services/release_processing.py` its own file rather than
+extending `app/services/releases.py`
+(`TestReleaseCalendarStructuralIndependence` protects `app/api/releases.py`
+from importing anything series/observation-shaped, and the new read
+service legitimately does). A persisted `CHECK_FAILED` or
+`PARTIAL_CHECK` result is itself successfully-read product data -- it
+returns HTTP 200 like every other status; only a request-shape problem
+(400/422) or a genuine database failure (503/500) is an HTTP error.
+
+### Five public statuses, derived from the latest run only
+
+`ProcessingStatus` is `NOT_CHECKED | NO_CHANGE | CHANGES_DETECTED |
+PARTIAL_CHECK | CHECK_FAILED` -- `NOT_CHECKED` is the absence of any
+`ReleaseCheckRun` row for an occurrence, never a persisted value (the
+same discipline #18 already applies to its own 4-value internal
+status). The other four are a pure presentation relabeling of #18's
+internal `CheckRunStatus` (`NO_CHANGE`/`CHANGED->CHANGES_DETECTED`/
+`PARTIAL_FAILURE->PARTIAL_CHECK`/`FAILED_PROVIDER->CHECK_FAILED`),
+derived from the occurrence's most recently completed run only
+(`completed_at DESC, id DESC`, deterministic tie-break). An occurrence
+whose release currently has zero active `ReleaseSeriesMapping` rows is
+excluded from the resource entirely, at the repository layer, before a
+status is ever derived -- never given a sixth, catch-all status.
+
+### Retry-history preservation -- the reason #19B exists
+
+`latest_check.status` reflects the latest run only, but
+`detected_observation_changes`/`detected_analysis_changes` are the
+UNION of every `ReleaseObservationUpdate`/`ReleaseAnalysisUpdate` row
+across EVERY run the occurrence has ever had. A later `NO_CHANGE` (or
+`CHECK_FAILED`) run's own absence of new rows never erases an earlier
+run's detected evidence -- proven directly by
+`TestRetryHistoryPreservation` in the new integration service test
+file: a `CHANGED` run followed by a `NO_CHANGE` retry still reports
+`NO_CHANGE` as the current status while still showing the original
+run's detected changes, and a `FAILED_PROVIDER` run followed by a
+`CHANGED` retry correctly surfaces the real changes once they exist. A
+naive "read only the latest run's own rows" projection would have
+silently discarded exactly the evidence this read model exists to
+preserve.
+
+### Sibling facts, never nested by causality
+
+`ReleaseProcessingStatusItem` exposes `detected_observation_changes`
+and `detected_analysis_changes` as two independent top-level arrays.
+Neither references the other -- `ReleaseObservationUpdate` and
+`ReleaseAnalysisUpdate` each only reference `release_check_run_id` in
+the database, with no persisted correspondence between a specific
+observation and a specific analysis event (see
+`test_no_analytical_change_when_a_revision_does_not_move_any_canonical_value`
+and the two-series `PARTIAL_FAILURE` tests in #18's own suite for real
+cases where the two facts don't line up one-to-one). See
+[ADR-023](adr/023-release-processing-read-model-no-causal-nesting.md)
+for the full reasoning and the rejected `detected_change { observation,
+analysis_consequences[] }` shape.
+
+### Success/failure series counts: omitted, not approximated
+
+`SeriesCheckOutcome` (the in-memory per-series result #18 computes
+while processing) is never persisted anywhere -- `ReleaseCheckRun`
+carries no per-series breakdown, and a series checked successfully
+with zero changes leaves no row in `ReleaseObservationUpdate` either.
+There is no way to reconstruct `successful_series_count`/
+`failed_series_count` from persisted data alone without fabricating
+them, so V1's `LatestCheck` omits both fields rather than approximate.
+This was flagged in advance as an acceptable omission, not a stop
+condition, and is enforced structurally by
+`TestNoSuccessFailureCountFabrication`.
+
+### Layering: a new read repository and service, not a reuse of #18's write path
+
+`app/repositories/release_processing_read_repository.py`
+(`ReleaseProcessingReadRepository`) and
+`app/services/release_processing_read.py`
+(`ReleaseProcessingReadService`) are both new, both read-only, and
+neither reuses `ReleaseProcessingRepository`/`ReleaseProcessingService`
+(#18's write path) -- the identical "structurally incapable, not just
+conventionally disciplined" reasoning `ReleaseReadService`/
+`ReleaseSyncService` already establish. Status filtering happens in
+the service, in Python, after fetching every mapped occurrence
+matching the `occurrence_id`/`release_id`/`start_date`/`end_date`
+filters (a clean, unfragile SQL `WHERE`/`IN` query) -- deriving "latest
+run per occurrence" as a SQL window function was deliberately not
+attempted for V1's small, curated-catalog scale (see
+docs/architecture/release-processing-read-model-v1.md).
+
+### Tests
+
+69 new backend tests (785 -> **854**), 0 skipped: 16 architectural
+guards (`tests/test_release_processing_read_architecture.py` -- no
+FRED/AI import, the read service never imports the write service, the
+read repository has no write-shaped method and never mutates, exactly
+one route registered and it is not occurrence-scoped, exactly five
+`ProcessingStatus` values with no sixth status, sibling-not-nested
+field shapes with no `detected_change` wrapper, no fabricated series
+counts); 16 repository tests
+(`tests/integration/test_release_processing_read_repository.py` --
+mapped/unmapped exclusion including an inactive-only-mapping case,
+occurrence/release/date filtering, ordering and tie-breaks, empty-input
+handling, series-metadata lookup and absence); 21 service tests
+(`tests/integration/test_release_processing_read_service.py` --
+non-mutation, all five status derivations, both retry-history-
+preservation scenarios, observation-without-analysis, series-metadata
+enrichment and its null fallback, release-context contract, zero-
+mapping exclusion, status/release/date filtering, ordering, pagination
+including "total reflects the status-filtered set," date-range
+validation, repeated-call determinism); 16 HTTP tests
+(`tests/api/test_release_processing_read_api.py` -- NOT_CHECKED and
+CHECK_FAILED both return 200, unmapped exclusion, sibling-shape proof
+over real JSON, retry-history survival over HTTP, status filtering,
+pagination defaults and explicit limit/offset, 400/422 validation
+mapping, safe 503/500 error messages that never leak exception text,
+repeated-request determinism, and a direct proof that no
+`{occurrence_id}/processing-status` route exists -- 404). One
+self-referential false positive was caught and fixed while writing the
+architecture guards (the new modules' own docstrings, explaining in
+prose why `NOT_APPLICABLE` and a nested `analysis_consequences[]` array
+were rejected, matched the literal substring checks looking for exactly
+those rejected shapes) -- fixed by rewording the docstrings, not
+weakening the guards, the same resolution #19A's own journal entry
+already documents for the identical class of collision.
+
+### Verification
+
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run twice: **854
+passed** both times, 0 skipped. `alembic check`: no new upgrade
+operations detected -- no migration, as expected (no ORM model was
+added or changed). Frontend: `npx vitest run`: **418 passed**,
+unchanged; `npm run typecheck`/`npm run lint`/`npm run build`: all
+clean; `git status` inside `frontend/` is empty -- zero frontend
+production changes, as the frozen spec required.
+
+### Deferred (named explicitly, not built here)
+
+A single-occurrence detail endpoint (`GET /api/v1/releases/{occurrence_id}/processing-status`)
+-- explicitly out of scope for #19B, add only once a real product
+surface needs it; any frontend consumer of this endpoint (#19C or
+later); `successful_series_count`/`failed_series_count` (see above --
+not reconstructable from persisted data, not merely postponed); a
+persisted causal link between a specific observation change and a
+specific analysis change (see ADR-023 -- would require a #18 write-path
+change, not a #19B read-model one); any recomputation, reclassification,
+or economic-significance judgment inside the read path itself.

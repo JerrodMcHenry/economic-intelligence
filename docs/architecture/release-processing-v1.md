@@ -629,9 +629,11 @@ this pipeline, and never fed back into it.
 
 - Broad/full historical reconciliation beyond the five-year window (§12).
 - A scheduler or any background execution (§17).
-- A public HTTP process/read endpoint (§18) -- `GET /api/v1/releases/{id}/updates`
-  or equivalent is a plausible future read surface once a UI actually
-  needs it, not required to prove this pipeline.
+- A public HTTP process endpoint (§18) -- still not built, and still
+  deliberately never planned (no authentication anywhere in this
+  project). A public HTTP **read** endpoint over this pipeline's
+  persisted evidence was built later, in Increment #19B -- see
+  [docs/architecture/release-processing-read-model-v1.md](./release-processing-read-model-v1.md).
 - Full point-in-time observation vintages/history (`EconomicObservation`
   remains one canonical current value per `(series, observation_date)`,
   overwritten on revision, with `ReleaseObservationUpdate` as the
