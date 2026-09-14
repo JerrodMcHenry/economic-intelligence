@@ -1,15 +1,15 @@
 /**
- * Architectural guard, originally for Increment #19A and extended for
- * #19C: the Economic Overview (`pages/Overview.tsx` and every
- * `components/overview/*` file) must remain completely read-only. It
- * may only call the five documented canonical read functions
- * (`getInflationMonitor`/`getInflationWhatChanged`/
- * `fetchReleaseProcessingStatus`/`fetchUpcomingReleases`/
- * `fetchRecentReleases`) -- never a sync/mutation endpoint, never AI,
- * and never `fetch` directly (every network call must go through an
- * `api/*` client module, the same discipline
- * `no-release-sync-or-coupling.test.ts` already enforces for
- * release-calendar files).
+ * Architectural guard, originally for Increment #19A, extended for
+ * #19C and #20E.2: the Economic Overview (`pages/Overview.tsx` and
+ * every `components/overview/*` file) must remain completely
+ * read-only. It may only call the seven documented canonical read
+ * functions (`getInflationMonitor`/`getInflationWhatChanged`/
+ * `getLaborMonitor`/`getLaborWhatChanged`/`fetchReleaseProcessingStatus`/
+ * `fetchUpcomingReleases`/`fetchRecentReleases`) -- never a
+ * sync/mutation endpoint, never AI, and never `fetch` directly (every
+ * network call must go through an `api/*` client module, the same
+ * discipline `no-release-sync-or-coupling.test.ts` already enforces
+ * for release-calendar files).
  *
  * Deliberately narrow and separate from `no-release-sync-or-coupling.test.ts`:
  * that guard only scans files whose path contains "release" (so it
@@ -89,7 +89,7 @@ describe("Economic Overview is read-only", () => {
     });
   }
 
-  it("Overview page imports only the five documented canonical read functions from api/*", () => {
+  it("Overview page imports only the seven documented canonical read functions from api/*", () => {
     const contents = readFileSync(OVERVIEW_PAGE, "utf-8");
     const apiImportLines = contents
       .split("\n")
@@ -101,6 +101,8 @@ describe("Economic Overview is read-only", () => {
     const allowed = new Set([
       "getInflationMonitor",
       "getInflationWhatChanged",
+      "getLaborMonitor",
+      "getLaborWhatChanged",
       "fetchReleaseProcessingStatus",
       "fetchUpcomingReleases",
       "fetchRecentReleases",

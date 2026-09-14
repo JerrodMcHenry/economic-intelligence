@@ -61,6 +61,28 @@ const FORBIDDEN_PATTERNS: ReadonlyArray<{ name: string; pattern: RegExp }> = [
     name: "declared period-selection helper function (re-deriving a common/shared period client-side)",
     pattern: /(function\s+|const\s+)(findLatestCommonPeriod|find_latest_common_period|latestSharedObservationPeriod|latest_shared_observation_period)\b/,
   },
+  // Increment #20E.2 -- the identical guard the backend's own
+  // AST-level test applies (tests/test_labor_architecture.py::TestWhatChangedComparatorNeverKnowsLaborV1Methodology),
+  // restated here as a regex-level check for the frontend: a
+  // COMPARISON against the frozen labor_v1.0 deadband literals
+  // (50,000 jobs / 0.2 percentage points) would mean condition/
+  // momentum/unemployment-trend classification logic was reimplemented
+  // client-side rather than reused from the backend's own already-
+  // classified `condition`/`momentum`/`state` fields. Deliberately
+  // requires an adjacent comparison operator (`<`/`>`/`<=`/`>=`) --
+  // NOT a bare occurrence of the number -- so it never false-positives
+  // on a test fixture mirroring the backend's own
+  // `condition_deadband_jobs`/`unemployment_deadband_pp` response
+  // fields (plain data, never a comparison) or a docstring mentioning
+  // the values in prose.
+  {
+    name: "frozen 50,000-job condition/momentum deadband comparison",
+    pattern: /[<>]=?\s*[-+]?\s*50[,_]?000\b/,
+  },
+  {
+    name: "frozen 0.2pp unemployment-trend deadband comparison",
+    pattern: /[<>]=?\s*[-+]?\s*0\.2\b/,
+  },
 ];
 
 function collectSourceFiles(dir: string): string[] {

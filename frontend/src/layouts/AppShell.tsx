@@ -12,6 +12,7 @@ import { PageContainer } from "../components/PageContainer";
 const NAV_LINKS: ReadonlyArray<{ to: string; label: string; end?: boolean }> = [
   { to: "/", label: "Overview", end: true },
   { to: "/inflation", label: "Inflation" },
+  { to: "/labor", label: "Labor" },
   { to: "/releases", label: "Releases" },
 ];
 

@@ -27,8 +27,8 @@ function formatChangeValue(field: string, value: number | string | null): string
 }
 
 /**
- * The Economic Overview's compact "What Changed" preview -- renders
- * ONLY real, backend-returned `ChangeEvent`s from
+ * The Economic Overview's compact Inflation "What Changed" preview --
+ * renders ONLY real, backend-returned `ChangeEvent`s from
  * `InflationWhatChangedResult.changes`, the same flat, deterministically-
  * ordered list `inflation_what_changed_v1.0` already assembles across
  * all five sections (component order, then event-type order, then
@@ -45,15 +45,21 @@ function formatChangeValue(field: string, value: number | string | null): string
  * If `events` is empty, this says only that no changes were reported --
  * true whether because nothing changed or because a comparison was
  * unavailable, never a stronger claim like "Inflation was unchanged."
+ *
+ * Increment #20E.2: this component's own `<section>`/`<h2>` wrapper was
+ * removed -- the shared "What Changed" heading now lives once in
+ * pages/Overview.tsx, with this card (labeled "Inflation", a plain
+ * `<p>` sub-label, never its own heading -- matching
+ * `InflationCurrentStateCard`'s identical convention) and its Labor
+ * peer (`LaborWhatChangedPreview`) rendered as two independently-gated
+ * sub-blocks beneath it (docs/architecture/labor-ui-v1.md §30).
  */
 export function WhatChangedPreview({ events }: { events: readonly ChangeEvent[] }) {
   const shown = events.slice(0, MAX_EVENTS);
 
   return (
-    <section aria-labelledby="overview-what-changed-heading">
-      <h2 id="overview-what-changed-heading" className="text-sm font-medium text-neutral-500">
-        What Changed
-      </h2>
+    <div>
+      <p className="text-sm font-semibold text-neutral-700">Inflation</p>
 
       {shown.length === 0 ? (
         <p className="mt-3 text-sm text-neutral-500">No canonical Inflation changes were reported for this comparison.</p>
@@ -79,6 +85,6 @@ export function WhatChangedPreview({ events }: { events: readonly ChangeEvent[] 
       <Link to="/inflation" className="mt-4 inline-block text-sm font-medium text-neutral-700 hover:text-neutral-900">
         See full comparison →
       </Link>
-    </section>
+    </div>
   );
 }

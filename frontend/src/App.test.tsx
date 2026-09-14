@@ -47,11 +47,17 @@ describe("App", () => {
     const nav = screen.getByRole("navigation", { name: "Primary" });
     const overviewLink = within(nav).getByRole("link", { name: "Overview" });
     const inflationLink = within(nav).getByRole("link", { name: "Inflation" });
+    const laborLink = within(nav).getByRole("link", { name: "Labor" });
     const releasesLink = within(nav).getByRole("link", { name: "Releases" });
 
     expect(overviewLink).toHaveAttribute("href", "/");
     expect(inflationLink).toHaveAttribute("href", "/inflation");
+    expect(laborLink).toHaveAttribute("href", "/labor");
     expect(releasesLink).toHaveAttribute("href", "/releases");
+    // Labor sits between Inflation and Releases (docs/architecture/labor-ui-v1.md §33) --
+    // no placeholder items for future Growth/Housing/etc.
+    const navOrder = within(nav).getAllByRole("link").map((link) => link.textContent);
+    expect(navOrder).toEqual(["Overview", "Inflation", "Labor", "Releases"]);
 
     const user = userEvent.setup();
     await user.tab(); // skip link first
@@ -76,6 +82,15 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/inflation");
     expect(screen.getByRole("heading", { level: 1, name: "Inflation" })).toBeInTheDocument();
+  });
+
+  it("renders the Labor product route at /labor", () => {
+    // Only routing is under test here -- the Labor page's own data
+    // loading, formatting, and every economic-state rendering path have
+    // a dedicated, thoroughly-mocked test suite (see pages/Labor.test.tsx).
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    renderAt("/labor");
+    expect(screen.getByRole("heading", { level: 1, name: "Labor" })).toBeInTheDocument();
   });
 
   it("renders the Releases product route at /releases", () => {

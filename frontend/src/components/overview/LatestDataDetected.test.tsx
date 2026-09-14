@@ -151,7 +151,7 @@ describe("CHANGES_DETECTED", () => {
     });
     render(<LatestDataDetected items={[item]} />);
 
-    expect(screen.getByText("No tracked Inflation evidence changed during this processing history.")).toBeInTheDocument();
+    expect(screen.getByText("No tracked evidence changed during this processing history.")).toBeInTheDocument();
     expect(screen.queryByText(/no economic impact/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/nothing changed/i)).not.toBeInTheDocument();
   });

@@ -510,7 +510,7 @@ structurally, not just by convention, and were each verified directly
   same, unmodified `EconomicDataService`/`AnalysisService` methods every
   HTTP endpoint already uses.
 
-## Frontend architecture (Increment #19A: Economic Overview UI V1; extended #19C: Latest Data Detected UI)
+## Frontend architecture (Increment #19A: Economic Overview UI V1; extended #19C: Latest Data Detected UI; extended #20E.2: Labor UI + Overview Integration)
 
 ```
 Browser
@@ -583,30 +583,63 @@ frontend/
                    ConfirmationPanel, HeadlineContext, WhatChangedSection,
                    EvidenceDisclosure, DataBasisNote, MethodologyDisclosure,
                    WhyThisState -- the one result-explanation component,
-                   Increment #17C)
+                   Increment #17C). `Badge` is reused verbatim by
+                   components/labor/ too (Increment #20E.2) -- it has no
+                   Inflation-specific logic despite its file location; a
+                   third monitor reusing the same shared abstraction would
+                   be the trigger to relocate it, not #20E.2 itself.
+      labor/       presentation-only Labor Monitor components (Increment
+                   #20E.2), mirroring inflation/'s own shape independently
+                   -- LaborHero, WhyLaborState, EmploymentSection,
+                   UnemploymentSection, WhatChangedSection, EvidenceDisclosure,
+                   MethodologyDisclosure, LatestDataDetected (scoped to
+                   Employment Situation's own occurrences, distinct from
+                   overview/LatestDataDetected.tsx's unfiltered version),
+                   RelevantRelease (reuses releases/ReleaseRow/ReleaseDateBadge
+                   unchanged)
       releases/    presentation-only release calendar components (ScheduleStatusBadge,
                    ReleaseDateBadge, ReleaseRow, ReleaseCalendarSection,
                    ReleaseScheduleDisclosure -- the one mandatory schedule-vs-
-                   publication sentence, extracted for reuse by /releases AND
-                   Overview in Increment #19A)
-      overview/    small, Overview-specific presentation components (Increment
-                   #19A) -- CurrentStateSection, WhatChangedPreview,
-                   UpcomingReleasesPreview, RecentReleasePreview; each only
-                   truncates/formats already-canonical backend values, reusing
-                   Badge/WhyThisState/ReleaseRow/ReleaseDateBadge rather than
-                   re-deriving anything
+                   publication sentence, extracted for reuse by /releases,
+                   Overview, AND /labor)
+      overview/    small, Overview-specific presentation components --
+                   CurrentStateSection (Increment #19A, restructured #20E.2
+                   into a peer-domain wrapper over InflationCurrentStateCard/
+                   LaborCurrentStateCard), WhatChangedPreview/
+                   LaborWhatChangedPreview (peer cards under one shared
+                   heading), LatestDataDetected (generic, unfiltered --
+                   Employment Situation's own evidence flows through it
+                   automatically), UpcomingReleasesPreview, RecentReleasePreview;
+                   each only truncates/formats already-canonical backend
+                   values, reusing Badge/WhyThisState/WhyLaborState/ReleaseRow/
+                   ReleaseDateBadge rather than re-deriving anything
     content/
-      explanations/  curated, static explanation copy (Increment #17C) --
-                      types.ts (the one Explanation shape), inflation.ts,
-                      releases.ts; see "Explainability foundation" below
-    layouts/     the application shell (AppShell: header, nav, main)
-    lib/         format.ts (presentation-only formatting), inflationLabels.ts
-                 (state/relationship → label + tone lookups), releases.ts (query-window
-                 date math + same-date grouping + compact date display -- never a
-                 status classification), releasePresentation.ts (frontend-only
-                 short-label/category map for the curated V1 releases)
+      explanations/  curated, static explanation copy -- types.ts (the one
+                      Explanation shape, Increment #17C), inflation.ts,
+                      labor.ts (Increment #20E.2, mirroring inflation.ts's
+                      exact lookup-by-canonical-value shape independently),
+                      releases.ts, processingStatus.ts
+    layouts/     the application shell (AppShell: header, nav, main) --
+                 nav order Overview → Inflation → Labor → Releases
+                 (Increment #20E.2), no placeholder items for future domains
+    lib/         format.ts (presentation-only formatting, plus the
+                 domain-agnostic humanizeEnumValue fallback added in
+                 #20E.2), inflationLabels.ts (Inflation state/relationship →
+                 label + tone lookups), laborLabels.ts (Labor's own
+                 independent label/tone lookups, Increment #20E.2 -- no
+                 directional color-coding, see "Labor UI" below),
+                 laborFormat.ts (formatJobs/formatRawObservationValue/
+                 formatLaborMetricValue -- the PAYEMS dual-unit distinction,
+                 #20E.2), detectedChangeFormat.ts (generic release-processing
+                 read-model formatting, extended #20E.2 to humanize any
+                 analysis family's values, not just Inflation's), releases.ts
+                 (query-window date math + same-date grouping + compact date
+                 display -- never a status classification), releasePresentation.ts
+                 (frontend-only short-label/category map for the curated V1
+                 releases)
     pages/       one component per route (Overview -- the real Economic
-                 Overview as of Increment #19A, Inflation, Releases, NotFound)
+                 Overview, now genuinely multi-domain as of #20E.2; Inflation;
+                 Labor, Increment #20E.2; Releases; NotFound)
     styles/      global.css (Tailwind entry + minimal visual foundation)
     test/        Vitest setup, fixtures/, the no-economic-logic,
                  no-release-sync-or-coupling, no-explanation-classification-logic,
@@ -673,6 +706,56 @@ truthful `ErrorMessage` with Retry in place of the sections it drives,
 while What Changed (or vice versa) still renders normally if its own
 call succeeded — partial, truthful rendering, never a blanked page for
 one endpoint's failure.
+
+**The Labor page** (`frontend/src/pages/Labor.tsx`, Increment #20E.2,
+frozen by `docs/architecture/labor-ui-v1.md`) calls five independent
+`useApiResource` resources — `getLaborMonitor`, `getLaborWhatChanged`,
+`getEmploymentSituationProcessingStatus` (a composed resolver, see
+below), plus the same `fetchUpcomingReleases`/`fetchRecentReleases`
+callers the Releases page already uses, filtered client-side to
+Employment Situation's own `provider_release_id === "50"` — each with
+its own `loading`/`success`/`error` state, none fabricated from
+another. Page hierarchy (frozen, 7 sections, no reordering): primary
+Labor state (`LaborHero`, rendering `LaborState` with no directional
+color — see below) → Why This State (`WhyLaborState`, mirroring
+Inflation's `WhyThisState` shape independently) → Employment
+(`EmploymentSection`: `EmploymentCondition`/`EmploymentMomentum` as two
+independently-reported lines, never three co-equal badges, plus the
+PAYEMS dual-unit presentation — `current_3m_avg_jobs`/
+`prior_3m_avg_jobs`/`momentum_delta_jobs` are already-converted actual
+jobs, formatted by `formatJobs`; raw `observations[].value` is still
+FRED-native "Thousands of Persons", formatted by
+`formatRawObservationValue`; the two are never interchanged) →
+Unemployment (`UnemploymentSection`: `UnemploymentTrendState`) → What
+Changed (`WhatChangedSection`, filtering — never reordering — the
+backend's already-ordered `changes[]` into 4 presentation tiers:
+LABOR-component events, then EMPLOYMENT/UNEMPLOYMENT `state` events,
+then `condition`/`momentum` events, then `METRIC_CHANGED` numeric
+events behind a secondary "Metric updates" disclosure) → Latest Data
+Detected (`LatestDataDetected`, scoped to Employment Situation's own
+release via the backend's existing `release_id` query filter —
+architecturally distinct from `overview/LatestDataDetected.tsx`'s
+unfiltered, cross-release version) → an "Evidence & methodology"
+disclosure (`MethodologyDisclosure` plus per-metric
+`EvidenceDisclosure`, plus `RelevantRelease` reusing
+`releases/ReleaseRow`/`ReleaseDateBadge` unchanged). `lib/laborLabels.ts`
+maps every closed Labor enum to a label and tone, but — a deliberate
+departure from Inflation's cool/warm palette — every real
+`LaborState`/`EmploymentState`/`UnemploymentTrendState` value shares one
+neutral tone; only `MIXED` gets a distinct "caution" tone and
+`INSUFFICIENT_DATA` an "unavailable" tone. Reasoning: "strengthening"
+vs. "cooling" labor reads as good/bad to users in a way Inflation's
+temperature metaphor does not, so Labor carries every distinction in
+text alone, never color. `getEmploymentSituationProcessingStatus`
+(`api/labor.ts`) resolves Employment Situation's internal `release_id`
+via `Promise.all([fetchUpcomingReleases(), fetchRecentReleases()])`
+matched on `provider_release_id === "50"`, then calls the backend's
+existing (previously-unused) `?release_id=` filter on
+`fetchReleaseProcessingStatus` — presented as one composed resource,
+decoupled from the page's own separately-rendered Upcoming/Recent
+resources. Failure isolation matches Inflation's own pattern: each of
+the five resources renders its own `ErrorMessage`/Retry in place of
+only the sections it drives.
 
 **The Releases page** (`frontend/src/pages/Releases.tsx`, Increment
 #17B) calls `useApiResource(fetchUpcomingReleases)` and
@@ -768,45 +851,55 @@ establishing the pattern for later features to reuse rather than
 applying it to every existing page in this increment.
 
 **The Economic Overview page** (`frontend/src/pages/Overview.tsx`,
-Increment #19A, extended by #19C) is the real `/` route, replacing the
-Increment #16A placeholder. It composes five existing, unmodified
-canonical read functions — `getInflationMonitor`/`getInflationWhatChanged`/
-`fetchReleaseProcessingStatus`/`fetchUpcomingReleases`/`fetchRecentReleases`
-— each through its own independent `useApiResource` call, the identical
-pattern `/inflation` already established for two resources. There is
-deliberately **no** `GET /api/v1/overview` aggregate endpoint and no
-`Promise.all`: a failure in any one resource never blanks, blocks, or
-fabricates any of the other four (proven directly by dedicated
-partial-failure tests, one per resource, including all five failing at
-once). Hierarchy is Current State → What Changed → Latest Data Detected
-→ Releases (NOW → CHANGED → DETECTED → NEXT). `components/overview/CurrentStateSection.tsx`
-is a small, purpose-built presentation component — not `InflationHero`
-reused wholesale, which would have made Overview a second `/inflation`
-— showing only the state Badge, an explicit "Inflation" label beside it
-(so the page reads as "Inflation is MIXED," never "the economy is
-MIXED"), the period, `WhyThisState` (reused unmodified, including its
-existing contradictory-evidence guarantee), and one restrained sentence
-noting more monitor dimensions are being added — never five Coming-Soon
-cards for dimensions that don't exist yet. `components/overview/WhatChangedPreview.tsx`
-renders only real `ChangeEvent`s from the flat, already
-deterministically-ordered `InflationWhatChangedResult.changes` array,
-truncated to 3 and never reordered — deliberately **not** replicating
-`/inflation`'s own `WhatChangedSection`, which synthesizes a "State
-remains X" sentence from the *absence* of a `STATE_CHANGED` event for
-its own, separately-reviewed per-section summaries; Overview must never
-invent that inference. `components/overview/UpcomingReleasesPreview.tsx`/
-`RecentReleasePreview.tsx` show the first 3 upcoming occurrences (from
-the raw, already-ordered response, grouped by date only for display)
-and at most 1 recent occurrence as a compact line, reusing `ReleaseDateBadge`/
-`ReleaseRow`/`ScheduleStatusBadge` unmodified. The mandatory release-
-schedule disclosure sentence, previously hardcoded inline only in
-`pages/Releases.tsx`, was extracted into a new shared
-`components/releases/ReleaseScheduleDisclosure.tsx` so both pages
-render the identical sentence. A narrowly-scoped
-`test/no-overview-mutation.test.ts` proves every Overview file imports
-no AI/news module, references no sync/process endpoint, never calls
-`fetch` directly, and (for `pages/Overview.tsx` specifically) imports
-only the five documented read functions from `api/*`.
+Increment #19A, extended by #19C, restructured to a genuine multi-domain
+peer layout by #20E.2) is the real `/` route, replacing the Increment
+#16A placeholder. It composes seven existing, unmodified canonical read
+functions — `getInflationMonitor`/`getInflationWhatChanged`/
+`getLaborMonitor`/`getLaborWhatChanged`/`fetchReleaseProcessingStatus`/
+`fetchUpcomingReleases`/`fetchRecentReleases` — each through its own
+independent `useApiResource` call, the identical pattern `/inflation`
+and `/labor` already established. There is deliberately **no**
+`GET /api/v1/overview` aggregate endpoint, no `Promise.all` across
+domains, and no aggregate "Economy Score": a failure in any one
+resource never blanks, blocks, or fabricates any of the other six
+(proven directly by dedicated partial-failure tests, one per resource,
+plus cross-domain failure-isolation tests added in #20E.2 — e.g. Labor
+failing never blanks Inflation's card, and vice versa). Hierarchy is
+Current State → What Changed → Latest Data Detected → Releases (NOW →
+CHANGED → DETECTED → NEXT), each still exactly one `<h2>` (proven by
+the unmodified `heading-sequence` test). `components/overview/CurrentStateSection.tsx`
+is now a thin peer-domain wrapper — one shared `<h2>Current State</h2>`
+over two independently-gated `<div>` sub-cards, `InflationCurrentStateCard`
+and `LaborCurrentStateCard` (Increment #20E.2), neither owning the
+section heading; each card shows only its own state Badge, an explicit
+domain label beside it ("Inflation"/"Labor," so the page reads as
+"Inflation is MIXED"/"Labor is COOLING," never "the economy is X"), the
+period, and its own `WhyThisState`/`WhyLaborState` (each reused
+unmodified, including their existing contradictory-evidence guarantees)
+— the earlier single-domain "Inflation is the first fully deterministic
+monitor..." framing sentence was removed entirely as no longer true,
+not replaced. `components/overview/WhatChangedPreview.tsx`/
+`LaborWhatChangedPreview.tsx` follow the identical peer-card pattern
+under one shared `<h2>What Changed</h2>`, each rendering only real
+`ChangeEvent`s from its own flat, already deterministically-ordered
+`changes` array, truncated to 3 and never reordered — deliberately
+**not** replicating `/inflation`'s or `/labor`'s own `WhatChangedSection`,
+which synthesizes a "State remains X" sentence from the *absence* of a
+`STATE_CHANGED` event for its own, separately-reviewed per-section
+summaries; Overview must never invent that inference.
+`components/overview/UpcomingReleasesPreview.tsx`/`RecentReleasePreview.tsx`
+show the first 3 upcoming occurrences (from the raw, already-ordered
+response, grouped by date only for display) and at most 1 recent
+occurrence as a compact line, reusing `ReleaseDateBadge`/`ReleaseRow`/
+`ScheduleStatusBadge` unmodified. The mandatory release-schedule
+disclosure sentence, previously hardcoded inline only in
+`pages/Releases.tsx`, was extracted into a shared
+`components/releases/ReleaseScheduleDisclosure.tsx` so all three pages
+(`/releases`, `/`, `/labor`) render the identical sentence. A narrowly-
+scoped `test/no-overview-mutation.test.ts` proves every Overview file
+imports no AI/news module, references no sync/process endpoint, never
+calls `fetch` directly, and (for `pages/Overview.tsx` specifically)
+imports only the seven documented read functions from `api/*`.
 
 **Latest Data Detected** (`components/overview/LatestDataDetected.tsx`,
 Increment #19C) is the first frontend surface for #18's release-driven
@@ -834,12 +927,30 @@ them (see [ADR-023](../adr/023-release-processing-read-model-no-causal-nesting.m
 `lib/selectLatestDataDetected.ts`, and `content/explanations/processingStatus.ts`
 deliberately avoid the substring "release" in their file paths — an
 import-boundary necessity, not a naming preference: `DetectedAnalysisChange`
-reuses Inflation's own `ChangeComponent`/`ChangeEventType` vocabulary
-and label maps, and `test/no-release-sync-or-coupling.test.ts` forbids
-any "release"-pathed file from importing anything Inflation-shaped
-(the same reason `pages/Overview.tsx` itself avoids that substring —
-see that guard's own docstring). Zero backend changes — this endpoint
-already existed (#19B); #19C only adds a consumer.
+originally reused only Inflation's own `ChangeComponent`/`ChangeEventType`
+vocabulary and label maps; Increment #20D.2 had already widened the
+backend read model's `DetectedAnalysisChange.component` from the
+Inflation-only `ChangeComponent` Literal to plain `str` (a generic
+transport/provenance boundary must never own any one family's
+component vocabulary), but this frontend TypeScript type was left
+stale, still typed `ChangeComponent` — a real, previously-invisible bug
+found by #20E.1's audit and fixed in #20E.2 by widening it to `string`
+to match, and adding `lib/detectedChangeFormat.ts`'s
+`analysisComponentLabel`/`analysisFieldLabel`/fixed `formatAnalysisValue`
+— each tries its own family's curated map first (Inflation's, then
+Labor's) and falls back to `lib/format.ts`'s generic `humanizeEnumValue`
+for any value neither map recognizes, so this overview-generic
+component keeps working correctly as Employment Situation evidence
+flows through the same unfiltered feed, with no Labor-specific branch
+hardcoded into it. `test/no-release-sync-or-coupling.test.ts` still
+forbids any "release"-pathed file from importing anything Inflation- or
+Labor-shaped (the same reason `pages/Overview.tsx` itself avoids that
+substring — see that guard's own docstring). Zero backend changes for
+#19C — this endpoint already existed (#19B); #19C only adds a consumer.
+Zero backend changes for #20E.2 either — the frontend type fix above
+brings this file back in sync with the backend's own #20D.2 widening;
+see `docs/architecture/labor-ui-v1.md` and the Increment #20E.2 journal
+entry.
 
 **Local development** (see [Flow 26](./request-flows.md#flow-26--frontend-local-development-proxy-increment-16a)):
 the Vite dev server proxies `/api/*` requests to
@@ -856,13 +967,16 @@ as client-visible (everything prefixed `VITE_` ships in the browser
 bundle) and never used for a real secret.
 
 **No AI, no charts, no live FRED calls, no additional product
-dimensions** exist anywhere in the frontend as of Increment #17C — no
-"Ask AI"/"Explain with AI"/chat surface (the new explainability system
-above is curated static copy, not AI — see the "Explainability
-foundation" section for the guard proving it), no charting library
-(deferred until a deterministic historical monitor API exists), and no
-second product dimension (Explore, Compare, watchlists, auth, alerts)
-beyond Inflation and Releases. See "Future direction" below.
+dimensions** exist anywhere in the frontend as of Increment #20E.2 — no
+"Ask AI"/"Explain with AI"/chat surface (the explainability system
+described above is curated static copy, not AI — see the
+"Explainability foundation" section for the guard proving it, extended
+by `content/explanations/labor.ts` in #20E.2 following the identical
+static-copy pattern), no charting library (deferred until a
+deterministic historical monitor API exists, for either Inflation or
+Labor), and no aggregate cross-domain score or third product dimension
+(Explore, Compare, watchlists, auth, alerts) beyond Inflation, Labor,
+and Releases. See "Future direction" below.
 
 ## What is deliberately NOT part of this architecture yet
 
@@ -1226,3 +1340,42 @@ suite with zero regression. 62 new backend tests (1,111 → 1,173, run
 twice, identical); one new data migration, no schema change; zero
 frontend changes. Full account: docs/ENGINEERING_JOURNAL.md's #20D.2
 entry.
+
+**Increment #20E.1 (Labor UI + Overview Integration Product/Frontend
+Architecture Audit)** is a read-only product and frontend design turn
+— zero frontend production code, zero backend changes — that froze
+[docs/architecture/labor-ui-v1.md](./labor-ui-v1.md): the `/labor`
+page's full 7-section information architecture, PAYEMS's two-different-
+units-in-one-response requirement, the frozen 4-tier What Changed
+presentation priority (distinct from the backend's own canonical
+`changes[]` order, which is filtered, never reordered), the no-
+directional-color decision for Labor's state palette, the `MIXED`-state
+presentation rules, and the Overview peer-domain integration design
+(explicitly rejecting an aggregate "Economy Score"). Its audit of the
+actual existing frontend code (not memory) found two real, previously-
+invisible bugs — `DetectedAnalysisChange.component`'s stale TypeScript
+type (still `ChangeComponent` after the backend's own #20D.2 widening)
+and `formatAnalysisValue`'s Inflation-only state-map assumption — both
+scoped for #20E.2 to fix.
+
+**Increment #20E.2 (Labor UI + Overview Integration)** implements that
+frozen contract exactly — see "The Labor page" and "The Economic
+Overview page" above for the full breakdown. New: `api/labor.ts`/
+`labor.types.ts`, nine `components/labor/*` presentation components,
+`lib/laborLabels.ts`/`laborFormat.ts`, `content/explanations/labor.ts`,
+`pages/Labor.tsx` at `/labor` (added to primary nav between Inflation
+and Releases). Both #20E.1-identified bugs were fixed: the frontend
+`DetectedAnalysisChange.component` type was widened to `string` to
+match the backend's existing #20D.2 model, and `formatAnalysisValue`
+gained a generic `humanizeEnumValue` fallback (`lib/format.ts`) used
+identically by both families rather than a hardcoded Labor branch —
+verified byte-identical to every existing curated Inflation/Labor
+label. `components/overview/CurrentStateSection.tsx` and Overview's
+"What Changed" section were restructured from Inflation-owned sections
+into genuine two-domain peer layouts (one shared `<h2>`, independently-
+gated sub-cards), while the existing 4-heading `heading-sequence` test
+kept passing unmodified. Zero backend production changes — confirmed
+directly (no files under `app/`, `alembic/`, or `tests/` touched) and
+by an unchanged 1,173-passed backend regression run; frontend suite
+grew 487 → 671 (run twice, identical), lint and typecheck clean, build
+succeeds. Full account: docs/ENGINEERING_JOURNAL.md's #20E.2 entry.

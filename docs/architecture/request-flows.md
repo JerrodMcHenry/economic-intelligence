@@ -1523,32 +1523,42 @@ changed` already holds for Inflation. Never calls
 [docs/architecture/labor-release-integration-v1.md](./labor-release-integration-v1.md)
 for the full frozen contract.
 
-## Flow 33 — `/` Economic Overview Page Load (Increment #19A, extended #19C)
+## Flow 33 — `/` Economic Overview Page Load (Increment #19A, extended #19C, extended #20E.2)
 
 `frontend/src/pages/Overview.tsx` calls `useApiResource(getInflationMonitor)`,
-`useApiResource(getInflationWhatChanged)`, `useApiResource(fetchReleaseProcessingStatus)`,
+`useApiResource(getInflationWhatChanged)`, `useApiResource(getLaborMonitor)`,
+`useApiResource(getLaborWhatChanged)`, `useApiResource(fetchReleaseProcessingStatus)`,
 `useApiResource(fetchUpcomingReleases)`, and `useApiResource(fetchRecentReleases)`
-in the same render — five independent resources, each owning its own
+in the same render — seven independent resources, each owning its own
 `loading`/`success`/`error` state, extending exactly the pattern Flow 27
-already established for two. There is no aggregate endpoint and no
-`Promise.all` anywhere in this flow.
+established for two and Flow 37 (below) establishes for Labor's own
+page. There is no aggregate endpoint, no `Promise.all` across domains,
+and no aggregate "Economy Score" anywhere in this flow.
 
 ```mermaid
 sequenceDiagram
     participant B as Browser (OverviewPage)
     participant H1 as useApiResource(getInflationMonitor)
     participant H2 as useApiResource(getInflationWhatChanged)
+    participant H6 as useApiResource(getLaborMonitor)
+    participant H7 as useApiResource(getLaborWhatChanged)
     participant H5 as useApiResource(fetchReleaseProcessingStatus)
     participant H3 as useApiResource(fetchUpcomingReleases)
     participant H4 as useApiResource(fetchRecentReleases)
     participant API as FastAPI (via Flow 26's proxy in dev)
 
-    par five independent requests
+    par seven independent requests
         B->>H1: mount
         H1->>API: GET /api/v1/monitors/inflation
     and
         B->>H2: mount
         H2->>API: GET /api/v1/monitors/inflation/changes
+    and
+        B->>H6: mount
+        H6->>API: GET /api/v1/monitors/labor
+    and
+        B->>H7: mount
+        H7->>API: GET /api/v1/monitors/labor/changes
     and
         B->>H5: mount
         H5->>API: GET /api/v1/releases/processing-status
@@ -1561,46 +1571,62 @@ sequenceDiagram
     end
     API-->>H1: 200 InflationMonitorResult (or a network/HTTP failure)
     API-->>H2: 200 InflationWhatChangedResult (or a network/HTTP failure)
+    API-->>H6: 200 LaborMonitorResult (or a network/HTTP failure)
+    API-->>H7: 200 LaborWhatChangedResult (or a network/HTTP failure)
     API-->>H5: 200 ReleaseProcessingStatusResponse (or a network/HTTP failure)
     API-->>H3: 200 ReleaseListResponse (or a network/HTTP failure)
     API-->>H4: 200 ReleaseListResponse (or a network/HTTP failure)
-    Note over B: Each of the five renders independently --<br/>CurrentStateSection/WhatChangedPreview/<br/>LatestDataDetected/UpcomingReleasesPreview/<br/>RecentReleasePreview truncate and format only,<br/>never reclassify.
+    Note over B: Each of the seven renders independently --<br/>CurrentStateSection (now a peer wrapper over<br/>InflationCurrentStateCard/LaborCurrentStateCard),<br/>WhatChangedPreview/LaborWhatChangedPreview,<br/>LatestDataDetected, UpcomingReleasesPreview,<br/>RecentReleasePreview truncate and format only,<br/>never reclassify.
 ```
 
-Rendering is per-resource, identical in shape to Flow 27/30's own
-tables — any one of the five in `loading`/`success`/`error` renders
-independently of the other four; there is no combination in which one
+Rendering is per-resource, identical in shape to Flow 27/30/37's own
+tables — any one of the seven in `loading`/`success`/`error` renders
+independently of the other six; there is no combination in which one
 resource's failure prevents another's success from rendering (proven
 directly: dedicated single-resource-failure tests for each of the
-five, plus one all-fail test, the latter still rendering one intact
-page title and five independently truthful error messages, never a
+seven, dedicated cross-domain tests added in #20E.2 — e.g. Labor
+failing renders `InflationCurrentStateCard` normally and vice versa —
+plus one all-fail test, the latter still rendering one intact page
+title and seven independently truthful error messages, never a
 blanked page).
 
-`CurrentStateSection` renders `underlying_momentum.state` exactly as
-returned (via the same `Badge`/`WhyThisState` Flow 27 already uses) —
-labeled explicitly as "Inflation," never as a page-wide "economy"
-conclusion. `WhatChangedPreview` renders `whatChanged.changes.slice(0, 3)`
-— the flat, already deterministically-ordered event list `inflation_what_changed_v1.0`
-itself assembles — and never synthesizes a narrative from an event's
-*absence* the way `/inflation`'s own `WhatChangedSection` does for its
-own per-section summaries. `LatestDataDetected` (Increment #19C) picks
-ONE occurrence from `processingStatus.data.occurrences` via a
+`CurrentStateSection` (restructured in #20E.2) is now a thin peer
+wrapper: one shared `<h2>Current State</h2>` over two independently-
+gated cards. `InflationCurrentStateCard` renders `underlying_momentum.state`
+exactly as returned (via the same `Badge`/`WhyThisState` Flow 27
+already uses), labeled explicitly as "Inflation"; `LaborCurrentStateCard`
+renders `LaborMonitorResult.state` exactly as returned (via `Badge`/
+`WhyLaborState`, Flow 37's own components), labeled explicitly as
+"Labor" — neither is a page-wide "economy" conclusion, and there is no
+combined score anywhere. `WhatChangedPreview`/`LaborWhatChangedPreview`
+render `whatChanged.changes.slice(0, 3)` from each family's own flat,
+already deterministically-ordered event list (`inflation_what_changed_v1.0`/
+`labor_what_changed_v1.0`) under one shared `<h2>What Changed</h2>`,
+and never synthesize a narrative from an event's *absence* the way
+`/inflation`'s or `/labor`'s own `WhatChangedSection` does for its own
+per-section summaries. `LatestDataDetected` (Increment #19C, unmodified
+by #20E.2) picks ONE occurrence from `processingStatus.data.occurrences`
+across every mapped release — including Employment Situation, which
+now flows through this same unfiltered feed automatically — via a
 deterministic status-priority selection rule (`lib/selectLatestDataDetected.ts`
 -- see Flow 34's own entry and this file's "Components" table for why
 it is not simply the backend's first-returned item), then renders that
 occurrence's `latest_check.status`-driven message plus its sibling
 `detected_observation_changes`/`detected_analysis_changes` lists,
-truncated to 3 each in backend order. `UpcomingReleasesPreview`/`RecentReleasePreview`
+truncated to 3 each in backend order, using `analysisComponentLabel`/
+`analysisFieldLabel` (extended #20E.2 to humanize any family's values,
+not just Inflation's). `UpcomingReleasesPreview`/`RecentReleasePreview`
 slice the already-backend-ordered release arrays to 3 and 1
 respectively, reusing Flow 30's own `ReleaseDateBadge`/`ReleaseRow`/
 `ScheduleStatusBadge` components unmodified, alongside the same
 mandatory schedule-vs-publication disclosure sentence Flow 30 requires
 (centralized in `components/releases/ReleaseScheduleDisclosure.tsx`,
-rendered on both pages).
+rendered on all three of `/releases`, `/`, and `/labor`).
 
 Nothing in this flow's call graph imports AI or news, and nothing
 calls a sync/mutation endpoint of any kind — the Overview page is
-exactly as read-only as `/inflation` and `/releases` already are.
+exactly as read-only as `/inflation`, `/labor`, and `/releases` already
+are.
 
 ## Flow 34 — Release Processing Status Read (`GET /api/v1/releases/processing-status`, Increment #19B)
 
@@ -1827,3 +1853,103 @@ FRED, triggers ingestion, or calls AI to resolve a gap.
 accepts or constructs a `FREDClient`, and imports no AI module
 anywhere in its call graph — checked structurally (see
 `tests/test_labor_architecture.py`).
+
+## Flow 37 — `/labor` Page Load (Increment #20E.2)
+
+`frontend/src/pages/Labor.tsx` calls `useApiResource(getLaborMonitor)`,
+`useApiResource(getLaborWhatChanged)`, `useApiResource(getEmploymentSituationProcessingStatus)`,
+`useApiResource(fetchUpcomingReleases)`, and `useApiResource(fetchRecentReleases)`
+in the same render — five independent resources, each owning its own
+`loading`/`success`/`error` state, extending exactly the pattern Flow 27
+established for Inflation. `getEmploymentSituationProcessingStatus`
+(`frontend/src/api/labor.ts`) is itself a composed async function, not
+a single HTTP call: it resolves Employment Situation's internal
+`release_id` via `Promise.all([fetchUpcomingReleases(), fetchRecentReleases()])`,
+matching on `provider_release_id === "50"`, then calls
+`fetchReleaseProcessingStatus(release_id)` using the backend's existing
+(previously-unused) `?release_id=` query filter — this internal
+`Promise.all` resolves two calls this same page also fires
+independently for its own Upcoming/Recent resources; the composed
+resource never blocks on, or is blocked by, those separate renders.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (LaborPage)
+    participant H1 as useApiResource(getLaborMonitor)
+    participant H2 as useApiResource(getLaborWhatChanged)
+    participant H3 as useApiResource(getEmploymentSituationProcessingStatus)
+    participant H4 as useApiResource(fetchUpcomingReleases)
+    participant H5 as useApiResource(fetchRecentReleases)
+    participant API as FastAPI (via Flow 26's proxy in dev)
+
+    par five independent requests
+        B->>H1: mount
+        H1->>API: GET /api/v1/monitors/labor
+    and
+        B->>H2: mount
+        H2->>API: GET /api/v1/monitors/labor/changes
+    and
+        B->>H3: mount
+        par resolve release_id
+            H3->>API: GET /api/v1/releases?start_date&end_date&order=asc
+        and
+            H3->>API: GET /api/v1/releases?start_date&end_date&order=desc
+        end
+        API-->>H3: two ReleaseListResponse pages
+        Note over H3: match provider_release_id == "50"<br/>(Employment Situation) to find release_id
+        H3->>API: GET /api/v1/releases/processing-status?release_id=<id>
+    and
+        B->>H4: mount
+        H4->>API: GET /api/v1/releases?start_date&end_date&order=asc
+    and
+        B->>H5: mount
+        H5->>API: GET /api/v1/releases?start_date&end_date&order=desc
+    end
+    API-->>H1: 200 LaborMonitorResult (or a network/HTTP failure)
+    API-->>H2: 200 LaborWhatChangedResult (or a network/HTTP failure)
+    API-->>H3: 200 ReleaseProcessingStatusResponse, one occurrence<br/>(or a network/HTTP failure at any step)
+    API-->>H4: 200 ReleaseListResponse (or a network/HTTP failure)
+    API-->>H5: 200 ReleaseListResponse (or a network/HTTP failure)
+    Note over B: Each of the five renders independently --<br/>LaborHero/WhyLaborState/EmploymentSection/<br/>UnemploymentSection/WhatChangedSection/<br/>LatestDataDetected/RelevantRelease format<br/>and filter only, never reclassify.
+```
+
+Rendering is per-resource, identical in shape to Flow 27/33's own
+tables — any one of the five in `loading`/`success`/`error` renders
+independently of the other four; a failure resolving Employment
+Situation's `release_id` (either release-list call failing, or no
+`provider_release_id === "50"` match found) surfaces as `H3`'s own
+error state, never as a blank Latest Data Detected section silently
+merged into the page's other content.
+
+Page hierarchy (frozen by `docs/architecture/labor-ui-v1.md`, 7
+sections, never reordered): `LaborHero` (primary `LaborState`, no
+directional color — every real state shares one neutral tone; only
+`MIXED` gets a distinct "caution" tone) → `WhyLaborState` (mirroring
+`WhyThisState`'s own contradictory-evidence guarantee) →
+`EmploymentSection` (`EmploymentCondition`/`EmploymentMomentum` as two
+independently-reported lines; `formatJobs` for the already-converted
+`current_3m_avg_jobs`/`prior_3m_avg_jobs`/`momentum_delta_jobs`,
+`formatRawObservationValue` for the still-FRED-native
+`observations[].value` — the two formatters are never interchanged) →
+`UnemploymentSection` (`UnemploymentTrendState`) → `WhatChangedSection`
+(filters — never reorders — the backend's already-ordered `changes[]`
+into 4 presentation tiers: `LABOR`-component events, then
+`EMPLOYMENT`/`UNEMPLOYMENT` `state` events, then `condition`/`momentum`
+events, then `METRIC_CHANGED` numeric events behind a secondary
+"Metric updates" disclosure) → `LatestDataDetected` (this page's own
+component, scoped to Employment Situation's single occurrence via
+`H3` above — architecturally distinct from `components/overview/LatestDataDetected.tsx`'s
+unfiltered, cross-release version used by Flow 33) → an
+"Evidence & methodology" disclosure (`MethodologyDisclosure` plus
+per-metric `EvidenceDisclosure`, plus `RelevantRelease` reusing Flow
+30's own `ReleaseRow`/`ReleaseDateBadge` unmodified).
+
+Every economic value, state, condition, momentum, and period shown is
+exactly what `GET /api/v1/monitors/labor`/`.../labor/changes`/
+`.../releases/processing-status` returned; `lib/laborLabels.ts` and
+`lib/laborFormat.ts` only format/label already-canonical values (see
+`docs/architecture/current-architecture.md`'s "The Labor page" for the
+full section-by-section breakdown, and
+`frontend/src/test/no-economic-logic.test.ts`'s frozen-deadband guards
+for the check preventing any of this from silently becoming a second
+implementation of `labor_v1.0`).

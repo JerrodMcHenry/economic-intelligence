@@ -1,12 +1,14 @@
 import type { DetectedAnalysisChange, DetectedObservationChange, ReleaseProcessingStatusItem } from "../../api/processingStatus.types";
 import {
+  analysisComponentLabel,
+  analysisFieldLabel,
   formatAnalysisValue,
   formatCheckedAt,
   formatObservationValue,
   observationChangeTypeLabel,
   processingStatusLabel,
 } from "../../lib/detectedChangeFormat";
-import { CHANGE_COMPONENT_LABELS, changeEventTypeLabel, changeFieldLabel } from "../../lib/inflationLabels";
+import { changeEventTypeLabel } from "../../lib/inflationLabels";
 import { formatFullDate } from "../../lib/releases";
 import { selectLatestDataDetectedItem } from "../../lib/selectLatestDataDetected";
 import { DETECTED_CHANGES_DATA_BASIS, processingStatusExplanation } from "../../content/explanations/processingStatus";
@@ -140,7 +142,7 @@ function SelectedOccurrence({ item }: { item: ReleaseProcessingStatusItem }) {
               ))}
             </ul>
           ) : (
-            <p className="mt-2 text-sm text-neutral-500">No tracked Inflation evidence changed during this processing history.</p>
+            <p className="mt-2 text-sm text-neutral-500">No tracked evidence changed during this processing history.</p>
           )}
         </div>
       )}
@@ -148,7 +150,10 @@ function SelectedOccurrence({ item }: { item: ReleaseProcessingStatusItem }) {
   );
 }
 
-function ObservationChangeRow({ change }: { change: DetectedObservationChange }) {
+/** Exported so components/labor/LatestDataDetected.tsx can reuse this
+ * row unchanged -- see this module's own docstring and
+ * docs/architecture/labor-ui-v1.md §23. */
+export function ObservationChangeRow({ change }: { change: DetectedObservationChange }) {
   const showPreviousValue = change.change_type === "REVISED" && change.previous_value !== null;
 
   return (
@@ -172,11 +177,14 @@ function ObservationChangeRow({ change }: { change: DetectedObservationChange })
   );
 }
 
-function AnalysisChangeRow({ change }: { change: DetectedAnalysisChange }) {
+/** Exported so components/labor/LatestDataDetected.tsx can reuse this
+ * row unchanged -- see this module's own docstring and
+ * docs/architecture/labor-ui-v1.md §23. */
+export function AnalysisChangeRow({ change }: { change: DetectedAnalysisChange }) {
   return (
     <li className="text-sm">
       <div className="text-neutral-500">
-        {CHANGE_COMPONENT_LABELS[change.component]} · {changeEventTypeLabel(change.event_type)} · {changeFieldLabel(change.field)}
+        {analysisComponentLabel(change.component)} · {changeEventTypeLabel(change.event_type)} · {analysisFieldLabel(change.field)}
       </div>
       <div className="tabular-nums text-neutral-700">
         {formatAnalysisValue(change.field, change.previous_value)}

@@ -76,3 +76,23 @@ export function formatMetricValueOrUnavailable(value: number | string | null): s
   if (typeof value === "number") return formatPercent(value);
   return value;
 }
+
+/**
+ * "DETERIORATING" -> "Deteriorating"; "INSUFFICIENT_DATA" -> "Insufficient
+ * data". A generic, domain-agnostic fallback for humanizing an
+ * UPPER_SNAKE_CASE backend enum value that has no curated label entry
+ * -- pure syntax (lowercase + underscore-to-space + capitalize the
+ * first letter only), never a lookup, never domain-specific meaning.
+ * Used only as a last resort when a specific curated label map (e.g.
+ * `lib/inflationLabels.ts`'s `INFLATION_STATE_LABELS`, `lib/laborLabels.ts`'s
+ * `LABOR_STATE_LABELS`) doesn't recognize the value -- see
+ * `lib/detectedChangeFormat.ts`'s `formatAnalysisValue` for the one
+ * place this matters: the generic release-processing read model can
+ * carry a state-shaped value from ANY analysis family, and this
+ * function lets it render sensibly without hardcoding every family's
+ * own vocabulary into one shared map.
+ */
+export function humanizeEnumValue(value: string): string {
+  const lower = value.toLowerCase().replace(/_/g, " ");
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}

@@ -7749,3 +7749,168 @@ same-period revision comparison this whole mechanism enables but a
 production release-driven trigger has not yet actually exercised
 against real FRED data (mocked FRED only, in every test here, per this
 project's own established no-live-provider-in-tests discipline).
+
+## Increment #20E.2 — Labor UI + Overview Integration
+
+Implements the frozen `docs/architecture/labor-ui-v1.md` contract: a
+dedicated `/labor` workspace, and a genuinely multi-domain Economic
+Overview. Zero backend production changes — every need was already
+satisfiable from the existing, confirmed `labor_v1.0`/
+`labor_what_changed_v1.0` contracts and the release-processing
+read model's existing `release_id` filter.
+
+### `/labor` — the frozen 7-section hierarchy, not a mechanical Inflation clone
+
+Current State → Employment → Unemployment → What Changed → Latest
+Data Detected → Relevant Release → Evidence & methodology
+(`pages/Labor.tsx`, five independent `useApiResource` calls). Employment
+renders `EmploymentState` as the single primary badge with
+condition/momentum as secondary explanatory text — the three-co-equal-badges
+hypothesis the freeze doc itself floated was explicitly rejected.
+Unemployment's own numeric fields (`current_3m_avg`/`prior_year_3m_avg`/
+`delta_pp`) use the existing `formatPercent`/`formatPercentagePoints`
+unchanged; Employment's three job-count fields use a new `formatJobs`
+(`lib/laborFormat.ts`) instead — see the PAYEMS units section below for
+why blending these two would have been a real bug.
+
+### No directional color-coding — a deliberate departure from Inflation's own palette
+
+`STRENGTHENING`/`COOLING`/`STABLE` (and every real `EmploymentState`/
+`UnemploymentTrendState` value) all share one neutral tone;
+`MIXED`→`caution`, `INSUFFICIENT_DATA`→`unavailable` (`lib/laborLabels.ts`).
+Inflation's own `cool`(blue)/`warm`(orange) buckets for
+COOLING/HEATING are a temperature metaphor, not a value judgment (more
+or less inflation isn't obviously good or bad) — but "strengthening"
+vs. "cooling" labor IS commonly read as good/bad, so Labor deliberately
+declines to reuse that mapping. Text alone carries every distinction.
+
+### PAYEMS units — two different units in one response, confirmed and protected
+
+`EmploymentResult.current_3m_avg_jobs`/`prior_3m_avg_jobs`/
+`momentum_delta_jobs` are already-converted actual jobs; the raw
+`observations[].value` entries are still FRED-native "Thousands of
+Persons" — the exact same response carries both. `formatJobs` (summary
+tier) never divides; `formatRawObservationValue` (evidence tier) never
+multiplies, and the evidence table explicitly labels its own column
+"Value (Thousands of persons)" so a reader can never mistake a raw
+`130,472` for the same unit as a summary-tier `-331,333`. Both formatters
+and this exact distinction are directly regression-tested
+(`lib/laborFormat.test.ts`), including the real August 2009 PAYEMS
+values from the frozen research data.
+
+### MIXED — contradiction shown, never hidden
+
+`WhyLaborState` always shows both Employment's and Unemployment's own
+canonical states side by side, not only when `state === "MIXED"` —
+the same unconditional-disclosure shape `WhyThisState` already
+establishes for Inflation. Curated copy (`content/explanations/labor.ts`)
+explicitly cites the frozen agreement table's own "every RECOVERING
+pairing is MIXED" rule, verified against
+`research/labor_momentum/LABOR_V1_FROZEN_METHODOLOGY.md` §7 directly
+rather than assumed. No exact deadband number (50,000 jobs / 0.2pp)
+appears anywhere in explanation content — regression-tested.
+
+### What Changed — a frozen 4-tier PRESENTATION priority over the backend's own flattened order
+
+`components/labor/WhatChangedSection.tsx` filters (never reorders) the
+backend's already-ordered `changes[]` into four tiers: top-level
+`LABOR` state/availability; `EMPLOYMENT`/`UNEMPLOYMENT` state events;
+condition/momentum events (reported independently, never suppressed by
+a co-occurring state change — the exact reason #20C.2 emits them
+independently in the first place); numeric `METRIC_CHANGED` events,
+behind a secondary "Metric updates" disclosure so an exact-float-inequality-driven
+quiet month never reads as dramatic as a real state transition. Every
+event remains reachable; none is deleted from the inspectable UI.
+Quiet-month copy: "No canonical Labor changes were reported for this
+comparison." — never "Labor remained stable."
+
+### Two real, pre-existing frontend bugs found by #20E.1's own audit — fixed here
+
+`api/processingStatus.types.ts`'s `DetectedAnalysisChange.component`
+was still typed with Inflation's own `ChangeComponent` Literal even
+though the *backend* widened this field to plain `str` in #20D.2 —
+widened to `string` here too, mirroring the backend's identical
+reasoning (this read-model row is generic transport metadata, never a
+component-vocabulary owner). `lib/detectedChangeFormat.ts`'s
+`formatAnalysisValue` unconditionally assumed Inflation's own label
+map for any "state" field — a Labor `EmploymentState` value like
+`RECOVERING`/`EXPANDING` that Inflation's map doesn't recognize
+previously rendered as the raw uppercase string. Fixed with a new,
+domain-agnostic `humanizeEnumValue` fallback (`lib/format.ts`) rather
+than hardcoding Labor's own vocabulary into a shared function — proven
+to produce byte-identical output to every existing curated label for
+every value already tested. A parallel fix (`analysisComponentLabel`/
+`analysisFieldLabel`) makes the component/field labels in Overview's
+"Latest Data Detected" section resolve correctly for Labor rows too —
+previously `CHANGE_COMPONENT_LABELS[change.component]` rendered
+literally nothing for a Labor component.
+
+### Overview — two true peer domains, never an aggregate
+
+`CurrentStateSection.tsx` now renders `InflationCurrentStateCard`/
+`LaborCurrentStateCard` as two independently-gated sub-blocks under one
+shared "Current State" heading — Inflation's monitor failing never
+hides Labor's card and vice versa. The stale "Inflation is the first
+fully deterministic monitor..." sentence is REMOVED, not replaced —
+there's no monitor-count sentence that wouldn't itself go stale again
+at a third monitor. "What Changed" gained the identical peer structure
+(`WhatChangedPreview`/`LaborWhatChangedPreview`, both now plain
+sub-cards under one shared heading rather than each owning its own
+`<h2>`, so the existing `["Current State", "What Changed", "Latest
+Data Detected", "Releases"]` heading-sequence test stays exactly
+correct). Latest Data Detected and Releases needed **zero** Labor-specific
+code — both already flow Employment Situation's own evidence through
+automatically once the two bug fixes above landed. No aggregate
+"Economy State"/score anywhere — two independent, sourced readings,
+never combined.
+
+### Latest Data Detected on `/labor` — scoped, not duplicated
+
+`api/labor.ts`'s `getEmploymentSituationProcessingStatus` composes
+three existing calls (`fetchUpcomingReleases`/`fetchRecentReleases` to
+resolve Employment Situation's internal `release_id`, then
+`fetchReleaseProcessingStatus(releaseId)` using the backend's
+already-existing, previously-unused `release_id` query filter) into
+one resource — genuinely different value from Overview's own unfiltered
+default page, not a duplication: a reader on `/labor` sees Employment
+Situation's own evidence regardless of how "busy" other releases have
+been recently.
+
+### Tests
+
+44 new frontend test files' worth of coverage, 671 total (487 → 671,
+run twice, identical): 43 new `pages/Labor.test.tsx` integration tests
+(every `LaborState`/`EmploymentState`/`UnemploymentTrendState` value,
+the contradictory-evidence test, PAYEMS unit-distinction regressions,
+every What Changed event tier, five independent failure-isolation
+scenarios, accessibility structure); 39 new
+`content/explanations/labor.test.ts` tests (coverage, MIXED/RECOVERING/
+INSUFFICIENT_DATA substance checks, no-threshold-leakage, no-investment-advice);
+label/format unit tests (`lib/laborLabels.test.ts`,
+`lib/laborFormat.test.ts`, extended `lib/format.test.ts`/
+`lib/detectedChangeFormat.test.ts`); `App.test.tsx` extended for the
+new nav entry and route; `pages/Overview.test.tsx` substantially
+extended for the seven-resource peer structure and cross-domain
+failure isolation; two architecture guards extended
+(`no-overview-mutation.test.ts` for the two new read functions,
+`no-economic-logic.test.ts` for the frozen 50,000-job/0.2pp deadband
+comparison patterns, mirroring the backend's own AST-level guard).
+
+### Verification
+
+Frontend: `npm test`, run twice: **671 passed** both times, 0 skipped,
+0 failed. `npm run typecheck`: clean. `npm run lint` (oxlint): 103
+files scanned, 0 diagnostics. `npm run build`: succeeds. Backend:
+`TEST_DATABASE_URL=... pytest tests/ -q`: **1,173 passed**, unchanged
+from baseline — confirmed zero backend production files touched
+(`git status --porcelain -- app/ alembic/ research/` empty).
+
+### Deferred (named explicitly, not built here)
+
+Charts (no chart library exists anywhere in this project; `/inflation`
+itself has none despite richer available time-series data). A shared
+cross-monitor `Badge`/label abstraction (two monitors don't yet justify
+one). Any `/labor/employment`/`/labor/unemployment` sub-route. Any
+Growth/Housing/JOLTS/CIVPART nav placeholder. A distinct payroll-benchmark-revision
+disclosure sentence (none exists in the frozen methodology to
+transcribe — confirmed by #20E.1's own audit, not invented here).

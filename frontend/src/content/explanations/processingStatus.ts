@@ -44,7 +44,7 @@ export const TRACKED_ANALYSIS_CHANGE: Explanation = {
   id: "processing-status.tracked-analysis-change",
   title: "Tracked analysis change",
   definition:
-    "A change to one of Economic Intelligence's own deterministic Inflation metrics or classifications, computed the same way as the live Inflation Monitor and What Changed pages -- never a separate calculation.",
+    "A change to one of Economic Intelligence's own deterministic metrics or classifications (Inflation or Labor), computed the same way as the live monitor and What Changed pages -- never a separate calculation.",
   whyItMatters:
     "Source data can change without moving a tracked metric or state (small revisions that don't cross a threshold), and a tracked metric can be affected by a revision to any of several source dates -- the two lists on this page are independent facts, not a one-to-one cause and effect.",
 };

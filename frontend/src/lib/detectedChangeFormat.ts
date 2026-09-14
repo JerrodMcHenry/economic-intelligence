@@ -11,7 +11,9 @@
  * map for -- never coerced into a number.
  */
 import type { ObservationChangeType, ProcessingStatus } from "../api/processingStatus.types";
-import { confirmationRelationshipLabelOrRaw, inflationStateLabelOrRaw } from "./inflationLabels";
+import { humanizeEnumValue } from "./format";
+import { CHANGE_COMPONENT_LABELS, CHANGE_FIELD_LABELS, confirmationRelationshipLabelOrRaw, inflationStateLabelOrRaw } from "./inflationLabels";
+import { laborChangeComponentLabelOrRaw, laborChangeFieldLabel } from "./laborLabels";
 
 /** Restrained, backend-status-controlled primary copy -- see
  * docs/ENGINEERING_JOURNAL.md's #19C entry and
@@ -64,16 +66,58 @@ export function formatObservationValue(value: number | null, units: string | nul
 /**
  * A `DetectedAnalysisChange.previous_value`/`current_value` for
  * display -- both are persisted strings (see this module's own
- * docstring). "state"/"relationship" fields are looked up in the same
- * canonical label maps `WhatChangedPreview.tsx` already uses for the
- * identical `ChangeEvent` shape; every other field is shown exactly as
- * stored, never reinterpreted as numeric.
+ * docstring). This row can come from ANY analysis family (Inflation's
+ * own five components, or Labor's `LABOR`/`EMPLOYMENT`/`UNEMPLOYMENT`,
+ * or a future family) -- this function does not need to know which,
+ * because the value itself is self-describing: "state" is tried
+ * against Inflation's own state map first (preserving exact existing
+ * behavior for every Inflation row, byte-for-byte), and if the value
+ * isn't one of those five, it falls back to a generic, presentation-safe
+ * humanization (`humanizeEnumValue`) rather than the raw uppercase
+ * string -- this is what fixes Labor's own `EXPANDING`/`RECOVERING`/
+ * `DETERIORATING`/etc. rendering correctly without hardcoding Labor's
+ * vocabulary into a shared, family-agnostic function (Increment
+ * #20E.2, see docs/architecture/labor-ui-v1.md §6b/§23). "condition"/
+ * "momentum" (fields that exist only for Labor's EMPLOYMENT component)
+ * are humanized the same way. "relationship" (Inflation-only) is
+ * unaffected. Every other field is shown exactly as stored, never
+ * reinterpreted as numeric.
  */
 export function formatAnalysisValue(field: string, value: string | null): string {
   if (value === null) return "Unavailable";
-  if (field === "state") return inflationStateLabelOrRaw(value);
+  if (field === "state") {
+    const inflationLabel = inflationStateLabelOrRaw(value);
+    return inflationLabel !== value ? inflationLabel : humanizeEnumValue(value);
+  }
   if (field === "relationship") return confirmationRelationshipLabelOrRaw(value);
+  if (field === "condition" || field === "momentum") return humanizeEnumValue(value);
   return value;
+}
+
+/**
+ * A `DetectedAnalysisChange.component` for display -- tries Inflation's
+ * own component map first (preserving exact existing behavior), then
+ * Labor's, then falls back to a generic humanization rather than
+ * rendering nothing (the real bug #20E.1 found:
+ * `CHANGE_COMPONENT_LABELS[change.component]` alone returns `undefined`
+ * for a Labor component value). See this module's own docstring on
+ * `formatAnalysisValue` for the identical reasoning.
+ */
+export function analysisComponentLabel(component: string): string {
+  if (component in CHANGE_COMPONENT_LABELS) return CHANGE_COMPONENT_LABELS[component as keyof typeof CHANGE_COMPONENT_LABELS];
+  const laborLabel = laborChangeComponentLabelOrRaw(component);
+  return laborLabel !== component ? laborLabel : humanizeEnumValue(component);
+}
+
+/**
+ * A `DetectedAnalysisChange.field` for display -- tries Inflation's own
+ * field-label map first (preserving exact existing behavior), then
+ * Labor's own (e.g. "current_3m_avg_jobs" -> "Current 3M avg"), then
+ * falls back to the raw field name (existing behavior for a field
+ * neither map recognizes) -- never `undefined`.
+ */
+export function analysisFieldLabel(field: string): string {
+  return CHANGE_FIELD_LABELS[field] ?? laborChangeFieldLabel(field);
 }
 
 const CHECKED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {

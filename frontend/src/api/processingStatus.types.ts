@@ -5,22 +5,36 @@
  * inferred or guessed. This file types the JSON shape only -- it
  * derives nothing.
  *
- * `component`/`event_type` on `DetectedAnalysisChange` reuse the exact
- * `ChangeComponent`/`ChangeEventType` types already defined in
- * ./inflation.types -- the backend's own `DetectedAnalysisChange`
- * model does the identical thing (imports `ChangeComponent`/
- * `ChangeEventType` from `app.models.inflation_what_changed` rather
- * than declaring a parallel enum), and this file does the same rather
- * than rename or fork the canonical values. This is a deliberate
- * exception to this project's usual "release-pathed files never import
- * inflation-pathed ones" discipline (see
- * frontend/src/test/no-release-sync-or-coupling.test.ts): this file's
- * name deliberately avoids the substring "release" so that guard does
- * not scan it, exactly like `pages/Overview.tsx`/`CurrentStateSection.tsx`/
- * `WhatChangedPreview.tsx` already deliberately avoid it for the
- * identical reason (see docs/ENGINEERING_JOURNAL.md's #19A entry) --
- * this contract is, by design, a bridge between the release-processing
- * and Inflation domains, mirroring the backend's own #18
+ * `event_type` on `DetectedAnalysisChange` reuses the exact
+ * `ChangeEventType` type already defined in ./inflation.types -- the
+ * backend's own `DetectedAnalysisChange` model does the identical
+ * thing (imports `ChangeEventType` from
+ * `app.models.inflation_what_changed` rather than declaring a parallel
+ * enum), and this file does the same rather than rename or fork the
+ * canonical values. `event_type`'s five values are shared across every
+ * comparator this project has (Inflation's and Labor's four-value
+ * vocabulary is a strict subset), so no widening was needed there.
+ *
+ * `component` is plain `string`, NOT `ChangeComponent` (Increment
+ * #20E.2, mirroring the backend's own identical #20D.2 widening of
+ * `app.models.release_processing_read.DetectedAnalysisChange.component`
+ * -- see docs/architecture/labor-release-integration-v1.md §22). This
+ * read-model row is generic transport/provenance metadata shared by
+ * every analysis family (Inflation's `ChangeComponent`, Labor's
+ * `LaborChangeComponent` from ./labor.types, and any future family) --
+ * it is never the owner of any one family's own component vocabulary,
+ * so it must not be typed with any one family's own Literal union.
+ *
+ * This is a deliberate exception to this project's usual
+ * "release-pathed files never import inflation-pathed ones" discipline
+ * (see frontend/src/test/no-release-sync-or-coupling.test.ts): this
+ * file's name deliberately avoids the substring "release" so that
+ * guard does not scan it, exactly like `pages/Overview.tsx`/
+ * `CurrentStateSection.tsx`/`WhatChangedPreview.tsx` already
+ * deliberately avoid it for the identical reason (see
+ * docs/ENGINEERING_JOURNAL.md's #19A entry) -- this contract is, by
+ * design, a bridge between the release-processing and Inflation/Labor
+ * domains, mirroring the backend's own #18/#20D.2
  * `app/services/release_processing.py` bridge.
  *
  * Exactly five `ProcessingStatus` values -- no `NOT_APPLICABLE` (see
@@ -36,7 +50,7 @@
  * offset, exactly as FastAPI/Pydantic serializes a timezone-aware
  * Python `datetime`.
  */
-import type { ChangeComponent, ChangeEventType } from "./inflation.types";
+import type { ChangeEventType } from "./inflation.types";
 import type { PaginationMeta } from "./releases.types";
 
 export type ProcessingStatus = "NOT_CHECKED" | "NO_CHANGE" | "CHANGES_DETECTED" | "PARTIAL_CHECK" | "CHECK_FAILED";
@@ -67,7 +81,7 @@ export interface DetectedObservationChange {
 }
 
 export interface DetectedAnalysisChange {
-  component: ChangeComponent;
+  component: string;
   event_type: ChangeEventType;
   field: string;
   previous_value: string | null;

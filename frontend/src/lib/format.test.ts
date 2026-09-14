@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatMetricValueOrUnavailable, formatPercent, formatPercentagePoints, formatPeriod, formatPeriodPair } from "./format";
+import { formatMetricValueOrUnavailable, formatPercent, formatPercentagePoints, formatPeriod, formatPeriodPair, humanizeEnumValue } from "./format";
 
 describe("formatPeriod", () => {
   it("formats an ISO date as Month Year", () => {
@@ -85,5 +85,23 @@ describe("formatMetricValueOrUnavailable", () => {
 
   it("renders null as 'Unavailable', distinct from a numeric zero", () => {
     expect(formatMetricValueOrUnavailable(null)).toBe("Unavailable");
+  });
+});
+
+describe("humanizeEnumValue -- generic, domain-agnostic fallback (docs/architecture/labor-ui-v1.md §6b/§23)", () => {
+  it("lowercases and replaces underscores with spaces, capitalizing only the first letter", () => {
+    expect(humanizeEnumValue("DETERIORATING")).toBe("Deteriorating");
+    expect(humanizeEnumValue("RECOVERING")).toBe("Recovering");
+  });
+
+  it("handles a multi-word UPPER_SNAKE_CASE value", () => {
+    expect(humanizeEnumValue("INSUFFICIENT_DATA")).toBe("Insufficient data");
+  });
+
+  it("matches the existing curated Inflation/Labor label text exactly, for every value tested -- a pure syntactic transform, never domain-specific meaning", () => {
+    expect(humanizeEnumValue("COOLING")).toBe("Cooling");
+    expect(humanizeEnumValue("STABLE")).toBe("Stable");
+    expect(humanizeEnumValue("MIXED")).toBe("Mixed");
+    expect(humanizeEnumValue("EXPANDING")).toBe("Expanding");
   });
 });
