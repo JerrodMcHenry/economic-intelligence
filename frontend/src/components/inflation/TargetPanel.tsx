@@ -1,5 +1,7 @@
 import type { TargetResult } from "../../api/inflation.types";
+import { FED_OBJECTIVE, TARGET_DEVIATION } from "../../content/explanations/inflation";
 import { formatPercent, formatPercentagePoints, formatPeriod } from "../../lib/format";
+import { ExplanationTrigger } from "../explanations/ExplanationTrigger";
 import { EvidenceDisclosure } from "./EvidenceDisclosure";
 
 /**
@@ -25,11 +27,17 @@ export function TargetPanel({ target }: { target: TargetResult }) {
             <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">{formatPercent(target.headline_pce_yoy)}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Fed objective</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Fed objective</p>
+              <ExplanationTrigger explanation={FED_OBJECTIVE} />
+            </div>
             <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">{formatPercent(target.fed_objective_percent)}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Gap</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Gap</p>
+              <ExplanationTrigger explanation={TARGET_DEVIATION} />
+            </div>
             <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">{formatPercentagePoints(target.target_gap_pp)}</p>
           </div>
         </div>

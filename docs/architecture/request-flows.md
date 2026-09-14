@@ -1359,3 +1359,123 @@ The page never constructs a request to `POST /api/v1/releases/sync`
 imports that could reach it; `frontend/src/test/no-release-sync-or-coupling.test.ts`
 checks this statically across every release-related file, and the
 literal path does not appear anywhere in the built frontend source.
+
+## Flow 31 — Explanation Trigger Open (Increment #17C)
+
+Unlike every other flow in this document, opening an explanation issues
+**no request at all** — no new network call, no re-fetch, no change to
+any canonical value already on the page. `ExplanationTrigger` and
+`WhyThisState` (`frontend/src/components/explanations/`,
+`frontend/src/components/inflation/WhyThisState.tsx`) are pure,
+client-side lookups against the static, curated content already bundled
+in `frontend/src/content/explanations/`. This flow exists to make that
+"no request" property explicit and diagrammable, not because it's
+network-interesting.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant T as <details>/<summary> (ExplanationTrigger or WhyThisState)
+    participant C as content/explanations/{inflation,releases}.ts
+
+    Note over T: The canonical value (state, schedule_status,<br/>3M/6M/12M, evidence) is already on the page --<br/>fetched once, by Flow 27 or Flow 30, before this<br/>flow ever begins.
+    U->>T: click summary, or focus + Enter/Space (native <summary> semantics)
+    T->>T: toggle open (browser-native <details> behavior --<br/>no React state, no event handler here)
+    alt concept explanation (ExplanationTrigger)
+        T->>C: look up by stable id (e.g. CORE_PCE, FED_OBJECTIVE)
+    else result explanation (WhyThisState)
+        T->>C: inflationStateExplanation(momentum.state) --<br/>state is the backend's own already-classified value
+    end
+    C-->>T: Explanation { title, definition, whyItMatters?, sourceNote? }
+    T-->>U: title/definition/whyItMatters/sourceNote render in the<br/>opened panel; WhyThisState also renders momentum's<br/>own r_3m/r_6m/r_12m/neutral-band fields, unchanged<br/>from what Flow 27 already fetched
+```
+
+No branch of this flow can reach a failure state the way Flows 27/30
+can — there is no request to fail, time out, or retry. The only two
+observable outcomes are "closed" and "open"; whichever `state`/
+`schedule_status` value the backend returned is exactly what selects
+the curated explanation shown, so the same contradictory-evidence
+proof Flow 27's table implies (an `INSUFFICIENT_DATA`/`UNAVAILABLE`
+result rendering in its own muted tone, never reinterpreted) applies
+here too: opening `WhyThisState` on a `MIXED` result cannot render a
+COOLING/HEATING/STABLE explanation, because the lookup key is the
+backend's own `state` field, not a client-side re-evaluation of
+`r_3m_annualized`/`r_6m_annualized`/`r_12m` (see
+`frontend/src/components/inflation/WhyThisState.test.tsx`'s
+contradictory-evidence tests, and
+`frontend/src/test/no-explanation-classification-logic.test.ts` for the
+static guard backing this).
+
+## Flow 32 — Release-Driven Update Pipeline (`app.operations.process_release`, Increment #18)
+
+Not an HTTP flow -- there is no route (see
+`docs/architecture/release-processing-v1.md` §18). Triggered only by
+the operational CLI, one release occurrence at a time, inside one real
+database transaction.
+
+```mermaid
+sequenceDiagram
+    participant Op as Operator (CLI)
+    participant CLI as app.operations.process_release
+    participant Svc as ReleaseProcessingService
+    participant RRepo as ReleaseRepository (read-only)
+    participant PRepo as ReleaseProcessingRepository
+    participant FRED as FREDClient
+    participant Dom as app.domain.inflation /<br/>inflation_what_changed (unmodified)
+
+    Op->>CLI: python -m app.operations.process_release --occurrence-id N [--as-of-date D]
+    CLI->>Svc: process_occurrence(N, session, as_of_date)
+    Svc->>RRepo: get_occurrence_by_id(N)
+    alt occurrence not found
+        Svc-->>CLI: OccurrenceNotFoundError
+        CLI-->>Op: exit 1, safe message
+    else scheduled_date > as_of_date
+        Svc-->>CLI: OccurrenceNotEligibleError
+        CLI-->>Op: exit 1, safe message
+    else eligible
+        Svc->>PRepo: get_active_mappings(release_id)
+        loop each mapped series
+            Svc->>FRED: get_observations(series_id, observation_start=as_of_date-5y, sort_order=asc)
+            alt provider failure (this series only)
+                FRED-->>Svc: FREDError
+                Note over Svc: recorded as this series' own failure;<br/>other mapped series are unaffected
+            else success
+                FRED-->>Svc: raw observations
+                Svc->>PRepo: get_observations_by_date(series) (baseline)
+                Svc->>Svc: classify_observation_change() per date<br/>(NEW / REVISED / UNCHANGED)
+            end
+        end
+        Note over Svc: affected_evaluation_periods() across every<br/>changed series -- computed ONCE for the whole batch
+        Svc->>PRepo: read current persisted data (BEFORE snapshot)
+        Svc->>Dom: compute_series_momentum_at / compute_target_at /<br/>compute_confirmation_at (per affected period)
+        Svc->>PRepo: write_observation() for every NEW/REVISED row
+        Svc->>PRepo: read current persisted data (AFTER snapshot)
+        Svc->>Dom: same exact-period primitives, again
+        Svc->>Dom: compare_series_momentum_section / compare_target_section /<br/>compare_confirmation_section (before vs after, once per affected pair)
+        Svc->>PRepo: add_check_run() + add_observation_update()* + add_analysis_update()*
+        PRepo-->>Svc: ReleaseCheckRunResult
+        Svc-->>CLI: ReleaseCheckRunResult
+        CLI-->>Op: safe summary to stdout, exit 0 (NO_CHANGE/CHANGED)<br/>or exit 1 (PARTIAL_FAILURE/FAILED_PROVIDER)
+    end
+```
+
+The whole `eligible` branch is one `session_scope()` transaction. A
+genuine database-layer failure at any point inside it propagates
+uncaught and rolls back everything written in this attempt, including
+any already-classified NEW/REVISED writes for series that succeeded at
+the provider boundary -- there is no partial commit, and (per
+`docs/architecture/release-processing-v1.md` §5) the `ReleaseCheckRun`
+row for a failed attempt like this may never durably exist at all,
+which is accepted, not a gap.
+
+**What this flow explicitly does NOT do**: it never calls
+`GET /api/v1/monitors/inflation/changes` (that endpoint answers a
+different question -- "what changed between the two most recent
+calendar months" -- and cannot see a revision to an older period; see
+`docs/architecture/release-processing-v1.md` §8.2 for why this flow
+instead calls the same underlying comparator functions directly, at a
+release-scoped before/after pair rather than a month-over-month pair).
+It never persists a full `InflationMonitorResult`. It never writes to
+`ReleaseOccurrence.schedule_status` or infers publication from the
+occurrence's scheduled date. Nothing in this flow's call graph imports
+AI or news.

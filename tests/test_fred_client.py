@@ -123,3 +123,47 @@ class TestGetReleaseDates:
         params = mock_get.call_args.kwargs["params"]
         assert params["release_id"] == "10"
         assert params["include_release_dates_with_no_data"] == "true"
+
+
+class TestGetObservations:
+    """Increment #18's minimal, backward-compatible extension: an
+    optional `observation_start` bound plus an explicit `sort_order`,
+    added to the existing `get_observations` method rather than a
+    second one."""
+
+    def test_default_call_is_byte_for_byte_identical_to_pre_18_behavior(self, client):
+        """Every existing caller (EconomicDataService.get_series) calls
+        get_observations(series_id, limit=limit) with no other
+        arguments -- this proves that exact call shape is completely
+        unaffected: no observation_start param sent at all, sort_order
+        still defaults to desc."""
+        mock_get = Mock(return_value=_response({"observations": []}))
+        with patch.object(httpx.Client, "get", mock_get):
+            client.get_observations("UNRATE", limit=10)
+
+        params = mock_get.call_args.kwargs["params"]
+        assert params["series_id"] == "UNRATE"
+        assert params["limit"] == 10
+        assert params["sort_order"] == "desc"
+        assert "observation_start" not in params
+
+    def test_observation_start_is_sent_as_an_iso_date_when_given(self, client):
+        mock_get = Mock(return_value=_response({"observations": []}))
+        with patch.object(httpx.Client, "get", mock_get):
+            client.get_observations("PCEPILFE", limit=100000, observation_start=date(2021, 7, 15), sort_order="asc")
+
+        params = mock_get.call_args.kwargs["params"]
+        assert params["observation_start"] == "2021-07-15"
+        assert params["sort_order"] == "asc"
+        assert params["limit"] == 100000
+
+    def test_returns_the_raw_observations_list_unmodified(self, client):
+        payload = {"observations": [{"date": "2026-07-01", "value": "131.659"}]}
+        with patch.object(httpx.Client, "get", return_value=_response(payload)):
+            result = client.get_observations("PCEPILFE", observation_start=date(2021, 1, 1))
+        assert result == payload["observations"]
+
+    def test_missing_observations_key_raises_upstream_error(self, client):
+        with patch.object(httpx.Client, "get", return_value=_response({})):
+            with pytest.raises(FREDUpstreamError):
+                client.get_observations("PCEPILFE", observation_start=date(2021, 1, 1))

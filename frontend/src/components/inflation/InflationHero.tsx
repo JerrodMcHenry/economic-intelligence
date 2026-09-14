@@ -1,7 +1,10 @@
 import type { SeriesMomentumResult } from "../../api/inflation.types";
+import { CORE_PCE, MOMENTUM } from "../../content/explanations/inflation";
 import { formatPercent, formatPeriod } from "../../lib/format";
 import { inflationStateLabel, inflationStateTone } from "../../lib/inflationLabels";
+import { ExplanationTrigger } from "../explanations/ExplanationTrigger";
 import { Badge } from "./Badge";
+import { WhyThisState } from "./WhyThisState";
 
 const HERO_METRICS = [
   { key: "r_3m_annualized", label: "3M" },
@@ -23,15 +26,22 @@ const HERO_METRICS = [
 export function InflationHero({ momentum }: { momentum: SeriesMomentumResult }) {
   return (
     <section aria-labelledby="underlying-momentum-heading">
-      <h2 id="underlying-momentum-heading" className="text-sm font-medium text-neutral-500">
-        Underlying momentum
-      </h2>
+      <div className="flex items-center gap-1.5">
+        <h2 id="underlying-momentum-heading" className="text-sm font-medium text-neutral-500">
+          Underlying momentum
+        </h2>
+        <ExplanationTrigger explanation={MOMENTUM} />
+      </div>
       <div className="mt-3">
         <Badge label={inflationStateLabel(momentum.state)} tone={inflationStateTone(momentum.state)} size="xl" />
       </div>
-      <p className="mt-2 text-sm text-neutral-500">
-        Core PCE{momentum.calculation_period ? ` · ${formatPeriod(momentum.calculation_period)}` : ""}
-      </p>
+      <div className="mt-2 flex items-center gap-1.5">
+        <p className="text-sm text-neutral-500">
+          Core PCE{momentum.calculation_period ? ` · ${formatPeriod(momentum.calculation_period)}` : ""}
+        </p>
+        <ExplanationTrigger explanation={CORE_PCE} />
+      </div>
+      <WhyThisState momentum={momentum} />
 
       <dl className="mt-6 flex flex-wrap gap-x-10 gap-y-3">
         {HERO_METRICS.map(({ key, label }) => (

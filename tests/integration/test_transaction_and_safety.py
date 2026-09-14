@@ -175,7 +175,19 @@ class TestAIAndNetworkIndependence:
     # guarantee for any other file in this directory, which remains
     # absolute.
     NETWORK_FORBIDDEN_PREFIXES = ("httpx", "app.clients.fred")
-    NETWORK_EXCEPTIONS = {"test_discovery_service.py", "test_release_calendar_service.py"}
+    # Increment #18: test_release_processing_service.py and
+    # test_process_release_cli.py legitimately import FREDClient only
+    # to mock get_observations/get_series_info
+    # (`patch.object(FREDClient, "get_observations", ...)`), the same
+    # documented, narrow pattern test_release_calendar_service.py
+    # already established for get_release_dates -- neither ever
+    # constructs a client that makes a real call.
+    NETWORK_EXCEPTIONS = {
+        "test_discovery_service.py",
+        "test_release_calendar_service.py",
+        "test_release_processing_service.py",
+        "test_process_release_cli.py",
+    }
 
     def test_no_integration_test_file_imports_ai(self):
         """Static guard: no file in tests/integration/ imports openai or

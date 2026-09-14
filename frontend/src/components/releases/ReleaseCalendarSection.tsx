@@ -1,5 +1,7 @@
 import type { ReleaseOccurrenceItem } from "../../api/releases.types";
+import { SCHEDULED_DATE } from "../../content/explanations/releases";
 import { groupReleasesByDate } from "../../lib/releases";
+import { ExplanationTrigger } from "../explanations/ExplanationTrigger";
 import { ReleaseDateBadge } from "./ReleaseDateBadge";
 import { ReleaseRow } from "./ReleaseRow";
 
@@ -27,9 +29,12 @@ export function ReleaseCalendarSection({
 
   return (
     <section aria-labelledby={headingId}>
-      <h2 id={headingId} className="text-sm font-medium text-neutral-500">
-        {heading}
-      </h2>
+      <div className="flex items-center gap-1.5">
+        <h2 id={headingId} className="text-sm font-medium text-neutral-500">
+          {heading}
+        </h2>
+        <ExplanationTrigger explanation={SCHEDULED_DATE} />
+      </div>
 
       {groups.length === 0 ? (
         <p className="mt-3 text-sm text-neutral-500">{emptyMessage}</p>

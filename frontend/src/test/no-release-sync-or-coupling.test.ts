@@ -8,6 +8,14 @@
  * AI, or news code; release presentation is a separate, independent
  * surface from all three.
  *
+ * Extended for Increment #18 (Release-Driven Update Pipeline): #18
+ * deliberately exposes no public HTTP process endpoint at all (see
+ * docs/architecture/release-processing-v1.md's security section --
+ * this project has no authentication anywhere, so release processing
+ * stays operational/CLI-only), but the browser must never reference
+ * one even if a future increment were to add one without updating this
+ * guard first.
+ *
  * Deliberately narrow (mirrors src/test/no-economic-logic.test.ts's
  * own scoping discipline): scans only the actual release-related
  * files, not every file in the project, and checks for specific
@@ -63,6 +71,11 @@ describe("release calendar frontend code is read-only and self-contained", () =>
 
     it(`${relativePath} never references the release sync endpoint`, () => {
       expect(contents).not.toMatch(/\/releases\/sync/);
+    });
+
+    it(`${relativePath} never references a release-processing/check endpoint or type (Increment #18 exposes none to the browser)`, () => {
+      expect(contents).not.toMatch(/\/releases\/[^"'`\s]*\/process\b/);
+      expect(contents).not.toMatch(/ReleaseCheckRun|ReleaseObservationUpdate|ReleaseAnalysisUpdate/);
     });
 
     it(`${relativePath} imports nothing inflation/AI/news-related`, () => {

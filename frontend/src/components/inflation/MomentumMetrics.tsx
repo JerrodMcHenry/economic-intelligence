@@ -1,11 +1,13 @@
 import type { SeriesMomentumResult } from "../../api/inflation.types";
+import { SIX_MONTH_ANNUALIZED, THREE_MONTH_ANNUALIZED, TWELVE_MONTH } from "../../content/explanations/inflation";
 import { formatPercent, formatPeriod } from "../../lib/format";
+import { ExplanationTrigger } from "../explanations/ExplanationTrigger";
 import { EvidenceDisclosure } from "./EvidenceDisclosure";
 
 const METRICS = [
-  { key: "r_3m_annualized", evidenceKey: "evidence_3m", label: "3M annualized" },
-  { key: "r_6m_annualized", evidenceKey: "evidence_6m", label: "6M annualized" },
-  { key: "r_12m", evidenceKey: "evidence_12m", label: "12M" },
+  { key: "r_3m_annualized", evidenceKey: "evidence_3m", label: "3M annualized", explanation: THREE_MONTH_ANNUALIZED },
+  { key: "r_6m_annualized", evidenceKey: "evidence_6m", label: "6M annualized", explanation: SIX_MONTH_ANNUALIZED },
+  { key: "r_12m", evidenceKey: "evidence_12m", label: "12M", explanation: TWELVE_MONTH },
 ] as const;
 
 /**
@@ -24,9 +26,12 @@ export function MomentumMetrics({ momentum }: { momentum: SeriesMomentumResult }
         Core PCE momentum
       </h2>
       <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {METRICS.map(({ key, evidenceKey, label }) => (
+        {METRICS.map(({ key, evidenceKey, label, explanation }) => (
           <div key={key} className="rounded-lg border border-neutral-200 bg-white p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">{label}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">{label}</p>
+              <ExplanationTrigger explanation={explanation} />
+            </div>
             <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">{formatPercent(momentum[key])}</p>
             <p className="mt-1 text-xs text-neutral-500">{formatPeriod(momentum.calculation_period)}</p>
             {key === "r_12m" && hasBand && (

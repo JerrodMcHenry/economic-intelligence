@@ -5,6 +5,7 @@
  * pattern pages/Inflation.test.tsx already established.
  */
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
@@ -79,7 +80,7 @@ describe("Upcoming Releases", () => {
     renderPage();
 
     const section = await findSection("Upcoming Releases");
-    const names = within(section).getAllByText(/Consumer Price Index|Employment Situation/);
+    const names = within(section).getAllByText(/Consumer Price Index|Employment Situation/, { selector: "span" });
     expect(names.map((el) => el.textContent)).toEqual(["Consumer Price Index", "Employment Situation"]);
     expect(within(section).getByText("20")).toBeInTheDocument();
     expect(within(section).getByText("2")).toBeInTheDocument();
@@ -94,7 +95,7 @@ describe("Upcoming Releases", () => {
     renderPage();
 
     const section = await findSection("Upcoming Releases");
-    expect(within(section).getByText("Scheduled")).toBeInTheDocument();
+    expect(within(section).getByText("Scheduled", { selector: "span" })).toBeInTheDocument();
   });
 
   it("shows the empty-window message, not an error, for a successful zero-result response", async () => {
@@ -128,7 +129,7 @@ describe("Recent Releases", () => {
     renderPage();
 
     const section = await findSection("Recent Releases");
-    const names = within(section).getAllByText(/Consumer Price Index|Employment Situation/);
+    const names = within(section).getAllByText(/Consumer Price Index|Employment Situation/, { selector: "span" });
     expect(names.map((el) => el.textContent)).toEqual(["Consumer Price Index", "Employment Situation"]);
   });
 
@@ -139,7 +140,7 @@ describe("Recent Releases", () => {
     renderPage();
 
     const section = await findSection("Recent Releases");
-    expect(within(section).getByText("Past due")).toBeInTheDocument();
+    expect(within(section).getByText("Past due", { selector: "span" })).toBeInTheDocument();
   });
 
   it("shows SCHEDULED as-is for a same-day recent release, without overriding it to Past due", async () => {
@@ -151,8 +152,8 @@ describe("Recent Releases", () => {
     renderPage();
 
     const section = await findSection("Recent Releases");
-    expect(within(section).getByText("Scheduled")).toBeInTheDocument();
-    expect(within(section).queryByText("Past due")).not.toBeInTheDocument();
+    expect(within(section).getByText("Scheduled", { selector: "span" })).toBeInTheDocument();
+    expect(within(section).queryByText("Past due", { selector: "span" })).not.toBeInTheDocument();
   });
 
   it("shows the empty-window message, not an error, for a successful zero-result response", async () => {
@@ -207,7 +208,7 @@ describe("no client-side status derivation (trusts the backend even when it look
     renderPage();
 
     const section = await findSection("Upcoming Releases");
-    expect(within(section).getByText("Past due")).toBeInTheDocument();
+    expect(within(section).getByText("Past due", { selector: "span" })).toBeInTheDocument();
   });
 
   it("shows SCHEDULED for a past-dated release when the backend says SCHEDULED", async () => {
@@ -219,7 +220,7 @@ describe("no client-side status derivation (trusts the backend even when it look
     renderPage();
 
     const section = await findSection("Recent Releases");
-    expect(within(section).getByText("Scheduled")).toBeInTheDocument();
+    expect(within(section).getByText("Scheduled", { selector: "span" })).toBeInTheDocument();
   });
 });
 
@@ -227,12 +228,18 @@ describe("semantics: no publication or data-availability claims", () => {
   const FORBIDDEN_WORDS = /\b(released|published|refreshed)\b/i;
   const FORBIDDEN_PHRASES = [/data is now available/i, /data.{0,20}available/i, /new data/i, /analysis refreshed/i, /\bupdated\b/i];
 
-  it("never renders forbidden publication/availability language outside the one mandated disclosure sentence", async () => {
+  it("never renders forbidden publication/availability language in the always-visible product copy", async () => {
     // The required disclosure text (see pages/Releases.tsx) legitimately
     // contains the word "published" -- but only as a negation ("do not
     // confirm ... has been published"), never as a claim. Excluding
-    // that one sanctioned sentence proves nothing ELSE on the page
-    // (badges, headings, row text) uses this language.
+    // that one sanctioned sentence proves nothing ELSE in the
+    // always-visible copy (badges, headings, row text) uses this
+    // language. Explanation panels (progressive disclosure, opened via
+    // ExplanationTrigger's <details>) are excluded here -- their
+    // curated educational copy legitimately discusses "published" (e.g.
+    // PAST_DUE's own negation, or describing what a release generally
+    // is) and is checked precisely by its own dedicated exact-string
+    // tests, not by this page-wide word scan.
     resolveBoth({
       upcoming: buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ schedule_status: "SCHEDULED" })] }),
       recent: buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ schedule_status: "PAST_DUE" })] }),
@@ -241,7 +248,10 @@ describe("semantics: no publication or data-availability claims", () => {
 
     await screen.findByRole("heading", { name: "Upcoming Releases" });
     const disclosure = screen.getByText(/Release dates indicate scheduled publication dates/);
-    const bodyText = document.body.textContent ?? "";
+
+    const clone = document.body.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("details").forEach((details) => details.remove());
+    const bodyText = clone.textContent ?? "";
     const textOutsideDisclosure = bodyText.replace(disclosure.textContent ?? "", "");
 
     expect(textOutsideDisclosure).not.toMatch(FORBIDDEN_WORDS);
@@ -353,5 +363,120 @@ describe("accessibility and structure", () => {
     await screen.findByRole("heading", { name: "Upcoming Releases" });
     const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
     expect(headings).toEqual(["Upcoming Releases", "Recent Releases"]);
+  });
+});
+
+describe("explanations (Increment #17C)", () => {
+  it("offers an 'Economic release' explanation next to the page title", async () => {
+    resolveBoth();
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Upcoming Releases" });
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("What does Economic release mean?"));
+
+    expect(screen.getByText(/scheduled publication of official economic data/i)).toBeInTheDocument();
+  });
+
+  it("offers a 'Scheduled date' explanation naming FRED as the source", async () => {
+    resolveBoth();
+    renderPage();
+
+    const section = await findSection("Upcoming Releases");
+    const user = userEvent.setup();
+    await user.click(within(section).getByLabelText("What does Scheduled date mean?"));
+
+    expect(within(section).getByText("Source: FRED release calendar")).toBeInTheDocument();
+  });
+
+  it("opens a curated explanation for each of the six curated V1 release types, keyed by provider_release_id", async () => {
+    const curated: ReadonlyArray<[string, string, RegExp]> = [
+      ["10", "Consumer Price Index (CPI)", /bureau of labor statistics|prices/i],
+      ["54", "Personal Income and Outlays", /pce price index/i],
+      ["50", "Employment Situation", /labor|employment|payroll/i],
+      ["192", "Job Openings and Labor Turnover Survey (JOLTS)", /job openings|turnover/i],
+      ["53", "Gross Domestic Product (GDP)", /goods and services|economic activity/i],
+      ["9", "Advance Monthly Sales for Retail and Food Services", /early estimate/i],
+    ];
+
+    for (const [providerReleaseId, title, expectedDefinitionPattern] of curated) {
+      resolveBoth({
+        upcoming: buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ provider_release_id: providerReleaseId, name: title })] }),
+      });
+      const { unmount } = renderPage();
+
+      const section = await findSection("Upcoming Releases");
+      const user = userEvent.setup();
+      const trigger = within(section).getByLabelText(`What does ${title} mean?`);
+      await user.click(trigger);
+
+      // Scoped to the opened panel itself and matched against its
+      // combined text (not `getByText`, since the panel's title,
+      // definition, and why-it-matters paragraphs can each legitimately
+      // contain some of the same words the pattern looks for).
+      const panel = trigger.closest("details") as HTMLDetailsElement;
+      expect(panel.textContent ?? "").toMatch(expectedDefinitionPattern);
+
+      unmount();
+    }
+  });
+
+  it("shows no release-type explanation trigger for a release outside the curated V1 set", async () => {
+    resolveBoth({
+      upcoming: buildReleaseListResponse({
+        releases: [buildReleaseOccurrenceItem({ provider_release_id: "999", name: "Some Future Release" })],
+      }),
+    });
+    renderPage();
+
+    await screen.findByText("Some Future Release");
+    expect(screen.queryByLabelText("What does Some Future Release mean?")).not.toBeInTheDocument();
+  });
+
+  it("opens the SCHEDULED status explanation, and it never claims a time of day", async () => {
+    resolveBoth({
+      upcoming: buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ schedule_status: "SCHEDULED" })] }),
+    });
+    renderPage();
+
+    const section = await findSection("Upcoming Releases");
+    const user = userEvent.setup();
+    await user.click(within(section).getByLabelText("What does Scheduled mean?"));
+
+    const panelText = within(section).getByText(
+      "The release is scheduled for this date according to Economic Intelligence's persisted release calendar.",
+    );
+    expect(panelText).toBeInTheDocument();
+    expect(panelText.textContent).not.toMatch(/\d{1,2}:\d{2}\s*(am|pm)?/i);
+  });
+
+  it("opens the PAST_DUE status explanation, and it explicitly does not claim publication", async () => {
+    resolveBoth({
+      recent: buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ schedule_status: "PAST_DUE" })] }),
+    });
+    renderPage();
+
+    const section = await findSection("Recent Releases");
+    const user = userEvent.setup();
+    await user.click(within(section).getByLabelText("What does Past due mean?"));
+
+    expect(
+      within(section).getByText(
+        "The scheduled release date has passed. This status does not confirm that new data has been published, ingested, or incorporated into Economic Intelligence analysis.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("removing/disabling explanation triggers would leave the canonical schedule_status text on the page unchanged (explanations are additive, not load-bearing)", async () => {
+    resolveBoth({
+      upcoming: buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ schedule_status: "SCHEDULED" })] }),
+    });
+    renderPage();
+
+    const section = await findSection("Upcoming Releases");
+    // The canonical status Badge text is present and correct without
+    // ever opening any explanation trigger -- explanations are a
+    // read-more layer alongside it, not a dependency of it.
+    expect(within(section).getByText("Scheduled", { selector: "span" })).toBeInTheDocument();
   });
 });

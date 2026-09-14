@@ -5993,3 +5993,577 @@ No charts, no polling/auto-refresh, no sync call from the browser, no
 `ReleaseSeriesMapping`, no observation-availability inference, no
 monitor recomputation, no AI, no news -- all remain #18/#20, not
 designed or implemented here.
+
+## Increment #17C — Explainability & Economic Education UX Foundation
+
+Not an AI feature. A reusable, product-wide explanation system so a
+beginner can learn Economic Intelligence's concepts from the product
+itself while an experienced user can keep scanning without being
+slowed down -- built once and used to improve exactly two surfaces,
+Inflation and Releases, establishing the pattern rather than exhausting
+it. The product principle this increment exists to serve: explain
+**what it is, what it means, why it matters, why EI reached the
+result, how it was calculated, and what evidence supports it** -- using
+progressive disclosure, never turning a primary screen into a textbook.
+Zero backend changes (verified: this increment's diff touches nothing
+outside `frontend/`); zero AI; zero new economic logic. Read first, in
+full, before any code: `current-architecture.md`, `request-flows.md`,
+this journal's #16B/#16B.1/#17B entries, `inflation-monitor-v1.0.md`,
+`inflation-what-changed-v1.0.md`, `release-intelligence-v1.md`, and the
+actual rendered `/inflation` and `/releases` pages -- not designed from
+the spec text alone.
+
+### The one architectural rule everything else follows from
+
+**Explanations never determine canonical results.** Facts are sourced.
+Calculations are deterministic. Canonical classifications are
+deterministic. Explanations describe those results. Dependency
+direction is one-way: `canonical backend result -> frontend
+presentation -> curated explanation content`. Nothing in
+`content/explanations/` or `components/explanations/` may flow back
+into a calculation, a classification, or a mutation of an API result --
+enforced by a dedicated architectural guard (below), not just asserted
+in prose.
+
+### Content model: one shape, two uses
+
+`content/explanations/types.ts` exports a single `Explanation` type --
+`{ id, title, definition, whyItMatters?, sourceNote? }` -- deliberately
+smaller than the shape suggested in the originating task (no
+`interpretationNotes`; `methodologyReference` renamed `sourceNote` to
+also cover "Source: FRED release calendar", which isn't a methodology).
+There is no separate "result explanation" type. A **concept
+explanation** (e.g. "What is Core PCE?") and a **result explanation**
+(e.g. "Why is momentum MIXED?") are both just `Explanation` objects --
+the only difference is a result explanation is looked up by the
+backend's own already-classified value (`state`, `schedule_status`) and
+rendered alongside backend evidence a component already has, in
+`components/inflation/WhyThisState.tsx`, rather than shown standalone.
+Two content files hold the curated copy: `content/explanations/
+inflation.ts` (14 standalone concepts + a `state ->
+Explanation` lookup for all five `InflationState` values) and
+`content/explanations/releases.ts` (2 standalone concepts + a `status
+-> Explanation` lookup for both `ScheduleStatus` values + a
+`provider_release_id -> Explanation` lookup for the six curated V1
+release types) -- 19 and 10 concepts respectively, matching the task's
+required lists exactly. All copy grounded directly in
+`inflation-monitor-v1.0.md`'s classification rules (re-verified by
+reading that document, not assumed) and in each release's actual
+BLS/BEA/Census definition; nothing paraphrases a threshold differently
+than the frozen spec states it.
+
+### The reusable UI primitive
+
+`components/explanations/ExplanationTrigger.tsx`: a compact "i" circle
+next to a `<details className="group inline-block align-middle">` /
+`<summary aria-label="What does {title} mean?">` -- the same native,
+zero-dependency disclosure primitive `components/Disclosure.tsx`
+already established for "Latest revised data", styled for inline
+placement next to a label rather than Disclosure's block-level
+treatment. No new UI library was added (none was needed): click or
+keyboard (Enter/Space, native to `<summary>`) toggles it, content
+expands in normal document flow (never an absolutely-positioned
+popover, so it can never cause horizontal overflow on a narrow
+screen), and `aria-expanded` is exposed to assistive tech automatically
+by the browser's own `<details>` semantics -- the component manages no
+open/closed state itself. `components/inflation/WhyThisState.tsx` is
+the one place a *result* explanation composes backend evidence
+(3M/6M/12M, neutral band) with a state's curated meaning instead of
+using this generic concept trigger directly.
+
+### The accessible-name/text-content bug, and the fix that generalizes
+
+Integrating triggers into six inflation components and three release
+components surfaced one real bug: nesting an interactive `<details>`
+trigger (with visible "i" text and its own `aria-label`) as a **direct
+child** of a heading or label element changes that ancestor's computed
+accessible name *and* its raw `textContent`, via the DOM accname
+algorithm -- silently breaking every exact-match
+`getByRole("heading", { name: "Exact" })` / `getByText("Exact")` query
+elsewhere in the suite that targeted that heading or label. First
+integration pass caused widespread failures across both the Inflation
+and Releases suites; the fix, applied everywhere, is now this project's
+standing convention for any future explanation trigger: **the trigger
+is always a DOM sibling of the text it annotates, wrapped together in a
+plain flex `<div>`, never a descendant.** `components/releases/
+ReleaseRow.tsx`'s pre-existing structure (label in its own `<span>`,
+trigger as a sibling `<details>`) was already correct by accident and
+needed no fix -- useful confirmation the sibling pattern is the right
+default, not merely a workaround. A second, narrower issue followed
+from the same trigger content now living in the DOM even while closed:
+an `Explanation.title` can coincidentally match another element's own
+visible text (`scheduleStatusExplanation("SCHEDULED").title ===
+"Scheduled"`, identical to `ScheduleStatusBadge`'s own label), making
+`getByText` ambiguous. Resolved with RTL's `{ selector: "span" }`
+disambiguation (the Badge renders a `<span>`, the explanation panel
+title a `<p>`) rather than adding `data-testid` (this project has never
+used it, consistent with Testing Library's own guidance) -- and,
+separately, `WhyThisState` deliberately never renders `explanation.title`
+at all, avoiding the same class of collision against the primary state
+Badge on `/inflation` before it could occur. One more nesting bug
+surfaced only under a real browser render (not jsdom, which is
+permissive about invalid HTML): `<details>` is block-level content and
+cannot legally nest inside `<p>` per the HTML spec; `ReleaseRow.tsx`'s
+two label rows were changed from `<p>` to `<div>` once they started
+holding a trigger.
+
+### Inflation integration
+
+`InflationHero.tsx`: `MOMENTUM` explanation beside "Underlying
+momentum", `CORE_PCE` beside the "Core PCE · {period}" line, and
+`WhyThisState` rendered directly under the primary Badge (backend
+evidence + the curated explanation for whatever `state` the backend
+returned -- never recomputed). `MomentumMetrics.tsx`: `THREE_MONTH_ANNUALIZED`/
+`SIX_MONTH_ANNUALIZED`/`TWELVE_MONTH` beside each of the 3M/6M/12M
+cards. `TargetPanel.tsx`: `FED_OBJECTIVE` and `TARGET_DEVIATION` beside
+"Fed objective" and "Gap". `ConfirmationPanel.tsx`: `CONFIRMATION`
+beside "Core CPI confirmation"; `CORE_CPI` beside the Core CPI state
+Badge. `HeadlineContext.tsx`: `HEADLINE_INFLATION` beside the section
+heading; `PCE`/`CPI` beside their respective cards. `DataBasisNote.tsx`
+rewritten to source both its paragraphs from `LATEST_REVISED_DATA`
+instead of hardcoded strings -- the canonical sentence ("Historical
+calculations use the latest revised observations available to Economic
+Intelligence. They may differ from values originally reported at the
+time.") is preserved byte-for-byte; only a new beginner-facing
+`whyItMatters` paragraph was added alongside it. No vintage/as-known-
+at-the-time capability is implied anywhere in that copy.
+
+### Releases integration
+
+`pages/Releases.tsx`: `ECONOMIC_RELEASE` beside "Economic Releases".
+`ReleaseCalendarSection.tsx`: `SCHEDULED_DATE` beside each "Upcoming
+Releases"/"Recent Releases" heading. `ReleaseRow.tsx`: a release-type
+explanation (looked up by `provider_release_id`, `null` -- no trigger
+-- for anything outside the curated V1 set) beside the release name,
+and a status explanation beside the `ScheduleStatusBadge`. PAST_DUE's
+explanation is exact-string tested end to end: *"The scheduled release
+date has passed. This status does not confirm that new data has been
+published, ingested, or incorporated into Economic Intelligence
+analysis."* -- its one use of "published" is a negation, checked
+directly (a regex count asserts exactly one occurrence, guarding
+against a future edit accidentally adding an affirmative one).
+SCHEDULED's explanation states only what the calendar has on file, with
+no time-of-day precision, checked the same way.
+
+### Architectural guards
+
+Three layers, each proven by an executable test rather than by
+convention alone: `test/no-economic-logic.test.ts` (pre-existing,
+unmodified, but its recursive scan of all of `src/` already covers the
+new `content/explanations/inflation.ts` and `WhyThisState.tsx` for the
+annualization-exponent, neutral-band-arithmetic, delta-recomputation,
+and confirmation-pair-literal shapes); `test/no-release-sync-or-
+coupling.test.ts` (pre-existing, unmodified, its path-based "release"
+scan already covers `content/explanations/releases.ts` and the release
+components for the sync-endpoint and inflation/AI/news-import checks);
+and a new `test/no-explanation-classification-logic.test.ts`, scoped
+narrowly to `content/explanations/` + `components/explanations/` +
+`WhyThisState.tsx`, checking each file imports no AI/LLM module, calls
+no `fetch`/`axios`/sync endpoint directly, imports only API *types*
+(never an API function) from `api/`, and never assigns into a
+prop/parameter object. All three pass clean against the final tree.
+
+### Tests
+
+135 new tests (208 -> **343**): foundation
+(`components/explanations/ExplanationTrigger.test.tsx` -- open/closed
+by default, mouse and keyboard-reachability, title/definition/
+whyItMatters/sourceNote rendering including their absence, multiple
+independent triggers not colliding); content coverage
+(`content/explanations/inflation.test.ts` and `.../releases.test.ts` --
+every required concept present, non-circular, state copy grounded in
+the frozen classification rules, PAST_DUE and the latest-revised-data
+sentence checked byte-for-byte, no investment-recommendation language
+anywhere); the result-explanation component
+(`components/inflation/WhyThisState.test.tsx`, including **the
+contradictory-evidence test**: a mock `SeriesMomentumResult` with
+`state: "MIXED"` but `r_3m`/`r_6m`/`r_12m` all equal -- numbers a human
+might read as STABLE -- and its mirror, `state: "STABLE"` with `r_3m`
+far outside the band -- numbers a human might read as HEATING; in both
+directions the component renders exactly the backend's own `state` and
+nothing else, proving no reclassification happens in the frontend); the
+new architectural guard; and integration additions to
+`pages/Inflation.test.tsx`/`pages/Releases.test.tsx` (triggers present
+and openable for the concepts each page surfaces, evidence values in an
+opened `WhyThisState`/release-type panel traced to the exact fixture
+values passed in, a page-level repeat of the contradictory-evidence
+proof, SCHEDULED/PAST_DUE opened and checked verbatim, all six curated
+release types opened and checked, no release-type trigger for an
+uncurated release, canonical Badge text unaffected by whether any
+explanation was ever opened).
+
+### Verification
+
+Frontend: `npx vitest run`, run twice: **343 passed** both times.
+`npm run typecheck`: clean. `npm run lint` (`oxlint`): clean. `npm run
+build`: succeeds. Backend:
+`TEST_DATABASE_URL=... .venv/bin/pytest tests/ -q`: **686 passed**, 0
+skipped -- unchanged, confirming zero backend impact (`git status`
+shows every change confined to `frontend/`).
+
+### Visual review
+
+Checked live in a real browser (not jsdom) against the already-running
+development backend, real synced data: `/inflation` with a genuine
+`MIXED` reading (3M 3.05%, 6M 3.46%, 12M 3.34%, neutral band
+3.24%–3.44% -- 3M below the band, 6M above it, a real-world instance of
+exactly the contradictory-looking evidence the unit test constructs
+synthetically) confirmed the page states MIXED, never reclassifying
+toward COOLING or HEATING; every trigger on the page (`Underlying
+momentum`, `Core PCE`, `Why Mixed?`, `Latest revised data`) opens
+cleanly, non-overwhelming, non-floating, closes again on a second
+click. `/releases` confirmed the GDP release-type panel and a real
+PAST_DUE row's panel both render correctly with live data, the latter
+showing the exact non-publication-claiming sentence. Narrow/mobile
+visual verification could not be completed in this session -- the
+browser automation's window-resize call reports success but does not
+actually change the captured screenshot's viewport width in this
+environment (the same limitation already noted in the #17B and #16B.1
+journal entries). Responsive safety instead rests on inspecting the
+actual markup: every trigger placement uses `flex`/`flex-wrap`/
+`gap-1.5` with no fixed widths, the explanation panel itself is
+`max-w-sm` in normal document flow (never `absolute`/`fixed`), and
+`WhyThisState`'s evidence `<dl>` uses the same `grid-cols-
+[max-content_1fr]` pattern already verified not to overflow elsewhere
+on `/inflation`.
+
+### Deferred (explicitly out of #17C's scope)
+
+No documentation site, no account/beginner-mode preference, no
+onboarding modal or forced tutorial, no AI-generated content of any
+kind, no explanation coverage beyond Inflation and Releases -- the
+pattern (content model + `ExplanationTrigger` + the sibling-placement
+convention) is established here for later features to reuse, not
+applied to every existing page in this increment.
+
+## Increment #18 — Release-Driven Update Pipeline V1
+
+Preceded by a dedicated, read-only architecture audit (no production
+code touched) that surfaced the single finding this whole increment's
+design hinges on: `GET /api/v1/monitors/inflation/changes` answers
+*"how does the latest calendar period compare to the previous one, as
+of now"* -- it re-fetches full history and re-anchors on every call,
+with no stored comparator state, so a revision to an **older**,
+already-past period is structurally invisible to it. #18 therefore
+needed its own release-scoped before/after comparison, not a reuse of
+that endpoint -- but built by reusing the exact same underlying
+comparison functions, never by inventing parallel ones. Implemented
+against the frozen spec verbatim; the four STOP conditions inspected
+most closely at implementation time (a needed comparator missing,
+transaction architecture making partial-failure semantics impossible,
+the five-year fetch requiring a client redesign, the #17A structural-
+independence guard needing to weaken) never materialized -- confirmed,
+not assumed, by writing and running the architectural guards below
+before declaring done.
+
+### Schema: four new tables, one new column deliberately withheld
+
+`app/db/models.py` gains `ReleaseSeriesMapping` (`id`,
+`economic_release_id` FK, `series_id` **string, not an
+`EconomicSeries.id` FK** -- a curated mapping fact must exist
+independently of whether that series has ever been synced -- `active`,
+`created_at`; `UNIQUE(economic_release_id, series_id)`; exactly five
+columns, no `role`/`importance`/`weight`), `ReleaseCheckRun` (`status`
+one of `NO_CHANGE`/`CHANGED`/`PARTIAL_FAILURE`/`FAILED_PROVIDER` -- no
+`NOT_CHECKED`, absence of a row already means that; no status
+represents a DB-transaction failure, since that row simply never
+durably exists then), `ReleaseObservationUpdate` (append-only,
+`change_type` `NEW`/`REVISED` only -- UNCHANGED is never persisted,
+represented by a successful run plus the absence of a row;
+`previous_value`/`new_value` both nullable, matching
+`EconomicObservation.value`'s own nullability so a transition into or
+out of missing is never silently dropped), and `ReleaseAnalysisUpdate`
+(mirrors `inflation_what_changed_v1.0`'s frozen `ChangeEvent` field set
+with one deliberate adaptation -- a single `evaluation_period` column
+instead of `previous_period`/`current_period`, because a release-
+scoped before/after pair is always evaluated at the *same* period,
+never two different calendar months; `previous_value`/`current_value`
+stored as nullable `String` since the frozen type is `float | str |
+None` and `str(float)` round-trips exactly, verified directly with a
+test rather than assumed). **`EconomicObservation.updated_at` was
+deliberately NOT added** -- frozen by the spec: a generic row-touch
+timestamp would be semantically misleading given the existing blind-
+upsert behavior on `/series/{id}/sync`, and `ReleaseObservationUpdate.detected_at`
+is already the authoritative record of when a #18-driven change was
+detected.
+
+Two migrations, mirroring #17A's own schema/seed separation exactly:
+`dbd9a2889ef3` (schema, autogenerated from the ORM models against the
+isolated test database, then annotated) and `cd476d227f99` (seed --
+looks up each release's real `economic_releases.id` by its stable
+provider identity at migration-run time, never a hardcoded/assumed
+numeric id, so it stays correct regardless of a given database's row-
+insertion history). Seeds exactly four mappings: Consumer Price Index
+(`10`) → `CPIAUCSL`/`CPILFESL`; Personal Income and Outlays (`54`) →
+`PCEPI`/`PCEPILFE` -- verified directly against
+`app/models/inflation.py`'s own `PRIMARY_SERIES_ID`/
+`CONFIRMATION_SERIES_ID`/`TARGET_SERIES_ID`/`HEADLINE_CPI_SERIES_ID`
+constants, not guessed. Employment Situation/JOLTS/GDP/Advance Retail
+Sales are deliberately unmapped -- no deterministic canonical consumer
+exists for any of them yet. `alembic check` reports "No new upgrade
+operations detected" (zero drift between the ORM models and the
+migrations); a full downgrade-twice/upgrade-to-head roundtrip was run
+by hand against the test database and produced exactly the original
+four seeded rows with no drift.
+
+### The new orchestration layer, and why it had to be new
+
+`tests/integration/test_transaction_and_safety.py::TestReleaseCalendarStructuralIndependence`
+already statically forbids `app/repositories/release_repository.py`,
+`app/services/releases.py`, and `app/api/releases.py` from importing
+anything series/observation/Inflation-shaped -- a hard, pre-existing,
+test-enforced fact discovered during the architecture audit, not
+something #18 could route around. So the pipeline lives entirely in
+**new** files: `app/domain/release_processing.py` (pure -- observation-
+change classification, five-year-horizon calendar arithmetic, affected-
+evaluation-period computation, and the series→component mapping,
+deliberately importing no other domain module, restating the one
+needed calendar-forward-arithmetic helper independently rather than
+importing `app.domain.inflation.month_before`, to keep every domain
+module in the package independent of every other one), a new
+repository (`app/repositories/release_processing_repository.py`,
+owning the canonical write path and all four new tables' persistence),
+and exactly one new service (`app/services/release_processing.py`,
+`ReleaseProcessingService`) -- the one module in the whole project that
+legitimately imports both the release-calendar side (`ReleaseRepository`,
+read-only -- gained one new method, `get_occurrence_by_id`, a plain
+lookup) and the series/Inflation side. This is precisely the bridging
+role a genuinely new orchestration layer exists for, not a weakening of
+the existing guard -- confirmed by extending
+`test_domain_architectural_independence.py` (two new tests: the new
+domain module is registered against the same no-forbidden-import scan,
+and an explicit assertion it imports no other domain module) and by 16
+new dedicated guard tests in `tests/test_release_processing_architecture.py`
+(no AI/news imports; schedule classification still can't write
+observations; no public process route exists anywhere in `app/api/`,
+checked by parsing every route decorator, not just inspecting
+`releases.py`; the service imports the *exact* existing comparator/
+evaluator function names by AST inspection, not just "something from
+that module"; no Inflation-formula-shaped regex pattern appears in any
+#18 file; `ReleaseAnalysisUpdate` has no JSON/snapshot-shaped column;
+`ReleaseSeriesMapping` has exactly its five frozen columns; `EconomicObservation`
+has exactly its five pre-18 columns).
+
+### Bounded five-year detection horizon, not "last N observations"
+
+`FREDClient.get_observations` gained two optional parameters,
+`observation_start`/`sort_order` -- fully backward compatible (checked
+directly: a test asserts the exact request-params dict a pre-18 call
+produces is byte-for-byte unaffected). `app.domain.release_processing.five_year_observation_start`
+computes the bound by exact calendar-year arithmetic (`date.replace(year=...)`,
+with an explicit leap-day fallback), proven directly to differ from a
+naive `365 * 5`-day approximation across a real five-year span
+containing leap days -- not asserted, computed and compared. Release
+processing always calls with `sort_order="asc"` and a fixed, generous
+`limit=100_000` (FRED's own documented page-size ceiling, comfortably
+above any realistic monthly series' five-year count). This is an
+*ordinary* detection window -- newly published data, ordinary recent
+revisions, major recent seasonal/benchmark revisions -- explicitly not
+a guarantee every historical revision in a provider's full history is
+ever caught by a routine check; broad historical reconciliation is
+named and deliberately deferred, not designed here (documented in
+`docs/architecture/release-processing-v1.md` §12/§21, and flagged as an
+open external-research question: the *actual* revision cadence per
+release type is BLS/BEA/Census knowledge this repository cannot answer,
+and no specific cadence was invented to fill that gap).
+
+### Observation-change classification, and the write path that owns it
+
+`app.domain.release_processing.classify_observation_change` is a pure,
+three-line function: `NEW` if the date didn't exist before, `UNCHANGED`
+if it did and the value is identical (plain equality -- both sides
+reach this comparison via the same deterministic provider string→float
+parse already used everywhere else in this codebase, so no tolerance
+is needed or added), `REVISED` otherwise, including a transition into
+or out of `None` (proven directly with dedicated tests, not left
+implicit). `ReleaseProcessingRepository.write_observation` is a small,
+deliberately independent reimplementation of `SeriesRepository._upsert_observations`'s
+basic insert-or-overwrite shape -- the plain, pre-existing
+`/series/{id}/sync` path is completely untouched, never retrofitted to
+emit an audit side effect it was never designed for. `_check_one_series`
+skips the metadata (`get_series_info`) call entirely when a mapped
+series' fetch returns zero observations -- discovered while writing
+the CLI's own "no live network calls in tests" verification (an
+unmocked `get_series_info` call would otherwise attempt a real request
+even for a series with nothing to persist), fixed in the service itself
+rather than worked around per-test.
+
+### Before/after analytical consequence -- the highest-risk piece, and how it stayed honest
+
+For every batch of NEW/REVISED observations in one run,
+`app.domain.release_processing.affected_evaluation_periods` computes
+every calculation period any of them could influence: each changed
+date's own period, plus (only when a *later* observation already
+exists) each date `+1`/`+3`/`+6`/`+12` months forward -- the exact
+horizons `inflation_v1.0` itself defines, reused from the methodology
+document's own "Required observations" table, never invented. The
+union across the whole batch, across every changed series mapped to
+this release, is evaluated **exactly once** before any write and once
+after all writes complete -- never once per row, and never against a
+partially-written intermediate state (a dedicated "multi-observation
+consistency" test constructs three different endpoint revisions that
+all feed one later shared period and asserts the final diff matches a
+direct call to the same domain function against the fully-revised
+data, not anything computed along the way). Every actual before/after
+evaluation and diff is delegated to the EXISTING, completely unmodified
+`app.domain.inflation` exact-period primitives
+(`compute_series_momentum_at`/`compute_target_at`/`compute_confirmation_at`)
+and `app.domain.inflation_what_changed` comparators
+(`compare_series_momentum_section`/`compare_target_section`/
+`compare_confirmation_section`), called with `previous_period ==
+current_period == evaluation_period` -- confirmed by name, via AST
+inspection, in `tests/test_release_processing_architecture.py`, not
+just by code review. Which series feeds which `inflation_what_changed_v1.0`
+component (`app.domain.release_processing.SERIES_TO_COMPONENTS`) is a
+direct, verified transcription of `InflationMonitorService`'s own
+existing orchestration -- `PCEPILFE` → PRIMARY_MOMENTUM *and*
+CONFIRMATION (confirmation depends on both Core PCE and Core CPI
+together, so a Core PCE-only change still re-evaluates it); `CPILFESL`
+→ CONFIRMATION only; `PCEPI` → TARGET *and* HEADLINE_PCE (both are
+independently computed from the same headline PCE series, exactly as
+`app/services/inflation.py` already does it); `CPIAUCSL` → HEADLINE_CPI
+only -- never read from `ReleaseSeriesMapping` itself, which stays a
+pure "what to check" lookup throughout (a dedicated test proves a
+CPIAUCSL-only change can never fabricate a PRIMARY_MOMENTUM event,
+since Core PCE was never touched).
+
+**The old-period revision regression** (the audit's central finding,
+made concrete): a fixture with August as the latest persisted period
+has June revised; the release-scoped audit still detects and diffs it
+(via the `+6`-month forward projection landing on August, since June is
+exactly August's own r_6m endpoint) -- proving release-scoped auditing
+does not depend on latest-two-month anchoring the way the ordinary
+What Changed endpoint necessarily does.
+
+### Transaction and failure semantics
+
+One `session_scope()` transaction per processed occurrence. A mapped
+series' provider-level failure (`FREDAuthError`/`FREDTimeoutError`/
+`FREDUpstreamError`, or malformed observation data) is caught per-series
+inside the service -- proven in both directions with two dedicated
+tests (CPIAUCSL succeeds while CPILFESL fails, and the reverse) that
+the succeeding series' real, valid changes are still written and
+audited while the failing series contributes nothing fabricated. A
+genuine database-layer failure is deliberately *not* caught -- it
+propagates and rolls back the whole occurrence's transaction, including
+any already-classified writes for series that individually succeeded at
+the provider boundary (proven by patching the repository's own
+`add_check_run` to raise mid-transaction, inside the REAL `session_scope()`,
+and confirming nothing survived). `ReleaseCheckRun.status` distinguishes
+all four required outcomes (`NO_CHANGE`/`CHANGED`/`PARTIAL_FAILURE`/
+`FAILED_PROVIDER`) -- `NO_CHANGE` and `FAILED_PROVIDER` are never
+conflated, exactly as the spec required. Idempotency is two distinct,
+separately-tested guarantees: a retry against identical provider data
+always creates a *new* `ReleaseCheckRun` row (a check occurring twice is
+itself a real, repeatable operational fact) but *zero* new observation-
+or analysis-update rows, since classification always compares against
+whatever is currently persisted.
+
+### Operational CLI, and why there's still no HTTP route
+
+`app/operations/process_release.py` (`python -m app.operations.process_release
+--occurrence-id <id> [--as-of-date YYYY-MM-DD]`) is the sole trigger --
+no business logic inside it; it parses arguments, resolves settings,
+opens one real transaction, delegates entirely to
+`ReleaseProcessingService`, prints a safe structured summary, and maps
+the outcome to an exit code (0 for `NO_CHANGE`/`CHANGED`, 1 for
+`PARTIAL_FAILURE`/`FAILED_PROVIDER`/any operational failure -- invalid
+occurrence, not-yet-eligible occurrence, missing configuration, database
+unavailable). Deliberately **no** `POST /api/v1/releases/{id}/process`
+or equivalent: this project has no authentication anywhere, and
+`/series/{id}/sync`/`/releases/sync` already establish an accepted but
+standing risk of unauthenticated mutation endpoints that #18's own
+pipeline -- strictly more expensive per call than either -- should not
+compound further. Verified directly against the running application's
+own OpenAPI schema (not just by reading source) that the route surface
+is completely unchanged: `/health`, the five `/series/...` routes, the
+two `/analysis/...` routes, the two `/monitors/inflation...` routes,
+`/releases` and `/releases/sync`, and `/ai/query` -- nothing added,
+nothing removed. `frontend/src/test/no-release-sync-or-coupling.test.ts`
+was extended (11 release-related frontend files, one new check each) to
+also assert no release-related frontend file references a `/process`-
+shaped path or any of #18's new model names -- the browser remains
+completely read-only, and zero frontend production files were touched.
+
+### Tests
+
+97 new backend tests (686 → **783**): pure domain (24, observation
+classification, five-year calendar arithmetic including two independent
+leap-year boundary cases, affected-period computation including the
+multi-endpoint-deduplication property, series→component mapping); FRED
+client (4, the exact backward-compatible request-shape proof plus the
+new bounded-fetch shape); domain-independence extension (1); repository
+(16, mapping reads including "works with zero `EconomicSeries` rows,"
+uniqueness, series/observation writes, check-run/update persistence and
+round-tripping including exact float-as-string precision); service (25,
+covering essentially the entire required matrix -- eligibility, NEW/
+REVISED/UNCHANGED including missing-value transitions, multiple changes
+in one payload, the bounded lookback's exact request parameters, both
+directions of provider-failure isolation, complete provider failure,
+a real database-failure rollback via the actual `session_scope()`,
+idempotency, the shutdown/provider-lag invariant reusing #17A's own
+CPI-shutdown-scenario shape, no-analytical-change, the old-period-
+revision regression, multi-observation consistency, state-change with
+exact previous/current state and methodology metadata, and the
+CPIAUCSL-can't-fabricate-Core-PCE-events proof); CLI (11, valid/invalid/
+ineligible occurrence, provider failure, both missing-configuration
+paths, no-secret-output and no-stack-trace proofs, explicit `--as-of-date`
+actually driving eligibility, and invalid-date-format rejection); and
+16 new architectural guards. Two real, if narrow, mistakes were caught
+and fixed while writing this suite, not left in: a "no analytical
+change" fixture whose revised date turned out to be exactly a *different*
+period's r_12m endpoint (so it produced a real event, correctly --
+the test's premise, not the pipeline, was wrong, fixed by using a
+deliberately too-sparse-to-classify fixture instead), and an unmocked
+`get_series_info` call in two CLI tests that would otherwise have
+attempted a real network request in an automated test (fixed by the
+service-level "skip metadata fetch when there's nothing to write"
+change above, which is a genuine improvement, not merely a test
+workaround). Two long-lived-test-database cleanup gaps were found and
+fixed in the test files themselves (a test using the REAL, actually-
+committing `session_scope()` needs its own explicit real-delete
+cleanup -- `db_session`'s savepoint rollback does not cover it) --
+confirmed clean afterward directly against the database, not assumed.
+
+### Verification
+
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run three times
+across the session as work progressed: **783 passed, 0 skipped** every
+time (baseline 686 + 97). `alembic check`: no drift. A full migration
+downgrade/upgrade roundtrip: clean, exact row counts restored. The
+running application's own OpenAPI schema: unchanged route surface,
+confirmed directly, not assumed from source alone. Frontend: `npm test
+-- --run` (354, +11 for the extended guard -- explicitly anticipated by
+the spec's own "architectural guard tests may increase the count if
+they live in frontend"), `npm run typecheck`, `npm run lint`, `npm run
+build`: all clean. Zero frontend *production* files were touched --
+confirmed via `git diff --stat`, not merely asserted.
+
+### Scope confirmation
+
+`git diff --stat` confirms: backend (`app/db/models.py`,
+`app/clients/fred.py`, new `app/domain/release_processing.py`, new
+`app/repositories/release_processing_repository.py`, one new method on
+the existing `app/repositories/release_repository.py`, new
+`app/services/release_processing.py`, new `app/models/release_processing.py`,
+new `app/operations/` package), two new Alembic migrations, ten backend
+test files (four new, three extended), one frontend test file extended
+(`no-release-sync-or-coupling.test.ts` -- test-only, no frontend
+production file), and documentation. Zero frontend production changes.
+Zero AI changes. Zero methodology changes (`app/domain/inflation.py`/
+`app/domain/inflation_what_changed.py` were read and called, never
+edited). Zero news changes. Zero scheduler. Zero public process API
+route.
+
+### Deferred (named explicitly, not designed in detail here)
+
+Broad/full historical reconciliation beyond the five-year window; any
+scheduler/background execution; a public HTTP process or read endpoint
+(`GET /api/v1/releases/{id}/updates` is a plausible future read surface
+once a UI actually needs one); full point-in-time observation vintage
+history; `EconomicObservation.updated_at`; a role/importance enum on
+`ReleaseSeriesMapping`; Employment Situation/JOLTS/GDP/Advance Retail
+Sales mappings, pending a real deterministic consumer for any of them;
+provider abstraction of any kind; and any frontend explanation content
+for #18's new concepts (a future increment's job, reusing #17C's
+existing canonical-result-to-explanation rule unchanged).

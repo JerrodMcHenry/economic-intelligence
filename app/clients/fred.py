@@ -9,6 +9,7 @@ normalizing that data into our own response contract is the caller's
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Literal
 
 import httpx
 
@@ -65,12 +66,35 @@ class FREDClient:
             raise FREDUpstreamError(f"FRED returned no metadata for series '{series_id}'")
         return series_list[0]
 
-    def get_observations(self, series_id: str, limit: int = 10) -> list[dict]:
-        """Fetch the most recent `limit` observations for a series, newest first."""
-        data = self._get(
-            "/series/observations",
-            {"series_id": series_id, "limit": limit, "sort_order": "desc"},
-        )
+    def get_observations(
+        self,
+        series_id: str,
+        limit: int = 10,
+        observation_start: date | None = None,
+        sort_order: Literal["asc", "desc"] = "desc",
+    ) -> list[dict]:
+        """Fetch observations for a series.
+
+        Backward compatible with every existing caller: called with no
+        new arguments, behavior is byte-for-byte identical to before
+        (`limit` most recent, newest first) -- `observation_start` is
+        omitted from the request entirely when not given, and
+        `sort_order` still defaults to `"desc"`.
+
+        `observation_start` (FRED's own request parameter, ISO date),
+        when given, bounds the query to observations on or after that
+        date -- Increment #18's release-driven processing uses this for
+        its bounded, deterministic five-year detection horizon (see
+        `app.domain.release_processing.five_year_observation_start`);
+        it always passes `sort_order="asc"` explicitly (a bounded date
+        range reads more naturally chronologically) and a `limit`
+        comfortably larger than any realistic monthly series' five-year
+        observation count.
+        """
+        params: dict[str, str | int] = {"series_id": series_id, "limit": limit, "sort_order": sort_order}
+        if observation_start is not None:
+            params["observation_start"] = observation_start.isoformat()
+        data = self._get("/series/observations", params)
         observations = data.get("observations")
         if observations is None:
             raise FREDUpstreamError(f"FRED returned no observations payload for series '{series_id}'")

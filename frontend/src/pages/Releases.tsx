@@ -1,8 +1,10 @@
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
 import { useApiResource } from "../api/useApiResource";
 import { ErrorMessage } from "../components/ErrorMessage";
+import { ExplanationTrigger } from "../components/explanations/ExplanationTrigger";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { ReleaseCalendarSection } from "../components/releases/ReleaseCalendarSection";
+import { ECONOMIC_RELEASE } from "../content/explanations/releases";
 
 const UPCOMING_ERROR_MESSAGE = "Upcoming releases could not be loaded.";
 const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
@@ -24,7 +26,10 @@ export function ReleasesPage() {
   return (
     <div className="max-w-3xl">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Economic Releases</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Economic Releases</h1>
+          <ExplanationTrigger explanation={ECONOMIC_RELEASE} />
+        </div>
         <p className="mt-2 max-w-prose text-neutral-600">
           Scheduled dates for the economic releases Economic Intelligence tracks.
         </p>

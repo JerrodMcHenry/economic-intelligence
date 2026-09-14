@@ -48,6 +48,19 @@ class ReleaseRepository:
             )
         ).scalar_one_or_none()
 
+    def get_occurrence_by_id(self, occurrence_id: int) -> ReleaseOccurrence | None:
+        """Look up one persisted occurrence by its own internal id --
+        added for Increment #18's operational entry point (see
+        `app.services.release_processing`), which is given an explicit
+        occurrence identifier and needs its `scheduled_date` (for
+        eligibility) and parent `EconomicRelease` (via the existing
+        `release` relationship). A plain, read-only query -- adds no
+        write capability and does not change this class's existing
+        read-only-for-calendar-metadata character."""
+        return self._session.execute(
+            select(ReleaseOccurrence).where(ReleaseOccurrence.id == occurrence_id)
+        ).scalar_one_or_none()
+
     def upsert_occurrence(self, economic_release_id: int, scheduled_date: date) -> ReleaseOccurrence:
         """Idempotent upsert keyed on `(economic_release_id, scheduled_date)`
         -- the frozen occurrence identity (see

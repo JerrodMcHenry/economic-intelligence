@@ -20,6 +20,7 @@ DOMAIN_FILES = [
     Path("app/domain/inflation.py"),
     Path("app/domain/inflation_what_changed.py"),
     Path("app/domain/releases.py"),
+    Path("app/domain/release_processing.py"),
 ]
 
 # Forbidden if an imported module IS one of these, or is a submodule of
@@ -96,3 +97,16 @@ class TestDomainLayerArchitecturalIndependence:
         imported = _imported_module_names(Path("app/domain/inflation_what_changed.py"))
         forbidden = {m for m in imported if m == "app.domain.inflation" or m.startswith("app.domain.inflation.")}
         assert forbidden == set(), f"app/domain/inflation_what_changed.py must never import app.domain.inflation: {forbidden}"
+
+    def test_release_processing_domain_module_imports_no_other_domain_module(self):
+        """Increment #18: app/domain/release_processing.py must contain
+        no Inflation threshold/classification logic of its own and must
+        not import app.domain.inflation or app.domain.inflation_what_changed
+        -- it only classifies observation changes and computes affected
+        calendar periods, never annualization/classification, and its
+        one calendar-arithmetic need is self-contained (see that
+        module's own docstring) rather than imported, keeping every
+        domain module in this package independent of every other one."""
+        imported = _imported_module_names(Path("app/domain/release_processing.py"))
+        forbidden = {m for m in imported if m.startswith("app.domain.")}
+        assert forbidden == set(), f"app/domain/release_processing.py must not import another domain module: {forbidden}"

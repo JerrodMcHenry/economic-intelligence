@@ -17,28 +17,32 @@ discovery" section below and ADR-015/016/017's status notes for why.
 | Series route | `app/api/series.py` | HTTP layer for `/api/v1/series/search`, `/{series_id}`, `.../sync`, `.../observations`, and `.../transform`: request/query-parameter handling, exception → status code translation |
 | Analysis route | `app/api/analysis.py` | HTTP layer for `/api/v1/analysis/compare` and `.../pipeline`: request/body validation, exception → status code translation |
 | Inflation Monitor route | `app/api/inflation.py` | HTTP layer for `GET /api/v1/monitors/inflation` and `GET /api/v1/monitors/inflation/changes`: no request parameters on either, exception → status code translation. Read-only; no FRED, no AI. |
-| Release calendar route | `app/api/releases.py` | HTTP layer for `GET /api/v1/releases` (database-only, filterable, never calls FRED) and `POST /api/v1/releases/sync` (explicit, FRED-backed, per-release failure isolation). See [Flow 28](./request-flows.md#flow-28--release-calendar-read-get-apiv1releases-increment-17a)/[Flow 29](./request-flows.md#flow-29--release-calendar-sync-post-apiv1releasessync-increment-17a). |
+| Release calendar route | `app/api/releases.py` | HTTP layer for `GET /api/v1/releases` (database-only, filterable, never calls FRED) and `POST /api/v1/releases/sync` (explicit, FRED-backed, per-release failure isolation). See [Flow 28](./request-flows.md#flow-28--release-calendar-read-get-apiv1releases-increment-17a)/[Flow 29](./request-flows.md#flow-29--release-calendar-sync-post-apiv1releasessync-increment-17a). Increment #18 (release-driven update pipeline) adds **no route here or anywhere else** — see the Release processing service row below and [docs/architecture/release-processing-v1.md](./release-processing-v1.md) §18. |
 | AI route | `app/api/ai.py` | HTTP layer for `/api/v1/ai/query`: request validation, `AIService` failures → status code translation. Frozen at Increment 008 behavior (three tools, no discovery) — see above. |
 | Economic data service | `app/services/economic_data.py` (`EconomicDataService`) | Single-series use-case logic: fetch + normalize a series from FRED; orchestrate fetch-then-persist for sync; validate and coordinate a persisted-observations query; validate and orchestrate a transformation (including boundary-context retrieval) |
 | Analysis service | `app/services/analysis.py` (`AnalysisService`) | Multi-series use-case logic: look up two persisted series, retrieve and date-filter each independently, optionally transform each side (pipeline only), delegate alignment/spread/correlation to the analysis domain module. No FRED dependency at all. |
 | Inflation Monitor service | `app/services/inflation.py` (`InflationMonitorService`) | Looks up the four canonical series (`PCEPILFE`, `CPILFESL`, `PCEPI`, `CPIAUCSL`) independently; a series not persisted at all yields an empty observation list rather than an error. `get_result` delegates every calculation to `app.domain.inflation` (latest snapshot, `inflation_v1.0`); `get_what_changed_result` additionally selects each section's exact current/previous calendar periods (`app.domain.inflation`'s `month_over_month_*` helpers) and delegates comparison to `app.domain.inflation_what_changed` (`inflation_what_changed_v1.0`). No FRED dependency; never mutates persisted data. |
-| Release calendar service | `app/services/releases.py` (`ReleaseReadService`, `ReleaseSyncService`) | Deliberately two separate classes, not one with an optional `FREDClient` (the `EconomicDataService` pattern): `ReleaseReadService` has no FRED-shaped parameter anywhere on it, so the read path is structurally incapable of calling FRED, not just conventionally discouraged. `ReleaseSyncService` iterates the curated, active release catalog, syncing each independently (a per-release FRED failure never aborts the others). Neither ever writes `EconomicObservation` or touches a monitor. |
+| Release calendar service | `app/services/releases.py` (`ReleaseReadService`, `ReleaseSyncService`) | Deliberately two separate classes, not one with an optional `FREDClient` (the `EconomicDataService` pattern): `ReleaseReadService` has no FRED-shaped parameter anywhere on it, so the read path is structurally incapable of calling FRED, not just conventionally discouraged. `ReleaseSyncService` iterates the curated, active release catalog, syncing each independently (a per-release FRED failure never aborts the others). Neither ever writes `EconomicObservation` or touches a monitor. Statically forbidden from importing anything series/observation/Inflation-shaped (unchanged by #18 — see the next row). |
+| Release processing service (Increment #18) | `app/services/release_processing.py` (`ReleaseProcessingService`) | The ONE new module that legitimately imports both the release-calendar side (`ReleaseRepository`, read-only) and the series/Inflation side (`ReleaseProcessingRepository`, `app.domain.inflation`, `app.domain.inflation_what_changed`) — deliberate, since `app.repositories.release_repository`/`app.services.releases`/`app.api.releases` remain structurally forbidden from that same import (checked by `tests/integration/test_transaction_and_safety.py::TestReleaseCalendarStructuralIndependence`, unmodified). Fetches each release's mapped series over a bounded five-year window, classifies NEW/REVISED/UNCHANGED, captures before/after Inflation evidence around the canonical write, and diffs the two via the EXISTING `app.domain.inflation_what_changed` comparators — never a reimplementation. See [docs/architecture/release-processing-v1.md](./release-processing-v1.md). |
 | Discovery service | `app/services/discovery.py` (`SeriesDiscoveryService`) | Finds candidate series by concept/phrase: searches local persisted metadata and (if FRED is configured) FRED's catalog, merges and deterministically ranks the results. No AI, no ML/embedding relevance score, no analysis math, no ingestion — metadata only. See "Deterministic discovery" below. |
 | AI service | `app/services/ai.py` (`AIService`) | Owns the OpenAI Responses API boundary and the bounded tool-calling loop (max 4 rounds). No transformation/analysis math, no direct database access — delegates every tool call to `app.services.ai_tools`. Frozen at Increment 008 behavior. |
 | AI tool boundary | `app/services/ai_tools.py` | The explicit tool dispatcher: three tools (`get_observations`, `transform_series`, `analyze_series`), each validated (Pydantic) then executed via the existing `EconomicDataService`/`AnalysisService` methods. Read-only; no `FREDClient` reachable from here. Frozen at Increment 008 behavior. |
-| FRED client | `app/clients/fred.py` (`FREDClient`) | All FRED-specific HTTP: request construction, timeout, FRED error → typed exception translation, including catalog search (`search_series` — metadata only, never observations) and release-dates lookup (`get_release_dates`, returning normalized `FredReleaseDate` pairs, date-only — never a raw provider payload). Never imported by the AI path. |
-| Series repository | `app/repositories/series_repository.py` (`SeriesRepository`) | All SQL for series/observations: upserts series metadata and observations within a caller-owned transaction; series lookup; local metadata search (`search_series`); filtered/ordered/paginated observation queries; unpaginated range queries and preceding-context queries. Reused as-is by every consumer added since Increment 005 — no analysis-, pipeline-, or discovery-specific repository methods were ever needed beyond `search_series` itself. |
-| Release repository | `app/repositories/release_repository.py` (`ReleaseRepository`) | All SQL for the release calendar: curated active-release lookup, provider-identity lookup, idempotent occurrence upsert (`(economic_release_id, scheduled_date)`, never deletes), filtered/ordered/paginated occurrence queries joined to their release. Never imports `app.clients.fred`/`httpx` (checked structurally) — the layer closest to the database never talks to FRED at all. |
+| FRED client | `app/clients/fred.py` (`FREDClient`) | All FRED-specific HTTP: request construction, timeout, FRED error → typed exception translation, including catalog search (`search_series` — metadata only, never observations) and release-dates lookup (`get_release_dates`, returning normalized `FredReleaseDate` pairs, date-only — never a raw provider payload). Never imported by the AI path. `get_observations` (Increment #18) gained two optional parameters, `observation_start`/`sort_order` — every pre-#18 call site is byte-for-byte unaffected (no new param sent, `sort_order` still defaults `"desc"`); release processing is the one caller that passes both, for its bounded five-year detection window. No second `FREDClient`/provider abstraction was added (ADR-020 unchanged). |
+| Series repository | `app/repositories/series_repository.py` (`SeriesRepository`) | All SQL for series/observations: upserts series metadata and observations within a caller-owned transaction; series lookup; local metadata search (`search_series`); filtered/ordered/paginated observation queries; unpaginated range queries and preceding-context queries. Reused as-is by every consumer added since Increment 005 — no analysis-, pipeline-, or discovery-specific repository methods were ever needed beyond `search_series` itself. `_upsert_observations`' blind-overwrite behavior (backing the plain `/series/{id}/sync`) is unmodified by #18 — release processing owns a separate write path (next-but-one row), never retrofitted here. |
+| Release repository | `app/repositories/release_repository.py` (`ReleaseRepository`) | All SQL for the release calendar: curated active-release lookup, provider-identity lookup, idempotent occurrence upsert (`(economic_release_id, scheduled_date)`, never deletes), filtered/ordered/paginated occurrence queries joined to their release. Never imports `app.clients.fred`/`httpx` (checked structurally) — the layer closest to the database never talks to FRED at all. Gained one new read-only method for Increment #18, `get_occurrence_by_id` — a plain lookup by internal id, adding no write capability and no import of anything series/Inflation-shaped. |
+| Release processing repository (Increment #18) | `app/repositories/release_processing_repository.py` (`ReleaseProcessingRepository`) | The one write path for #18: `ReleaseSeriesMapping` reads, `EconomicSeries`/`EconomicObservation` create/read/write (a small, independent reimplementation of `SeriesRepository`'s basic upsert shape — deliberately not calling into it, so the plain `/series/{id}/sync` path's behavior is never touched), and `ReleaseCheckRun`/`ReleaseObservationUpdate`/`ReleaseAnalysisUpdate` persistence. See [docs/architecture/release-processing-v1.md](./release-processing-v1.md). |
 | Transformation engine | `app/domain/transformations.py` (`absolute_change`, `percent_change`, `moving_average`) | Pure, deterministic math over one series' observation list — no FastAPI, SQLAlchemy, FRED, environment, or I/O of any kind. Unmodified since Increment 005; reused as-is by the pipeline. |
 | Analysis engine | `app/domain/analysis.py` (`align_series`, `calculate_spread`, `count_usable_pairs`, `pearson_correlation`) | Pure, deterministic math over two series' observation lists — same no-I/O discipline as the transformation engine. Unmodified since Increment 006; reused as-is by the pipeline. |
 | Inflation Monitor engine | `app/domain/inflation.py` (`classify_state`, `classify_period`, `compute_series_momentum`, `compute_confirmation`, `compute_target`, `compute_headline_context`, `compute_inflation_monitor_result`, and their calendar/index helpers, plus the exact-period siblings `compute_series_momentum_at`/`compute_target_at`/`compute_confirmation_at`, the new period-selection function `latest_shared_observation_period`, and the `month_over_month_*` convenience wrappers) | Pure, deterministic implementation of the frozen `inflation_v1.0` methodology — same no-I/O discipline as the other domain engines, plus one departure from `app/domain/transformations.py`'s convention: every horizon here resolves by an exact calendar-month lookup against a `{date: value}` index, never by row position, per the frozen specification. The exact-period siblings and `month_over_month_*` helpers exist for `inflation_what_changed_v1.0` (below) but reuse every existing classification primitive unmodified — no second methodology. |
 | Inflation What Changed comparator | `app/domain/inflation_what_changed.py` (`compare_series_momentum_section`, `compare_target_section`, `compare_confirmation_section`, `assemble_what_changed_result`) | Pure, deterministic comparison layer for the frozen `inflation_what_changed_v1.0` contract — architecturally forbidden from importing `app.domain.inflation` (enforced by the architectural-independence test), so it structurally cannot know how CPI/PCE annualization, boundary classification, or confirmation-relationship rules work; it only diffs two already-canonical evidence objects (built by the engine above, at periods the service selects) and assembles the deterministically-ordered result. |
-| Release calendar engine | `app/domain/releases.py` (`classify_schedule_status`) | Pure, deterministic: derives `SCHEDULED`/`PAST_DUE` from `(scheduled_date, as_of_date)` only — `as_of_date` is always an explicit parameter, never read from the system clock internally, so the function (and everything built on it) is reproducible under test. No `CANCELLED`/`UNKNOWN` in #17A (see [docs/architecture/release-intelligence-v1.md](./release-intelligence-v1.md) #7 for why). |
-| Response models | `app/models/series.py`, `app/models/analysis.py` (see prior increments), `app/models/discovery.py` (`SeriesCandidate`, `SeriesSearchResponse`), `app/models/ai.py` (`AIQueryRequest`, `AIQueryResponse`, `ToolCallRecord`, `GetObservationsArgs`, `TransformSeriesArgs`), `app/models/inflation.py` (`InflationMonitorResult` and its nested evidence/coverage/period models; the one canonical definition of `inflation_v1.0`'s constants and enums), `app/models/inflation_what_changed.py` (`InflationWhatChangedResult`, its five section models, and `ChangeEvent` — reuses `SeriesMomentumResult`/`TargetResult` verbatim as canonical evidence, introduces no new economic type), `app/models/releases.py` (`ReleaseListResponse`, `ReleaseOccurrenceItem` — `schedule_status` computed at response time, never a persisted field this module knows how to derive; `ReleaseSyncResponse` and its per-release `synced`/`failed` shapes) | The application's own, provider-independent API response contract; AI tool argument models double as that (frozen) path's validation boundary |
-| ORM models | `app/db/models.py` (`EconomicSeries`, `EconomicObservation`, `EconomicRelease`, `ReleaseOccurrence`) | The relational shape of persisted data. `EconomicRelease`/`ReleaseOccurrence` (Increment #17A) follow the same `id` (internal) vs. business-identifier (`provider`+`provider_release_id`, `scheduled_date`) separation `EconomicSeries`/`EconomicObservation` already established — see [docs/architecture/release-intelligence-v1.md](./release-intelligence-v1.md) #4/#5/#6. |
+| Release calendar engine | `app/domain/releases.py` (`classify_schedule_status`) | Pure, deterministic: derives `SCHEDULED`/`PAST_DUE` from `(scheduled_date, as_of_date)` only — `as_of_date` is always an explicit parameter, never read from the system clock internally, so the function (and everything built on it) is reproducible under test. No `CANCELLED`/`UNKNOWN` in #17A (see [docs/architecture/release-intelligence-v1.md](./release-intelligence-v1.md) #7 for why). Unmodified by #18 — gained no write capability (checked structurally). |
+| Release processing engine (Increment #18) | `app/domain/release_processing.py` (`classify_observation_change`, `five_year_observation_start`, `affected_evaluation_periods`, `components_for_series`) | Pure, deterministic — same no-I/O discipline as every other domain module, and (like `app.domain.inflation_what_changed`) deliberately imports no other domain module either, keeping every domain module in this package independent. Contains zero Inflation classification/annualization logic of its own; `components_for_series` is a verified mirror of `InflationMonitorService`'s own existing series-to-section wiring, never an invented economic-significance mapping. See [docs/architecture/release-processing-v1.md](./release-processing-v1.md). |
+| Response models | `app/models/series.py`, `app/models/analysis.py` (see prior increments), `app/models/discovery.py` (`SeriesCandidate`, `SeriesSearchResponse`), `app/models/ai.py` (`AIQueryRequest`, `AIQueryResponse`, `ToolCallRecord`, `GetObservationsArgs`, `TransformSeriesArgs`), `app/models/inflation.py` (`InflationMonitorResult` and its nested evidence/coverage/period models; the one canonical definition of `inflation_v1.0`'s constants and enums), `app/models/inflation_what_changed.py` (`InflationWhatChangedResult`, its five section models, and `ChangeEvent` — reuses `SeriesMomentumResult`/`TargetResult` verbatim as canonical evidence, introduces no new economic type), `app/models/releases.py` (`ReleaseListResponse`, `ReleaseOccurrenceItem` — `schedule_status` computed at response time, never a persisted field this module knows how to derive; `ReleaseSyncResponse` and its per-release `synced`/`failed` shapes), `app/models/release_processing.py` (Increment #18 — `ReleaseCheckRunResult`, `SeriesCheckOutcome`, `ObservationChangeRecord`, `AnalysisChangeRecord`; `AnalysisChangeRecord` mirrors `ChangeEvent`'s field set with one deliberate adaptation, `evaluation_period` instead of `previous_period`/`current_period` — see [docs/architecture/release-processing-v1.md](./release-processing-v1.md) §8.1) | The application's own, provider-independent API response contract; AI tool argument models double as that (frozen) path's validation boundary |
+| ORM models | `app/db/models.py` (`EconomicSeries`, `EconomicObservation`, `EconomicRelease`, `ReleaseOccurrence`, `ReleaseSeriesMapping`, `ReleaseCheckRun`, `ReleaseObservationUpdate`, `ReleaseAnalysisUpdate`) | The relational shape of persisted data. `EconomicRelease`/`ReleaseOccurrence` (Increment #17A) follow the same `id` (internal) vs. business-identifier (`provider`+`provider_release_id`, `scheduled_date`) separation `EconomicSeries`/`EconomicObservation` already established — see [docs/architecture/release-intelligence-v1.md](./release-intelligence-v1.md) #4/#5/#6. The four Increment #18 models (`ReleaseSeriesMapping`/`ReleaseCheckRun`/`ReleaseObservationUpdate`/`ReleaseAnalysisUpdate`) add release-driven detection and deterministic-analytical-consequence auditing without a full monitor-snapshot table and without an `EconomicObservation.updated_at` column (both deliberately absent — see [docs/architecture/release-processing-v1.md](./release-processing-v1.md) and [ADR-022](../adr/022-release-processing-audit-without-monitor-snapshots.md)). |
+| Operational CLI (Increment #18) | `app/operations/process_release.py` | The sole trigger for release processing — `python -m app.operations.process_release --occurrence-id <id> [--as-of-date YYYY-MM-DD]`. No business logic: parses arguments, opens one real `session_scope()` transaction, delegates entirely to `ReleaseProcessingService`, renders a safe summary, maps the outcome to an exit code. No public HTTP equivalent exists (see [docs/architecture/release-processing-v1.md](./release-processing-v1.md) §18 — this project has no authentication anywhere). |
 | DB engine/session | `app/db/session.py` | Lazily-created SQLAlchemy engine (connection pool) and `session_scope()` transaction boundary |
 | Configuration | `app/core/config.py` (`Settings`) | Reads `FRED_API_KEY`, `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, and request timeouts from the environment |
-| Schema migrations | `alembic/` | Version-controlled schema history, applied explicitly via `alembic upgrade head` |
+| Schema migrations | `alembic/` | Version-controlled schema history, applied explicitly via `alembic upgrade head`. Increment #18 added a schema migration (`dbd9a2889ef3`) and a separate curated-seed migration (`cd476d227f99`, CPI + Personal Income and Outlays release→series mappings only) — the same schema/seed separation Increment #17A established. |
 
 ## Architecture diagram
 
@@ -498,7 +502,7 @@ structurally, not just by convention, and were each verified directly
   same, unmodified `EconomicDataService`/`AnalysisService` methods every
   HTTP endpoint already uses.
 
-## Frontend architecture (Increment #17B: Release Intelligence UI)
+## Frontend architecture (Increment #17C: Explainability & Economic Education UX Foundation)
 
 ```
 Browser
@@ -563,12 +567,21 @@ frontend/
       useApiResource.ts             one independent load/error/success/reload hook per resource
     components/
       PageContainer.tsx, Disclosure.tsx, LoadingSkeleton.tsx, ErrorMessage.tsx
+      explanations/  ExplanationTrigger.tsx -- the one reusable "i" progressive-
+                      disclosure primitive both product surfaces below reuse
+                      (Increment #17C)
       inflation/   presentation-only Inflation Monitor components (Badge,
                    InflationHero, MomentumMetrics, TargetPanel,
                    ConfirmationPanel, HeadlineContext, WhatChangedSection,
-                   EvidenceDisclosure, DataBasisNote, MethodologyDisclosure)
+                   EvidenceDisclosure, DataBasisNote, MethodologyDisclosure,
+                   WhyThisState -- the one result-explanation component,
+                   Increment #17C)
       releases/    presentation-only release calendar components (ScheduleStatusBadge,
                    ReleaseDateBadge, ReleaseRow, ReleaseCalendarSection)
+    content/
+      explanations/  curated, static explanation copy (Increment #17C) --
+                      types.ts (the one Explanation shape), inflation.ts,
+                      releases.ts; see "Explainability foundation" below
     layouts/     the application shell (AppShell: header, nav, main)
     lib/         format.ts (presentation-only formatting), inflationLabels.ts
                  (state/relationship → label + tone lookups), releases.ts (query-window
@@ -577,8 +590,9 @@ frontend/
                  short-label/category map for the curated V1 releases)
     pages/       one component per route (Overview, Inflation, Releases, NotFound)
     styles/      global.css (Tailwind entry + minimal visual foundation)
-    test/        Vitest setup, fixtures/, the no-economic-logic and
-                 no-release-sync-or-coupling architectural guards
+    test/        Vitest setup, fixtures/, the no-economic-logic,
+                 no-release-sync-or-coupling, and
+                 no-explanation-classification-logic architectural guards
     App.tsx      route table
     main.tsx     React root, router provider
   public/
@@ -673,6 +687,68 @@ calls the release calendar's explicit sync write path anywhere — proven
 both by a dedicated test (`test/no-release-sync-or-coupling.test.ts`)
 and by direct inspection of the built source.
 
+**Explainability foundation** (Increment #17C) is a reusable,
+product-wide progressive-disclosure system — not an AI feature; there
+is no LLM, no generated copy, and no `POST` call anywhere in its import
+graph. Its one governing rule, and the reason it warranted a new ADR
+rather than being left as UI convention — see
+[ADR-021](../adr/021-explanations-never-determine-canonical-results.md):
+**explanations never determine canonical results.** Facts are sourced,
+calculations are deterministic, canonical classifications are
+deterministic — explanations only describe results the backend already
+produced. Dependency direction is one-way:
+`canonical backend result → frontend presentation → curated explanation
+content`; nothing here ever flows back into a calculation, a
+classification, or a mutation of an API response. `content/
+explanations/types.ts` defines a single `Explanation` shape (`{ id,
+title, definition, whyItMatters?, sourceNote? }`) used for both a
+**concept explanation** (static educational copy, e.g. "What is Core
+PCE?") and a **result explanation** (why *this* canonical result
+occurred, e.g. "Why is momentum MIXED?") — the latter is just an
+`Explanation` looked up by the backend's own already-classified value
+(`state`, `schedule_status`) and rendered alongside backend-supplied
+evidence a component already has, never a second, independently
+computed shape. `content/explanations/inflation.ts` and `.../
+releases.ts` hold the curated copy — 19 inflation concepts (including a
+lookup covering all five `InflationState` values) and 10 release
+concepts (a `ScheduleStatus` lookup and a `provider_release_id`-keyed
+lookup for the six curated V1 release types) — grounded directly in
+`inflation-monitor-v1.0.md`'s classification rules and each release's
+real BLS/BEA/Census definition. `components/explanations/
+ExplanationTrigger.tsx` is the one reusable UI primitive: a compact "i"
+`<details>/<summary>` — the same native, zero-dependency disclosure
+pattern `Disclosure.tsx` already established for "Latest revised data",
+no new UI library added. `components/inflation/WhyThisState.tsx` is the
+one result-explanation component, combining a `SeriesMomentumResult`'s
+own evidence (3M/6M/12M, neutral band) with the curated explanation for
+whatever `state` the backend returned; it never recomputes or
+second-guesses that state — proven directly by a test that gives it a
+mock response whose numbers, read by a human, might suggest a different
+classification than the backend's own `state`, and asserts the
+component still renders exactly what the backend said. A standing
+convention this increment established for any future trigger
+placement: **an `ExplanationTrigger` must be a DOM sibling of the text
+it annotates, never a descendant** — nesting one inside a heading or
+label corrupts that ancestor's accessible name and `textContent` (the
+DOM accname algorithm folds a descendant's own accessible name into its
+parent's), which is why every integration point below wraps the label
+and its trigger together in a sibling `<div>` rather than nesting.
+Three architectural guards enforce the one governing rule as executable
+tests rather than convention alone: the pre-existing
+`no-economic-logic.test.ts` and `no-release-sync-or-coupling.test.ts`
+already cover the new content/component files by virtue of their
+existing recursive/path-based scans, and a new, narrowly-scoped
+`test/no-explanation-classification-logic.test.ts` checks every file
+under `content/explanations/` and `components/explanations/` (plus
+`WhyThisState.tsx`) imports no AI/LLM module, calls no `fetch`/`axios`/
+sync endpoint, imports only API *types* (never a function) from `api/`,
+and never assigns into a prop/parameter object. Integrated into exactly
+two surfaces — `InflationHero`/`MomentumMetrics`/`TargetPanel`/
+`ConfirmationPanel`/`HeadlineContext`/`DataBasisNote` on `/inflation`,
+and `Releases`/`ReleaseCalendarSection`/`ReleaseRow` on `/releases` —
+establishing the pattern for later features to reuse rather than
+applying it to every existing page in this increment.
+
 **Local development** (see [Flow 26](./request-flows.md#flow-26--frontend-local-development-proxy-increment-16a)):
 the Vite dev server proxies `/api/*` requests to
 the local FastAPI backend (`frontend/vite.config.ts`, default target
@@ -688,11 +764,13 @@ as client-visible (everything prefixed `VITE_` ships in the browser
 bundle) and never used for a real secret.
 
 **No AI, no charts, no live FRED calls, no additional product
-dimensions** exist anywhere in the frontend as of Increment #16B — no
-"Ask AI"/"Explain with AI"/chat surface, no charting library (deferred
-until a deterministic historical monitor API exists), and no second
-product dimension (Explore, Compare, watchlists, auth, alerts) beyond
-Inflation. See "Future direction" below.
+dimensions** exist anywhere in the frontend as of Increment #17C — no
+"Ask AI"/"Explain with AI"/chat surface (the new explainability system
+above is curated static copy, not AI — see the "Explainability
+foundation" section for the guard proving it), no charting library
+(deferred until a deterministic historical monitor API exists), and no
+second product dimension (Explore, Compare, watchlists, auth, alerts)
+beyond Inflation and Releases. See "Future direction" below.
 
 ## What is deliberately NOT part of this architecture yet
 
@@ -874,8 +952,46 @@ Personal Income and Outlays, Employment Situation, JOLTS, GDP, and
 Advance Monthly Retail Sales — see the Increment #17A follow-up journal
 entry for the verified FRED `provider_release_id` for each), each
 `active=true`; FOMC, PPI, Industrial Production, housing, and Initial
-Claims are deliberately not curated yet. No `ReleaseSeriesMapping`, `published_at`,
-`data_status`/`analysis_status`, scheduler, observation-availability
-check, or monitor recomputation exists anywhere in this increment —
-all deferred to #18, not designed yet. `/releases` frontend UI (#17B)
-does not exist yet either.
+Claims are deliberately not curated yet. No `published_at`,
+`data_status`/`analysis_status`, or scheduler exists anywhere in this
+increment. `/releases` frontend UI (#17B) does not exist yet either.
+`ReleaseSeriesMapping`, observation-availability checking, and
+deterministic Inflation-analytical-consequence auditing were designed
+and implemented in Increment #18 (below) — not in #17A.
+
+**Increment #18 (Release-Driven Update Pipeline)** connects Release
+Intelligence to canonical economic data updates —
+[docs/architecture/release-processing-v1.md](./release-processing-v1.md)
+(backed by [ADR-022](../adr/022-release-processing-audit-without-monitor-snapshots.md)).
+Four new ORM models (`ReleaseSeriesMapping`, `ReleaseCheckRun`,
+`ReleaseObservationUpdate`, `ReleaseAnalysisUpdate` — see "Components"
+above), one new pure domain module
+(`app/domain/release_processing.py`), one new repository
+(`ReleaseProcessingRepository`), and exactly one new orchestration
+service (`ReleaseProcessingService`) that legitimately imports both the
+release-calendar side and the series/Inflation side — the one place
+this project deliberately bridges those two previously-independent
+subsystems, never by weakening the existing #17A structural-
+independence guard. `FREDClient.get_observations` was extended
+in-place with an optional `observation_start`/`sort_order` (no new
+client, no provider abstraction; every pre-#18 call site is byte-for-
+byte unaffected). Detection uses a bounded, deterministic five-year
+rolling window (exact calendar-year arithmetic, not `365 * 5` days) —
+ordinary release-driven detection, explicitly not a guarantee every
+historical revision anywhere in a provider's full history is ever
+caught; broader reconciliation is deliberately deferred. Every
+analytical consequence is computed by calling `app.domain.inflation`'s
+and `app.domain.inflation_what_changed`'s existing, frozen, unmodified
+functions against a release-scoped before/after pair of snapshots —
+never a full `InflationMonitorResult` snapshot persisted, never a
+reimplementation of any classification/comparison logic. Seeded V1
+mappings: Consumer Price Index → `CPIAUCSL`/`CPILFESL`; Personal
+Income and Outlays → `PCEPI`/`PCEPILFE` (the four canonical Inflation
+Monitor inputs) — Employment Situation/JOLTS/GDP/Advance Retail Sales
+are deliberately not mapped yet, pending a real deterministic
+consumer for any of them. Execution is manual/operational only —
+`python -m app.operations.process_release` — no scheduler, and
+deliberately **no public HTTP process endpoint** (this project has no
+authentication anywhere; see [docs/architecture/release-processing-v1.md](./release-processing-v1.md)
+§18). The frontend remains completely read-only and untouched — zero
+frontend production changes in this increment.

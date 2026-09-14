@@ -488,3 +488,113 @@ describe("accessibility basics", () => {
     }
   });
 });
+
+describe("explanations (Increment #17C)", () => {
+  it("offers a Core PCE explanation next to the primary reading, and opening it never changes the canonical state shown", async () => {
+    resolveBoth({ monitor: buildMonitor({ underlying_momentum: buildMomentum({ state: "MIXED" }) }) });
+    renderPage();
+
+    const heading = await screen.findByRole("heading", { name: "Underlying momentum" });
+    const section = heading.closest("section") as HTMLElement;
+    const user = userEvent.setup();
+    await user.click(within(section).getByLabelText("What does Core PCE mean?"));
+
+    expect(within(section).getByText(/primary signal for underlying inflation momentum/i)).toBeInTheDocument();
+    // The canonical Badge state is unaffected by opening the explanation.
+    expect(within(section).getByText("Mixed", { selector: "span" })).toBeInTheDocument();
+  });
+
+  it("offers explanations for 3M, 6M, and 12M annualized readings", async () => {
+    resolveBoth();
+    renderPage();
+
+    const heading = await screen.findByRole("heading", { name: "Core PCE momentum" });
+    const section = heading.closest("section") as HTMLElement;
+    for (const label of ["What does 3-month annualized rate mean?", "What does 6-month annualized rate mean?", "What does 12-month (year-over-year) rate mean?"]) {
+      expect(within(section).getByLabelText(label)).toBeInTheDocument();
+    }
+  });
+
+  it("offers a Fed objective explanation in the target section", async () => {
+    resolveBoth();
+    renderPage();
+
+    const heading = await screen.findByRole("heading", { name: "Target / level" });
+    const section = heading.closest("section") as HTMLElement;
+    const user = userEvent.setup();
+    await user.click(within(section).getByLabelText("What does The Fed's 2% objective mean?"));
+
+    expect(within(section).getByText(/2% annual growth in the headline pce price index/i)).toBeInTheDocument();
+  });
+
+  it("offers CPI and PCE concept explanations in headline context, distinguishing the two measures", async () => {
+    resolveBoth();
+    renderPage();
+
+    const heading = await screen.findByRole("heading", { name: "Headline context" });
+    const section = heading.closest("section") as HTMLElement;
+    const user = userEvent.setup();
+
+    await user.click(within(section).getByLabelText("What does Consumer Price Index (CPI) mean?"));
+    expect(within(section).getByText(/bureau of labor statistics/i)).toBeInTheDocument();
+
+    await user.click(within(section).getByLabelText("What does Personal Consumption Expenditures (PCE) price index mean?"));
+    expect(within(section).getByText(/bureau of economic analysis/i)).toBeInTheDocument();
+  });
+
+  it("'Why is momentum {state}?' shows the exact backend evidence for this response, not a recalculated value", async () => {
+    resolveBoth({
+      monitor: buildMonitor({
+        underlying_momentum: buildMomentum({ state: "HEATING", r_3m_annualized: 3.14, r_6m_annualized: 3.15, r_12m: 2.5 }),
+      }),
+    });
+    renderPage();
+
+    const heading = await screen.findByRole("heading", { name: "Underlying momentum" });
+    const section = heading.closest("section") as HTMLElement;
+    const user = userEvent.setup();
+    const trigger = within(section).getByText("Why Heating?");
+    await user.click(trigger);
+
+    // Scoped to the opened evidence panel itself -- the compact 3M/6M/12M
+    // strip above it in this same section legitimately shows the same
+    // values a second time, so this checks the panel, not the section.
+    const panel = trigger.closest("details") as HTMLDetailsElement;
+    expect(within(panel).getByText("3.14%")).toBeInTheDocument();
+    expect(within(panel).getByText("3.15%")).toBeInTheDocument();
+  });
+
+  it("THE CONTRADICTORY-EVIDENCE TEST (page level): the backend says MIXED, so the page says MIXED, even with numbers a human might read as STABLE", async () => {
+    resolveBoth({
+      monitor: buildMonitor({
+        underlying_momentum: buildMomentum({
+          state: "MIXED",
+          r_3m_annualized: 2.5,
+          r_6m_annualized: 2.5,
+          r_12m: 2.5,
+          lower_boundary: 2.4,
+          upper_boundary: 2.6,
+        }),
+      }),
+    });
+    renderPage();
+
+    const heading = await screen.findByRole("heading", { name: "Underlying momentum" });
+    const section = heading.closest("section") as HTMLElement;
+    expect(within(section).getByText("Mixed", { selector: "span" })).toBeInTheDocument();
+    expect(within(section).queryByText("Stable", { selector: "span" })).not.toBeInTheDocument();
+    expect(within(section).getByText("Why Mixed?")).toBeInTheDocument();
+  });
+
+  it("shows a curated explanation for Core CPI confirmation, alongside (never instead of) the canonical relationship Badge", async () => {
+    resolveBoth({ monitor: buildMonitor({ confirmation: buildConfirmation({ relationship: "DIVERGES" }) }) });
+    renderPage();
+
+    const heading = await screen.findByRole("heading", { level: 2, name: "Confirmation" });
+    const section = heading.closest("section") as HTMLElement;
+    expect(within(section).getByText("Diverges", { selector: "span" })).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(within(section).getByLabelText("What does Confirmation mean?"));
+    expect(within(section).getByText(/never to override it/i)).toBeInTheDocument();
+  });
+});
