@@ -7340,3 +7340,227 @@ affected-horizon derivations exist specifically to make this
 integration correct when it happens, but it does not happen in #20B);
 any Overview frontend surface for Labor; any cross-monitor
 aggregation (frozen against, permanently, per #20A §28/§20A.3 §16).
+
+## Increment #20C.2 — Deterministic Labor What Changed V1
+
+The Labor Monitor's comparison layer. Implements `labor_what_changed_v1.0`
+exactly as frozen in
+`research/labor_momentum/LABOR_WHAT_CHANGED_V1_FROZEN_METHODOLOGY.md`
+(written in #20C.1's own design/audit/freeze turn, which is not a
+separate journal entry — no implementation happened there). The
+comparator compares already-canonical `labor_v1.0` results; it
+performs zero PAYEMS/UNRATE calculation, zero threshold application,
+and zero classification of its own.
+
+### Two small, additive seams in `app/domain/labor.py`, no refactor
+
+The frozen spec's own architecture audit (§12) found that
+`compute_employment_result`/`compute_unemployment_result` already
+accept an explicit period parameter — unlike Inflation, which needed a
+`compute_series_momentum`/`_at` split, Labor needed no equivalent
+refactor. Two new, purely additive functions were added instead:
+`compute_labor_monitor_result_at(payems_observations, unrate_observations,
+period, ...)` (the complete `labor_v1.0` result at an EXPLICIT,
+caller-given period — never searched, unlike `compute_labor_monitor_result`'s
+own "latest" search) and `month_over_month_labor_periods(...)`
+(`(previous_period, current_period)`, reusing `determine_evaluation_period`
+unmodified for `current_period` and `month_before(current_period, 1)`
+for `previous_period` — exact calendar month, never searched
+backward). `compute_labor_monitor_result` itself was refactored to
+delegate to `compute_labor_monitor_result_at` internally — a pure,
+behavior-preserving refactor, confirmed by running the full pre-existing
+121-test `tests/test_domain_labor.py` suite unchanged before AND after
+the edit.
+
+### `app/domain/labor_what_changed.py` — the pure comparator, zero `labor_v1.0` knowledge
+
+Four public functions (`compare_employment_section`,
+`compare_unemployment_section`, `compare_labor_state`,
+`assemble_labor_what_changed_result`), two internal helpers
+(`_state_events`, reused across all five state-shaped fields —
+`LABOR.state`, `EMPLOYMENT.state`/`condition`/`momentum`,
+`UNEMPLOYMENT.state`; `_metric_events`, reused across all six numeric
+fields), and a deterministic sort (`COMPONENT_ORDER` →
+`EVENT_TYPE_ORDER` → `FIELD_ORDER`, all three constants defined once
+in `app/models/labor_what_changed.py`). The comparator never imports
+`app.domain.labor` — checked structurally three ways: an import-name
+guard, a module-prefix guard shared with every other domain module's
+independence test, and an AST-level guard that no frozen deadband
+literal (`50_000`/`0.2`) appears anywhere in the comparator's own
+code, not just its imports. None of the four functions ever compares
+`previous_period` to `current_period` — verified by a direct test that
+passes them in reversed (later, earlier) order and confirms no
+exception and no distorted output, the same property
+`app.domain.inflation_what_changed`'s own equivalent functions already
+established.
+
+### `condition`/`momentum` report independently of `state` — never suppressed, including in the summary flag
+
+The frozen spec's central design principle (§6), applied literally:
+`EMPLOYMENT.state`, `EMPLOYMENT.condition`, and `EMPLOYMENT.momentum`
+are each compared as their own `_state_events` call, so a momentum-only
+transition (e.g. the real April→May 2021 STEADY→IMPROVING momentum
+shift, which left `EMPLOYMENT.state` at `EXPANDING` both months) never
+disappears. This surfaced a real design gap during implementation: the
+frozen schema sketch's own `EmploymentSectionChanges.state_changed: bool`
+is ambiguous with THREE state-shaped fields in one section (Inflation's
+equivalent sections each have exactly one, so the ambiguity never arose
+there). Interpreting it as "any state-shaped field changed" would have
+meant a momentum-only or condition-only change silently flipped
+`state_changed` to `True` too — reintroducing, at the summary-flag
+level, exactly the suppression problem this increment's independent-
+reporting principle exists to prevent. Resolved by scoping
+`state_changed` specifically to the field literally named `state`
+(`metric_changed`/`availability_lost`/`availability_restored` remain
+section-wide, matching Inflation's own established precedent, where
+those three flags already span both the state field and every metric
+field collectively). A dedicated regression
+(`TestEmploymentMomentumChangeIndependentOfState`, using the real
+April/May 2021 PAYEMS data) pins this exact scenario. Documented here
+as a disclosed, deliberate refinement of the frozen schema sketch, not
+a silent deviation.
+
+### `previous_evidence`/`current_evidence` are never `None` — a second, disclosed refinement
+
+The frozen schema sketch (§10) wrote `EmploymentResult | None` for both
+section models' evidence fields. Implemented instead as required,
+never-`None` fields: `labor_v1.0`'s own established convention already
+represents "nothing here" with a real, `state: "INSUFFICIENT_DATA"`-shaped
+object and empty `observations` (see #20B's own
+`_insufficient_labor_monitor_result`), never Python `None` — introducing
+a second way to express the same "no data" condition inside the
+comparator's own models would be a needless inconsistency. Similarly,
+`previous_labor_state`/`current_labor_state` are typed as the real
+`LaborState` Literal (never `str | None`, since `"INSUFFICIENT_DATA"`
+is itself a real member of that enum) — the frozen sketch's own
+`LaborState | None` annotation was reconciled to match, matching how
+every other Labor field already treats missing-data as a real
+economic-availability value rather than an engineering `null`.
+
+### Real UNRATE 2025-10 gap — reproduced at the comparison layer, fixture-based
+
+The gap #20A.1's research first found (UNRATE has no persisted 2025-10
+value) stays inside a rolling 3-month prior-year window for THREE
+consecutive evaluation anchors (2026-10, -11, -12 all have `2025-10`
+as one of `t-12`/`t-13`/`t-14` respectively — a fact this increment's
+own worked-out arithmetic corrected mid-implementation; the initial
+assumption that November alone would show restoration was wrong by
+two months) and only exits at 2027-01. A dedicated test
+(`TestRealUnrate202510GapAtTheWhatChangedLayer`) proves both the exact
+availability-loss transition (September→October 2026) and the exact
+availability-restoration transition (December 2026→January 2027)
+against a fixture-based synthetic index (not a live FRED call), using
+the same production `compute_unemployment_result` #20B's own single-period
+test already validates this gap shape against.
+
+### Historical regressions — real PAYEMS/UNRATE data across every validated period
+
+`tests/test_domain_labor_what_changed.py` builds real `EmploymentResult`/
+`UnemploymentResult` evidence (via `app.domain.labor`'s own frozen
+primitives, called directly — not hand-typed numbers) from the same
+cached FRED data that validated `labor_v1.0`, spanning: the 2008-2009
+Great Recession (April→May 2009, the exact real month `EMPLOYMENT.state`
+first flips `CONTRACTING`→`RECOVERING`; July→August 2009, metrics-only
+confirmation of an ongoing recovery); the 2020 COVID collapse/snapback
+(June→July 2020, the single largest real month-over-month swing in the
+validated history — condition, momentum, AND state all flip at once,
+while `UNEMPLOYMENT` stays `DETERIORATING` both months, proving a huge
+payroll gain does not by itself mean `LABOR.state` improves); the 2021
+recovery (April→May, May→June, the latter isolating a momentum-only
+change); and 2022–2024 (July→August 2022, June→July 2023, July→August→
+September 2024 — a `MIXED`→`STRENGTHENING` LABOR-state transition, a
+quiet metrics-only quarter, and a condition/state change that leaves
+momentum untouched, its mirror image the next month).
+
+### Same-period revision support — proven, not just claimed
+
+A direct test calls `compare_employment_section` with
+`previous_period == current_period` (simulating a future release-
+processing before/after-revision comparison) and confirms it produces
+the correct events with zero code change — required by the frozen
+spec so the exact same comparator serves both month-over-month
+(`previous != current`) and same-period revision (`previous ==
+current`) comparisons.
+
+### API: `GET /api/v1/monitors/labor/changes`, no query parameters
+
+Mirrors `GET /api/v1/monitors/inflation/changes` exactly — same
+503 (not configured) / 503 (`OperationalError`) / 500 (`SQLAlchemyError`)
+error mapping, same "missing data is a 200 with `comparison_available:
+false`, never a 4xx/5xx" rule. Added to the SAME `router` #20B already
+registered in `app/main.py` — no new router registration needed.
+`tests/test_labor_architecture.py`'s route-count guard was updated
+from "exactly one" to "exactly two," and its service-import guard was
+extended to also enumerate the two new `app.domain.labor` entry points
+plus a new guard enumerating the four `app.domain.labor_what_changed`
+comparator imports — both changes are necessary, intentional
+consequences of this increment's own scope, not relaxations of the
+underlying "service never reimplements domain logic" principle.
+
+### JOLTS / CIVPART / frontend — all confirmed absent
+
+No `JTS*` series ID, no `CIVPART`, no `CONFIRMATION_CHANGED` event type
+(Labor V1 has no confirmation component), no `CONDITION_CHANGED`/
+`MOMENTUM_CHANGED` event type (condition/momentum reuse `STATE_CHANGED`,
+discriminated by `field`) appears anywhere in the Labor What Changed
+call graph — all checked by dedicated architecture-guard tests. No
+`frontend/` file was touched.
+
+### Tests
+
+90 new backend tests (1,021 → **1,111**): 47 pure-comparator unit
+tests (`tests/test_domain_labor_what_changed.py`: every state/
+condition/momentum transition using real historical PAYEMS/UNRATE
+data, availability loss/restoration including co-occurring
+EMPLOYMENT+LABOR loss from one PAYEMS gap, the fixture-based real
+UNRATE 2025-10 gap reproduction, exact-float-inequality metric proofs,
+deterministic ordering, the fully-identical no-change case, same-period
+revision support, and period passthrough/non-substitution); 3 new
+architecture-guard tests plus 2 rewritten ones in
+`tests/test_labor_architecture.py` (comparator never imports
+`app.domain.labor`, no frozen deadband literal anywhere in the
+comparator's own code, `labor_what_changed_v1.0`'s own frozen
+vocabulary/ordering constants pinned exactly, service-import guards
+extended for both new domain seams); 1 new test in
+`tests/test_domain_architectural_independence.py` (the comparator
+joins the domain-file allowlist and gets its own
+no-other-domain-module-import guard, mirroring Inflation's identical
+precedent); 11 service-level integration tests
+(`tests/integration/test_labor_what_changed_service.py`, real isolated
+Postgres: ordinary month-over-month comparison, shared-period-pair
+consistency across both sections, comparison-unavailable with no data
+at all, an availability transition through the full service call,
+a persisted revision changing the comparison deterministically,
+non-mutation, and `current_labor_result` matching a separate
+`get_result` call); 23 API tests
+(`tests/api/test_labor_what_changed_api.py`: exact top-level and
+per-section response contract, no query parameters accepted or
+required, availability transitions, the no-change case, sparse/empty
+data as a 200, 503/500 infrastructure mapping with no leaked detail,
+determinism, non-mutation, and no FRED/OpenAI dependency).
+
+### Verification
+
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run twice: **1,111
+passed** both times, 0 skipped. `alembic check`: no new upgrade
+operations detected — no migration, as expected (no schema change at
+all in this increment). No Python lint/typecheck tooling exists in
+this project (unchanged from every prior increment). Frontend: not
+touched; `git status` confined entirely to `app/domain/labor.py`
+(two additive functions plus a behavior-preserving refactor),
+`app/services/labor.py`, `app/api/labor.py`, two new files
+(`app/models/labor_what_changed.py`, `app/domain/labor_what_changed.py`),
+two modified test files, and three new test files.
+
+### Deferred (named explicitly, not built here)
+
+Everything #20B already deferred (JOLTS confirmation, `CIVPART`
+context, Labor release-processing integration, any Overview frontend
+surface, any cross-monitor aggregation) remains deferred, unchanged.
+Additionally: any frontend consumption of `GET /monitors/labor/changes`
+(this increment is backend-only, mirroring #18/#20B's own precedent of
+shipping an API before its UI); the future release-processing
+same-period revision comparison this increment's own
+`previous_period == current_period` support was built to enable, but
+does not itself perform (no `ReleaseSeriesMapping` row exists for
+Labor yet — see #20B's own deferred section).

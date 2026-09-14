@@ -16,6 +16,8 @@ LABOR_FILES = [
     Path("app/domain/labor.py"),
     Path("app/services/labor.py"),
     Path("app/api/labor.py"),
+    Path("app/models/labor_what_changed.py"),
+    Path("app/domain/labor_what_changed.py"),
 ]
 
 
@@ -67,9 +69,9 @@ class TestNoReleaseProcessingMutation:
 
 
 class TestDomainLayerIsPure:
-    """Guard: app/domain/labor.py never imports SQLAlchemy, FastAPI,
-    or any database/session module -- it is pure, deterministic
-    calculation only."""
+    """Guard: app/domain/labor.py and app/domain/labor_what_changed.py
+    never import SQLAlchemy, FastAPI, or any database/session module --
+    both are pure, deterministic calculation/comparison only."""
 
     FORBIDDEN_PREFIXES = ("sqlalchemy", "fastapi", "app.db", "app.repositories")
 
@@ -78,35 +80,165 @@ class TestDomainLayerIsPure:
         violations = {m for m in imported if any(m == p or m.startswith(p + ".") for p in self.FORBIDDEN_PREFIXES)}
         assert violations == set(), f"app/domain/labor.py imports a forbidden dependency: {violations}"
 
+    def test_what_changed_domain_module_has_no_db_or_web_dependency(self):
+        imported = _imported_module_names(Path("app/domain/labor_what_changed.py"))
+        violations = {m for m in imported if any(m == p or m.startswith(p + ".") for p in self.FORBIDDEN_PREFIXES)}
+        assert violations == set(), f"app/domain/labor_what_changed.py imports a forbidden dependency: {violations}"
+
+
+class TestWhatChangedComparatorNeverKnowsLaborV1Methodology:
+    """Guard: app/domain/labor_what_changed.py -- the pure comparator --
+    has ZERO knowledge of `labor_v1.0`'s own formulas. It must never
+    import app.domain.labor (the one module that DOES know PAYEMS/
+    UNRATE math, the 50,000-job/0.2pp deadbands, or the frozen state
+    tables) -- confirmed directly against Inflation's own identical
+    precedent (app.domain.inflation_what_changed never imports
+    app.domain.inflation either). This is the single guard that makes
+    "the comparator only diffs already-canonical values, it never
+    recalculates them" a checked fact rather than a convention."""
+
+    def test_comparator_does_not_import_the_labor_v1_domain_module(self):
+        imported = _imported_module_names(Path("app/domain/labor_what_changed.py"))
+        violations = {m for m in imported if m == "app.domain.labor" or m.startswith("app.domain.labor.")}
+        assert violations == set(), f"app/domain/labor_what_changed.py must never import app.domain.labor: {violations}"
+
+    def test_comparator_code_never_hardcodes_a_frozen_deadband_literal(self):
+        """A stricter, AST-level check (numeric literals actually used
+        in CODE, not mentions in docstrings/comments): even an
+        indirect reference -- e.g. a hardcoded `50_000` or `0.2`
+        literal standing in for a deadband, bypassing the import guard
+        above -- would be a real violation of "compares canonical
+        values only." The comparator has no business knowing what a
+        deadband even is, so none of these frozen `labor_v1.0`
+        threshold values may appear as a literal anywhere in its
+        actual code."""
+        source = (REPO_ROOT / "app/domain/labor_what_changed.py").read_text()
+        tree = ast.parse(source)
+        forbidden_literals = {50_000, 50_000.0, 0.2}
+        found = {
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and node.value in forbidden_literals
+        }
+        assert found == set(), f"app/domain/labor_what_changed.py hardcodes a frozen labor_v1.0 deadband literal: {found}"
+
+
+class TestWhatChangedFrozenVocabularyHasExactlyTheSpecifiedValues:
+    """Guard: every enum/ordering constant in `app.models.labor_what_changed`
+    has exactly the values frozen in
+    LABOR_WHAT_CHANGED_V1_FROZEN_METHODOLOGY.md -- no more, no fewer."""
+
+    def test_component_vocabulary(self):
+        from app.models.labor_what_changed import LaborChangeComponent
+
+        assert set(LaborChangeComponent.__args__) == {"LABOR", "EMPLOYMENT", "UNEMPLOYMENT"}
+        # Series IDs never appear as components -- they belong only in embedded evidence:
+        assert "PAYEMS" not in LaborChangeComponent.__args__
+        assert "UNRATE" not in LaborChangeComponent.__args__
+
+    def test_event_type_vocabulary_has_no_confirmation_changed(self):
+        from app.models.labor_what_changed import LaborChangeEventType
+
+        assert set(LaborChangeEventType.__args__) == {
+            "STATE_CHANGED",
+            "AVAILABILITY_LOST",
+            "AVAILABILITY_RESTORED",
+            "METRIC_CHANGED",
+        }
+        # Labor V1 has no confirmation component (JOLTS deferred) -- unlike Inflation's own vocabulary:
+        assert "CONFIRMATION_CHANGED" not in LaborChangeEventType.__args__
+        # condition/momentum reuse STATE_CHANGED, discriminated by `field` -- no dedicated event types:
+        assert "CONDITION_CHANGED" not in LaborChangeEventType.__args__
+        assert "MOMENTUM_CHANGED" not in LaborChangeEventType.__args__
+
+    def test_frozen_contract_ids(self):
+        from app.models.labor_what_changed import COMPARISON_CONTRACT_ID, COMPARISON_TYPE
+
+        assert COMPARISON_CONTRACT_ID == "labor_what_changed_v1.0"
+        assert COMPARISON_TYPE == "MONTH_OVER_MONTH"
+
+    def test_deterministic_ordering_constants(self):
+        from app.models.labor_what_changed import COMPONENT_ORDER, EVENT_TYPE_ORDER, FIELD_ORDER
+
+        assert COMPONENT_ORDER == ("LABOR", "EMPLOYMENT", "UNEMPLOYMENT")
+        assert EVENT_TYPE_ORDER == ("STATE_CHANGED", "AVAILABILITY_LOST", "AVAILABILITY_RESTORED", "METRIC_CHANGED")
+        assert FIELD_ORDER == (
+            "state",
+            "condition",
+            "momentum",
+            "current_3m_avg_jobs",
+            "prior_3m_avg_jobs",
+            "momentum_delta_jobs",
+            "current_3m_avg",
+            "prior_year_3m_avg",
+            "delta_pp",
+        )
+
 
 class TestServiceNeverClassifiesEconomics:
     """Guard: app/services/labor.py delegates every actual
-    classification to app.domain.labor -- it must import
-    `compute_labor_monitor_result` (the one entry point) and must
-    never import the classification primitives directly (which would
+    classification to app.domain.labor -- it must import only the
+    top-level domain ENTRY POINTS (`compute_labor_monitor_result` for
+    #20B's `GET /monitors/labor`; `compute_labor_monitor_result_at` and
+    `month_over_month_labor_periods` for #20C.2's
+    `GET /monitors/labor/changes`, per
+    LABOR_WHAT_CHANGED_V1_FROZEN_METHODOLOGY.md §12) and must never
+    import the classification primitives directly (`classify_*`,
+    `combine_*`, `compute_employment_result`, `compute_unemployment_result`,
+    `build_jobs_index`, `build_rate_index`, etc.) -- which would
     suggest the service is reimplementing/duplicating logic that
-    belongs in the domain layer)."""
+    belongs in the domain layer. Comparison logic is guarded
+    separately, in `TestServiceNeverComparesEconomics` below."""
 
-    def test_service_imports_only_the_top_level_domain_entry_point(self):
+    def test_service_imports_only_the_top_level_domain_entry_points(self):
         source = (REPO_ROOT / "app/services/labor.py").read_text()
         tree = ast.parse(source)
         imported_names: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "app.domain.labor":
                 imported_names.update(alias.name for alias in node.names)
-        assert imported_names == {"compute_labor_monitor_result"}, (
-            f"app/services/labor.py should import only compute_labor_monitor_result from app.domain.labor, "
+        assert imported_names == {
+            "compute_labor_monitor_result",
+            "compute_labor_monitor_result_at",
+            "month_over_month_labor_periods",
+        }, (
+            f"app/services/labor.py should import only the three top-level app.domain.labor entry points, "
             f"found: {imported_names}"
         )
 
 
-class TestExactlyOneLaborRoute:
-    """Guard: exactly ONE public route exists for the Labor Monitor --
-    GET /monitors/labor -- and it is the only route app/api/labor.py
-    registers. No POST/PUT/PATCH/DELETE route anywhere in the API
-    layer touches Labor."""
+class TestServiceNeverComparesEconomics:
+    """Guard: app/services/labor.py delegates every actual comparison
+    to app.domain.labor_what_changed -- it must import exactly the
+    four public comparator functions and never reimplement a diff/
+    equality check on canonical values itself."""
 
-    def test_labor_route_module_registers_exactly_one_route(self):
+    def test_service_imports_only_the_public_comparator_functions(self):
+        source = (REPO_ROOT / "app/services/labor.py").read_text()
+        tree = ast.parse(source)
+        imported_names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "app.domain.labor_what_changed":
+                imported_names.update(alias.name for alias in node.names)
+        assert imported_names == {
+            "assemble_labor_what_changed_result",
+            "compare_employment_section",
+            "compare_labor_state",
+            "compare_unemployment_section",
+        }, (
+            f"app/services/labor.py should import only the four public app.domain.labor_what_changed "
+            f"comparator functions, found: {imported_names}"
+        )
+
+
+class TestExactlyTwoLaborRoutes:
+    """Guard: exactly TWO public routes exist for the Labor Monitor --
+    GET /monitors/labor (#20B) and GET /monitors/labor/changes (#20C.2)
+    -- and they are the only routes app/api/labor.py registers. No
+    POST/PUT/PATCH/DELETE route anywhere in the API layer touches
+    Labor."""
+
+    def test_labor_route_module_registers_exactly_two_routes(self):
         source = (REPO_ROOT / "app/api/labor.py").read_text()
         tree = ast.parse(source)
         route_decorators = [
@@ -116,13 +248,13 @@ class TestExactlyOneLaborRoute:
             and isinstance(node.func, ast.Attribute)
             and node.func.attr in {"get", "post", "put", "patch", "delete"}
         ]
-        assert len(route_decorators) == 1, f"expected exactly one route, found {len(route_decorators)}"
+        assert len(route_decorators) == 2, f"expected exactly two routes, found {len(route_decorators)}"
 
-    def test_route_path_is_exactly_labor(self):
+    def test_route_paths_are_exactly_labor_and_labor_changes(self):
         from app.api.labor import router
 
         paths = [route.path for route in router.routes]
-        assert paths == ["/monitors/labor"]
+        assert paths == ["/monitors/labor", "/monitors/labor/changes"]
 
     def test_no_labor_mutation_route_exists_anywhere_in_the_api_layer(self):
         api_dir = REPO_ROOT / "app" / "api"

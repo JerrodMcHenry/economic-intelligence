@@ -22,6 +22,7 @@ from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from app.core.config import settings
 from app.db.session import session_scope
 from app.models.labor import LaborMonitorResult
+from app.models.labor_what_changed import LaborWhatChangedResult
 from app.services.labor import LaborMonitorService
 
 router = APIRouter(prefix="/monitors", tags=["monitors"])
@@ -56,3 +57,40 @@ def get_labor_monitor() -> LaborMonitorResult:
         raise HTTPException(status_code=503, detail="Database is currently unavailable.")
     except SQLAlchemyError:
         raise HTTPException(status_code=500, detail="Database error while reading labor monitor data.")
+
+
+@router.get("/labor/changes", response_model=LaborWhatChangedResult)
+def get_labor_what_changed() -> LaborWhatChangedResult:
+    """The canonical, deterministic "What Changed?" result under
+    contract `labor_what_changed_v1.0`: a month-over-month comparison
+    of PAYEMS employment condition/momentum/state and UNRATE
+    unemployment trend/state, plus the top-level `LaborState`, each
+    compared independently -- computed entirely from already-persisted
+    observations, by re-evaluating `labor_v1.0`'s own existing
+    classification rules at explicit calendar periods (never a second
+    methodology).
+
+    Missing required data (e.g. PAYEMS or UNRATE not yet persisted, or
+    no evaluable period at all) is NOT an error: it is reported as
+    `comparison_available: false` with `previous_period`/
+    `current_period: null` within a normal 200 response, per the
+    frozen contract's missing-data semantics. Only a genuine
+    database/infrastructure failure returns a non-200 response.
+
+    No query parameters -- always the latest evaluable period against
+    exactly the calendar month before it, mirroring
+    `GET /monitors/inflation/changes`'s identical, parameter-free
+    shape.
+    """
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Database is not configured on this server.")
+
+    service = LaborMonitorService()
+
+    try:
+        with session_scope() as session:
+            return service.get_what_changed_result(session)
+    except OperationalError:
+        raise HTTPException(status_code=503, detail="Database is currently unavailable.")
+    except SQLAlchemyError:
+        raise HTTPException(status_code=500, detail="Database error while reading labor what-changed data.")

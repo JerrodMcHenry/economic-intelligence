@@ -310,6 +310,103 @@ def determine_evaluation_period(payems_observations: list[Observation], unrate_o
     return min(payems_latest, unrate_latest)
 
 
+def _insufficient_labor_monitor_result(
+    condition_deadband_jobs: float, momentum_deadband_jobs: float, unemployment_deadband_pp: float
+) -> LaborMonitorResult:
+    """Shared by both `compute_labor_monitor_result` (no candidate
+    period at all) and `compute_labor_monitor_result_at` (a caller-
+    given period that happens to be unusable in some other way is
+    still handled by the ordinary per-component INSUFFICIENT_DATA
+    path -- this helper is specifically the "no evidence to show at
+    all" shape, `evaluation_period=None`, empty observation lists)."""
+    employment = EmploymentResult(
+        current_3m_avg_jobs=None,
+        prior_3m_avg_jobs=None,
+        momentum_delta_jobs=None,
+        condition_deadband_jobs=condition_deadband_jobs,
+        momentum_deadband_jobs=momentum_deadband_jobs,
+        condition="INSUFFICIENT_DATA",
+        momentum="INSUFFICIENT_DATA",
+        state="INSUFFICIENT_DATA",
+        observations=[],
+    )
+    unemployment = UnemploymentResult(
+        current_3m_avg=None,
+        prior_year_3m_avg=None,
+        delta_pp=None,
+        unemployment_deadband_pp=unemployment_deadband_pp,
+        state="INSUFFICIENT_DATA",
+        observations=[],
+    )
+    return LaborMonitorResult(
+        state="INSUFFICIENT_DATA",
+        evaluation_period=None,
+        employment=employment,
+        unemployment=unemployment,
+    )
+
+
+def compute_labor_monitor_result_at(
+    payems_observations: list[Observation],
+    unrate_observations: list[Observation],
+    period: date,
+    condition_deadband_jobs: float,
+    momentum_deadband_jobs: float,
+    unemployment_deadband_pp: float,
+) -> LaborMonitorResult:
+    """The complete canonical `labor_v1.0` result at an EXPLICIT,
+    caller-given `period` -- never searched, never restricted to
+    "latest." Added for Increment #20C.2 (`labor_what_changed_v1.0`,
+    frozen in `research/labor_momentum/LABOR_WHAT_CHANGED_V1_FROZEN_METHODOLOGY.md`
+    §12): the comparator needs two canonical Labor results at two
+    EXPLICIT periods (ordinarily `t` and `t-1` for month-over-month,
+    but potentially the SAME period twice for a future release-
+    processing before/after revision comparison -- this function makes
+    no assumption about `period`'s relationship to "now" or to any
+    other call's own `period`).
+
+    `evaluation_period` on the returned result is always `period`
+    itself, even if neither series has any observation there at all
+    (unlike `compute_labor_monitor_result`, which reports
+    `evaluation_period=None` when it cannot even choose a candidate --
+    here, the candidate is GIVEN, not searched for, so it is always
+    echoed back verbatim; per-component `INSUFFICIENT_DATA` still
+    applies exactly as it does everywhere else in this module when the
+    required exact months aren't all present).
+    """
+    payems_index = build_jobs_index(payems_observations)
+    unrate_index = build_rate_index(unrate_observations)
+
+    employment = compute_employment_result(payems_index, period, condition_deadband_jobs, momentum_deadband_jobs)
+    unemployment = compute_unemployment_result(unrate_index, period, unemployment_deadband_pp)
+    state = combine_labor_state(employment.state, unemployment.state)
+
+    return LaborMonitorResult(
+        state=state,
+        evaluation_period=period,
+        employment=employment,
+        unemployment=unemployment,
+    )
+
+
+def month_over_month_labor_periods(
+    payems_observations: list[Observation], unrate_observations: list[Observation]
+) -> tuple[date | None, date | None]:
+    """The exact period pair `labor_what_changed_v1.0` needs:
+    `current_period` = `determine_evaluation_period` (unmodified --
+    Labor's own existing latest-shared-period rule); `previous_period`
+    = the exact calendar month before it, NEVER searched backward --
+    the identical `month_over_month_series_momentum` precedent
+    `app.domain.inflation` already establishes. Returns `(previous_period,
+    current_period)`, both `None` only when `current_period` itself is
+    `None` (neither series has any persisted observation at all)."""
+    current_period = determine_evaluation_period(payems_observations, unrate_observations)
+    if current_period is None:
+        return None, None
+    previous_period = month_before(current_period, 1)
+    return previous_period, current_period
+
+
 def compute_labor_monitor_result(
     payems_observations: list[Observation],
     unrate_observations: list[Observation],
@@ -331,51 +428,16 @@ def compute_labor_monitor_result(
     `observations` evidence lists still show all required months with
     `value=None`, never omitted).
     """
-    payems_index = build_jobs_index(payems_observations)
-    unrate_index = build_rate_index(unrate_observations)
-
     evaluation_period = determine_evaluation_period(payems_observations, unrate_observations)
 
     if evaluation_period is None:
-        # No candidate period at all -- report INSUFFICIENT_DATA
-        # against `date.min`-anchored empty evidence lists is
-        # misleading (it would claim a specific, fabricated
-        # evaluation month); instead both sub-results carry no
-        # evidence at all, which is the honest reflection of "not
-        # even a candidate period could be chosen."
-        employment = EmploymentResult(
-            current_3m_avg_jobs=None,
-            prior_3m_avg_jobs=None,
-            momentum_delta_jobs=None,
-            condition_deadband_jobs=condition_deadband_jobs,
-            momentum_deadband_jobs=momentum_deadband_jobs,
-            condition="INSUFFICIENT_DATA",
-            momentum="INSUFFICIENT_DATA",
-            state="INSUFFICIENT_DATA",
-            observations=[],
-        )
-        unemployment = UnemploymentResult(
-            current_3m_avg=None,
-            prior_year_3m_avg=None,
-            delta_pp=None,
-            unemployment_deadband_pp=unemployment_deadband_pp,
-            state="INSUFFICIENT_DATA",
-            observations=[],
-        )
-        return LaborMonitorResult(
-            state="INSUFFICIENT_DATA",
-            evaluation_period=None,
-            employment=employment,
-            unemployment=unemployment,
-        )
+        return _insufficient_labor_monitor_result(condition_deadband_jobs, momentum_deadband_jobs, unemployment_deadband_pp)
 
-    employment = compute_employment_result(payems_index, evaluation_period, condition_deadband_jobs, momentum_deadband_jobs)
-    unemployment = compute_unemployment_result(unrate_index, evaluation_period, unemployment_deadband_pp)
-    state = combine_labor_state(employment.state, unemployment.state)
-
-    return LaborMonitorResult(
-        state=state,
-        evaluation_period=evaluation_period,
-        employment=employment,
-        unemployment=unemployment,
+    return compute_labor_monitor_result_at(
+        payems_observations,
+        unrate_observations,
+        evaluation_period,
+        condition_deadband_jobs,
+        momentum_deadband_jobs,
+        unemployment_deadband_pp,
     )

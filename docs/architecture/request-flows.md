@@ -1695,3 +1695,92 @@ genuine database/infrastructure failure produces a non-`200` response.
 `FREDClient`, and imports no AI module anywhere in its call graph —
 checked structurally, not just by convention (see
 `tests/test_labor_architecture.py`).
+
+## Flow 36 — Labor What Changed (`labor_what_changed_v1.0`, Increment #20C.2)
+
+`GET /api/v1/monitors/labor/changes` reads only from PostgreSQL, for
+the exact same two canonical series as Flow 35. It computes a single
+**month-over-month** comparison against
+[research/labor_momentum/LABOR_WHAT_CHANGED_V1_FROZEN_METHODOLOGY.md](../../research/labor_momentum/LABOR_WHAT_CHANGED_V1_FROZEN_METHODOLOGY.md):
+unlike Inflation's own What Changed flow (Flow 24), Labor has exactly
+ONE shared `evaluation_period` for both owners, so there is no
+per-section period selection — `month_over_month_labor_periods`
+computes the one `(previous_period, current_period)` pair, reused by
+every section.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/labor.py)
+    participant S as LaborMonitorService
+    participant SS as session_scope()
+    participant Repo as SeriesRepository
+    participant DB as PostgreSQL
+    participant D as app.domain.labor (pure)
+    participant W as app.domain.labor_what_changed (pure)
+
+    C->>R: GET /api/v1/monitors/labor/changes
+    R->>R: database_url present?
+    R->>SS: enter session_scope()
+    R->>S: get_what_changed_result(session)
+    loop for each of PAYEMS, UNRATE
+        S->>Repo: get_series_by_series_id / get_observations_in_range
+        Repo->>DB: SELECT ...
+        DB-->>Repo: rows (or none -- observations = [], never an error)
+        Repo-->>S: list[Observation]
+    end
+    S->>D: month_over_month_labor_periods(payems_obs, unrate_obs)
+    Note over D: current_period = determine_evaluation_period(...) (unmodified,<br/>Flow 35's own rule); previous_period = month_before(current_period, 1) --<br/>exact calendar month, never searched backward
+    D-->>S: (previous_period, current_period)
+    alt current_period is None
+        S->>D: compute_labor_monitor_result(payems_obs, unrate_obs, deadbands...)
+        Note over D: the ONE degenerate/INSUFFICIENT_DATA result,<br/>reused for BOTH sides -- no second period to compute a distinct "previous" from
+        D-->>S: LaborMonitorResult (INSUFFICIENT_DATA)
+    else current_period is not None
+        S->>D: compute_labor_monitor_result_at(payems_obs, unrate_obs, previous_period, ...)
+        D-->>S: LaborMonitorResult (previous)
+        S->>D: compute_labor_monitor_result_at(payems_obs, unrate_obs, current_period, ...)
+        D-->>S: LaborMonitorResult (current)
+    end
+    Note over S,W: comparison -- the ONLY step touching app.domain.labor_what_changed
+    S->>W: compare_employment_section(previous_period, current_period, prev.employment, curr.employment)
+    W-->>S: EmploymentSectionChanges
+    S->>W: compare_unemployment_section(previous_period, current_period, prev.unemployment, curr.unemployment)
+    W-->>S: UnemploymentSectionChanges
+    S->>W: compare_labor_state(previous_period, current_period, prev.state, curr.state)
+    W-->>S: list[LaborChangeEvent]
+    Note over W: pure diffing only -- W never imports app.domain.labor<br/>(enforced by both an import guard and an AST-level<br/>no-hardcoded-deadband-literal guard)
+    S->>W: assemble_labor_what_changed_result(...)
+    W-->>S: LaborWhatChangedResult
+    S-->>R: LaborWhatChangedResult
+    R->>SS: exit session_scope() normally
+    R-->>C: 200 JSON (employment_changes, unemployment_changes,<br/>flattened ordered `changes`, summary flags)
+```
+
+Missing or insufficient labor data is **not** an error: when neither
+series has any persisted observation at all,
+`comparison_available: false` with `previous_period`/`current_period:
+null` and `previous_labor_state`/`current_labor_state:
+"INSUFFICIENT_DATA"` (the real enum member, never a bare `null`) is
+returned inside a normal `200` response — the identical
+infrastructure-vs-economic-data distinction Flow 24/35 already
+establish. Only a genuine database/infrastructure failure produces a
+non-`200` response.
+
+| Scenario | Where it's caught | HTTP status |
+|---|---|---|
+| `DATABASE_URL` not configured | Checked in the route before a session is opened | `503` |
+| Database unreachable | `OperationalError` | `503` |
+| Any other database-layer failure | `SQLAlchemyError` | `500` |
+| Neither PAYEMS nor UNRATE persisted at all | *(no exception)* | `200`, `comparison_available: false` |
+| The current period's PAYEMS window loses a required month (e.g. the anchor's own value goes null) | *(no exception — `employment_changes.availability_lost: true`; `LABOR.state` co-occurring loss from the same root cause, reported independently)* | `200` |
+| `EMPLOYMENT.condition`/`momentum` change without `EMPLOYMENT.state` changing (or vice versa) | *(no exception — each reported as its own `STATE_CHANGED` event, discriminated by `field`; never suppressed)* | `200` |
+| The real UNRATE 2025-10 gap falls inside the current OR previous period's required prior-year window | *(no exception — `unemployment_changes.availability_lost`/`restored` fires exactly when the gap enters/exits the window, never one month early or late)* | `200` |
+
+No scenario in this table ever searches backward past the exact
+previous calendar month, substitutes a different series, fetches from
+FRED, triggers ingestion, or calls AI to resolve a gap.
+`LaborMonitorService.get_what_changed_result` has no method that
+accepts or constructs a `FREDClient`, and imports no AI module
+anywhere in its call graph — checked structurally (see
+`tests/test_labor_architecture.py`).

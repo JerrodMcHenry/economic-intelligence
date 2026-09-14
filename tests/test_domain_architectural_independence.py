@@ -22,6 +22,7 @@ DOMAIN_FILES = [
     Path("app/domain/releases.py"),
     Path("app/domain/release_processing.py"),
     Path("app/domain/labor.py"),
+    Path("app/domain/labor_what_changed.py"),
 ]
 
 # Forbidden if an imported module IS one of these, or is a submodule of
@@ -123,3 +124,17 @@ class TestDomainLayerArchitecturalIndependence:
         imported = _imported_module_names(Path("app/domain/labor.py"))
         forbidden = {m for m in imported if m.startswith("app.domain.")}
         assert forbidden == set(), f"app/domain/labor.py must not import another domain module: {forbidden}"
+
+    def test_labor_what_changed_comparator_imports_no_other_domain_module(self):
+        """Increment #20C.2: app/domain/labor_what_changed.py -- the
+        pure `labor_what_changed_v1.0` comparator -- must not import
+        app.domain.labor (or any other domain module). It must not
+        know how PAYEMS/UNRATE math, the 50,000-job/0.2pp deadbands,
+        or the frozen employment/labor state tables work, only how to
+        diff two already-computed canonical evidence objects -- the
+        exact same boundary
+        `test_what_changed_comparator_has_zero_inflation_formula_knowledge`
+        proves for Inflation's own comparator."""
+        imported = _imported_module_names(Path("app/domain/labor_what_changed.py"))
+        forbidden = {m for m in imported if m.startswith("app.domain.")}
+        assert forbidden == set(), f"app/domain/labor_what_changed.py must not import another domain module: {forbidden}"
