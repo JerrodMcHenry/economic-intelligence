@@ -1,13 +1,15 @@
 /**
- * Architectural guard for Increment #19A: the Economic Overview
- * (`pages/Overview.tsx` and every `components/overview/*` file) must
- * remain completely read-only. It may only call the four existing
- * canonical read functions (`getInflationMonitor`/
- * `getInflationWhatChanged`/`fetchUpcomingReleases`/`fetchRecentReleases`)
- * -- never a sync/mutation endpoint, never AI, and never `fetch`
- * directly (every network call must go through an `api/*` client
- * module, the same discipline `no-release-sync-or-coupling.test.ts`
- * already enforces for release-calendar files).
+ * Architectural guard, originally for Increment #19A and extended for
+ * #19C: the Economic Overview (`pages/Overview.tsx` and every
+ * `components/overview/*` file) must remain completely read-only. It
+ * may only call the five documented canonical read functions
+ * (`getInflationMonitor`/`getInflationWhatChanged`/
+ * `fetchReleaseProcessingStatus`/`fetchUpcomingReleases`/
+ * `fetchRecentReleases`) -- never a sync/mutation endpoint, never AI,
+ * and never `fetch` directly (every network call must go through an
+ * `api/*` client module, the same discipline
+ * `no-release-sync-or-coupling.test.ts` already enforces for
+ * release-calendar files).
  *
  * Deliberately narrow and separate from `no-release-sync-or-coupling.test.ts`:
  * that guard only scans files whose path contains "release" (so it
@@ -76,12 +78,18 @@ describe("Economic Overview is read-only", () => {
       expect(contents).not.toMatch(/\bfetch\s*\(/);
     });
 
-    it(`${relativePath} contains no release-processing (#18) identifier -- deferred to #19B/#19C`, () => {
+    it(`${relativePath} references #18's release-processing evidence only through #19B's public contract, never its internal ORM names`, () => {
+      // Increment #19C legitimately surfaces #18's evidence (via
+      // #19B's public `ReleaseProcessingStatusItem`/`DetectedObservationChange`/
+      // `DetectedAnalysisChange` contract) -- but never by naming #18's
+      // own internal persistence-layer classes directly, which would
+      // couple the frontend to implementation detail the public API
+      // contract exists specifically to hide.
       expect(contents).not.toMatch(/ReleaseCheckRun|ReleaseObservationUpdate|ReleaseAnalysisUpdate/);
     });
   }
 
-  it("Overview page imports only the four documented canonical read functions from api/*", () => {
+  it("Overview page imports only the five documented canonical read functions from api/*", () => {
     const contents = readFileSync(OVERVIEW_PAGE, "utf-8");
     const apiImportLines = contents
       .split("\n")
@@ -93,6 +101,7 @@ describe("Economic Overview is read-only", () => {
     const allowed = new Set([
       "getInflationMonitor",
       "getInflationWhatChanged",
+      "fetchReleaseProcessingStatus",
       "fetchUpcomingReleases",
       "fetchRecentReleases",
       "useApiResource",

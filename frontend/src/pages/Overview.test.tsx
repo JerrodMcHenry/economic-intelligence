@@ -1,18 +1,27 @@
 /**
  * Integration-level tests for the Economic Overview product page
- * (Increment #19A). All four canonical read calls
+ * (Increment #19A, extended for #19C). All five canonical read calls
  * (`getInflationMonitor`/`getInflationWhatChanged`/
- * `fetchUpcomingReleases`/`fetchRecentReleases`) are mocked at the
- * module boundary -- no live backend required, the same pattern
- * pages/Inflation.test.tsx and pages/Releases.test.tsx already
- * establish. Wrapped in MemoryRouter since Overview links to
- * `/inflation`/`/releases` via react-router's `Link`.
+ * `fetchReleaseProcessingStatus`/`fetchUpcomingReleases`/
+ * `fetchRecentReleases`) are mocked at the module boundary -- no live
+ * backend required, the same pattern pages/Inflation.test.tsx and
+ * pages/Releases.test.tsx already establish. Wrapped in MemoryRouter
+ * since Overview links to `/inflation`/`/releases` via react-router's
+ * `Link`.
+ *
+ * Detailed "Latest Data Detected" content rendering (status branches,
+ * historical-evidence framing, sibling-structure, truncation) is
+ * covered at the component level in
+ * components/overview/LatestDataDetected.test.tsx -- this file covers
+ * only the integration-level concerns: the fifth resource's
+ * independence, section placement, and page structure.
  */
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 import { getInflationMonitor, getInflationWhatChanged } from "../api/inflation";
+import { fetchReleaseProcessingStatus } from "../api/processingStatus";
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
 import {
   buildChangeEvent,
@@ -20,12 +29,16 @@ import {
   buildMonitor,
   buildWhatChanged,
 } from "../test/fixtures/inflation";
+import { buildLatestCheck, buildReleaseProcessingStatusItem, buildReleaseProcessingStatusResponse } from "../test/fixtures/processingStatus";
 import { buildReleaseListResponse, buildReleaseOccurrenceItem } from "../test/fixtures/releases";
 import { OverviewPage } from "./Overview";
 
 vi.mock("../api/inflation", () => ({
   getInflationMonitor: vi.fn(),
   getInflationWhatChanged: vi.fn(),
+}));
+vi.mock("../api/processingStatus", () => ({
+  fetchReleaseProcessingStatus: vi.fn(),
 }));
 vi.mock("../api/releases", () => ({
   fetchUpcomingReleases: vi.fn(),
@@ -34,12 +47,14 @@ vi.mock("../api/releases", () => ({
 
 const mockedGetMonitor = vi.mocked(getInflationMonitor);
 const mockedGetWhatChanged = vi.mocked(getInflationWhatChanged);
+const mockedFetchProcessingStatus = vi.mocked(fetchReleaseProcessingStatus);
 const mockedFetchUpcoming = vi.mocked(fetchUpcomingReleases);
 const mockedFetchRecent = vi.mocked(fetchRecentReleases);
 
 beforeEach(() => {
   mockedGetMonitor.mockReset();
   mockedGetWhatChanged.mockReset();
+  mockedFetchProcessingStatus.mockReset();
   mockedFetchUpcoming.mockReset();
   mockedFetchRecent.mockReset();
 });
@@ -47,11 +62,13 @@ beforeEach(() => {
 function resolveAll(overrides: {
   monitor?: ReturnType<typeof buildMonitor>;
   whatChanged?: ReturnType<typeof buildWhatChanged>;
+  processingStatus?: ReturnType<typeof buildReleaseProcessingStatusResponse>;
   upcoming?: ReturnType<typeof buildReleaseListResponse>;
   recent?: ReturnType<typeof buildReleaseListResponse>;
 } = {}) {
   mockedGetMonitor.mockResolvedValue(overrides.monitor ?? buildMonitor());
   mockedGetWhatChanged.mockResolvedValue(overrides.whatChanged ?? buildWhatChanged());
+  mockedFetchProcessingStatus.mockResolvedValue(overrides.processingStatus ?? buildReleaseProcessingStatusResponse({ occurrences: [] }));
   mockedFetchUpcoming.mockResolvedValue(overrides.upcoming ?? buildReleaseListResponse({ releases: [] }));
   mockedFetchRecent.mockResolvedValue(overrides.recent ?? buildReleaseListResponse({ releases: [] }));
 }
@@ -70,15 +87,16 @@ async function findSection(name: string) {
 }
 
 describe("loading", () => {
-  it("shows a stable loading state for all four sections with no fabricated data", () => {
+  it("shows a stable loading state for all five sections with no fabricated data", () => {
     mockedGetMonitor.mockReturnValue(new Promise(() => {}));
     mockedGetWhatChanged.mockReturnValue(new Promise(() => {}));
+    mockedFetchProcessingStatus.mockReturnValue(new Promise(() => {}));
     mockedFetchUpcoming.mockReturnValue(new Promise(() => {}));
     mockedFetchRecent.mockReturnValue(new Promise(() => {}));
 
     renderPage();
 
-    expect(screen.getAllByRole("status").length).toBeGreaterThanOrEqual(4);
+    expect(screen.getAllByRole("status").length).toBeGreaterThanOrEqual(5);
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 });
@@ -221,6 +239,31 @@ describe("What Changed", () => {
   });
 });
 
+describe("Latest Data Detected", () => {
+  it("is its own independent fifth resource: renders real backend evidence between What Changed and Releases", async () => {
+    resolveAll({
+      processingStatus: buildReleaseProcessingStatusResponse({
+        occurrences: [buildReleaseProcessingStatusItem({ latest_check: buildLatestCheck({ status: "CHANGES_DETECTED" }) })],
+      }),
+    });
+    renderPage();
+
+    const section = await findSection("Latest Data Detected");
+    expect(within(section).getByText("Data changes detected.")).toBeInTheDocument();
+
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
+    expect(headings).toEqual(["Current State", "What Changed", "Latest Data Detected", "Releases"]);
+  });
+
+  it("shows the empty-state message when the backend returns zero mapped occurrences", async () => {
+    resolveAll({ processingStatus: buildReleaseProcessingStatusResponse({ occurrences: [] }) });
+    renderPage();
+
+    const section = await findSection("Latest Data Detected");
+    expect(within(section).getByText("No tracked release processing records are available yet.")).toBeInTheDocument();
+  });
+});
+
 describe("Releases", () => {
   it("THE RELEASE-ORDERING TEST: shows the first 3 upcoming occurrences in backend response order, never reordered", async () => {
     const releases = [
@@ -312,33 +355,67 @@ describe("Releases", () => {
 });
 
 describe("partial failure isolation", () => {
-  it("Inflation monitor fails; What Changed and Releases still render", async () => {
+  it("Inflation monitor fails; What Changed, Latest Data Detected, and Releases still render", async () => {
     mockedGetMonitor.mockRejectedValue(new Error("network down"));
     mockedGetWhatChanged.mockResolvedValue(buildWhatChanged());
+    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
     mockedFetchUpcoming.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
     mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
     renderPage();
 
     expect(await screen.findByText("Inflation data could not be loaded.")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "What Changed" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Latest Data Detected" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Releases" })).toBeInTheDocument();
   });
 
-  it("What Changed fails; Current State and Releases still render", async () => {
+  it("What Changed fails; Current State, Latest Data Detected, and Releases still render", async () => {
     mockedGetMonitor.mockResolvedValue(buildMonitor());
     mockedGetWhatChanged.mockRejectedValue(new Error("network down"));
+    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
     mockedFetchUpcoming.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
     mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
     renderPage();
 
     expect(await screen.findByText("What changed could not be loaded.")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Current State" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Latest Data Detected" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Releases" })).toBeInTheDocument();
   });
 
-  it("Upcoming releases fail; Current State, What Changed, and Recent still render", async () => {
+  it("Release-processing status fails; Current State, What Changed, and Releases still render normally", async () => {
     mockedGetMonitor.mockResolvedValue(buildMonitor());
     mockedGetWhatChanged.mockResolvedValue(buildWhatChanged());
+    mockedFetchProcessingStatus.mockRejectedValue(new Error("network down"));
+    mockedFetchUpcoming.mockResolvedValue(buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem()] }));
+    mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
+    renderPage();
+
+    expect(await screen.findByText("Release-processing status is temporarily unavailable.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Current State" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "What Changed" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Releases" })).toBeInTheDocument();
+    expect(await screen.findByText("Consumer Price Index")).toBeInTheDocument();
+  });
+
+  it("Latest Data Detected still renders when every OTHER resource fails", async () => {
+    mockedGetMonitor.mockRejectedValue(new Error("down"));
+    mockedGetWhatChanged.mockRejectedValue(new Error("down"));
+    mockedFetchProcessingStatus.mockResolvedValue(
+      buildReleaseProcessingStatusResponse({ occurrences: [buildReleaseProcessingStatusItem({ latest_check: buildLatestCheck({ status: "NO_CHANGE" }) })] }),
+    );
+    mockedFetchUpcoming.mockRejectedValue(new Error("down"));
+    mockedFetchRecent.mockRejectedValue(new Error("down"));
+    renderPage();
+
+    const section = await findSection("Latest Data Detected");
+    expect(within(section).getByText("No new data detected in the latest check.")).toBeInTheDocument();
+  });
+
+  it("Upcoming releases fail; Current State, What Changed, Latest Data Detected, and Recent still render", async () => {
+    mockedGetMonitor.mockResolvedValue(buildMonitor());
+    mockedGetWhatChanged.mockResolvedValue(buildWhatChanged());
+    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
     mockedFetchUpcoming.mockRejectedValue(new Error("network down"));
     mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem()] }));
     renderPage();
@@ -346,12 +423,14 @@ describe("partial failure isolation", () => {
     expect(await screen.findByText("Upcoming releases could not be loaded.")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Current State" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "What Changed" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Latest Data Detected" })).toBeInTheDocument();
     expect(await screen.findByText("Consumer Price Index")).toBeInTheDocument();
   });
 
   it("Recent releases fail; Upcoming still renders", async () => {
     mockedGetMonitor.mockResolvedValue(buildMonitor());
     mockedGetWhatChanged.mockResolvedValue(buildWhatChanged());
+    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
     mockedFetchUpcoming.mockResolvedValue(
       buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ name: "Advance Retail Sales" })] }),
     );
@@ -365,12 +444,14 @@ describe("partial failure isolation", () => {
   it("never renders a single Promise.all-style page-level failure -- each error is local to its own section", async () => {
     mockedGetMonitor.mockRejectedValue(new Error("down"));
     mockedGetWhatChanged.mockRejectedValue(new Error("down"));
+    mockedFetchProcessingStatus.mockRejectedValue(new Error("down"));
     mockedFetchUpcoming.mockRejectedValue(new Error("down"));
     mockedFetchRecent.mockRejectedValue(new Error("down"));
     renderPage();
 
     expect(await screen.findByText("Inflation data could not be loaded.")).toBeInTheDocument();
     expect(await screen.findByText("What changed could not be loaded.")).toBeInTheDocument();
+    expect(await screen.findByText("Release-processing status is temporarily unavailable.")).toBeInTheDocument();
     expect(await screen.findByText("Upcoming releases could not be loaded.")).toBeInTheDocument();
     expect(await screen.findByText("Recent releases could not be loaded.")).toBeInTheDocument();
     // Still exactly one page title, not a blanked/crashed page.
@@ -401,7 +482,7 @@ describe("page structure", () => {
 
     await screen.findByRole("heading", { name: "Current State" });
     expect(screen.getByRole("heading", { level: 1, name: "Economic Overview" })).toBeInTheDocument();
-    for (const name of ["Current State", "What Changed", "Releases"]) {
+    for (const name of ["Current State", "What Changed", "Latest Data Detected", "Releases"]) {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     }
   });

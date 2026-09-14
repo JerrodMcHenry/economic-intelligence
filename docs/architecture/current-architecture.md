@@ -505,7 +505,7 @@ structurally, not just by convention, and were each verified directly
   same, unmodified `EconomicDataService`/`AnalysisService` methods every
   HTTP endpoint already uses.
 
-## Frontend architecture (Increment #19A: Economic Overview UI V1)
+## Frontend architecture (Increment #19A: Economic Overview UI V1; extended #19C: Latest Data Detected UI)
 
 ```
 Browser
@@ -763,17 +763,18 @@ establishing the pattern for later features to reuse rather than
 applying it to every existing page in this increment.
 
 **The Economic Overview page** (`frontend/src/pages/Overview.tsx`,
-Increment #19A) is the real `/` route, replacing the Increment #16A
-placeholder. It composes exactly four existing, unmodified canonical
-read functions — `getInflationMonitor`/`getInflationWhatChanged`/
-`fetchUpcomingReleases`/`fetchRecentReleases` — each through its own
-independent `useApiResource` call, the identical pattern `/inflation`
-already established for two resources. There is deliberately **no**
-`GET /api/v1/overview` aggregate endpoint and no `Promise.all`: a
-failure in any one resource never blanks, blocks, or fabricates any of
-the other three (proven directly by dedicated partial-failure tests,
-one per resource, including all four failing at once). Hierarchy is
-Current State → What Changed → Releases. `components/overview/CurrentStateSection.tsx`
+Increment #19A, extended by #19C) is the real `/` route, replacing the
+Increment #16A placeholder. It composes five existing, unmodified
+canonical read functions — `getInflationMonitor`/`getInflationWhatChanged`/
+`fetchReleaseProcessingStatus`/`fetchUpcomingReleases`/`fetchRecentReleases`
+— each through its own independent `useApiResource` call, the identical
+pattern `/inflation` already established for two resources. There is
+deliberately **no** `GET /api/v1/overview` aggregate endpoint and no
+`Promise.all`: a failure in any one resource never blanks, blocks, or
+fabricates any of the other four (proven directly by dedicated
+partial-failure tests, one per resource, including all five failing at
+once). Hierarchy is Current State → What Changed → Latest Data Detected
+→ Releases (NOW → CHANGED → DETECTED → NEXT). `components/overview/CurrentStateSection.tsx`
 is a small, purpose-built presentation component — not `InflationHero`
 reused wholesale, which would have made Overview a second `/inflation`
 — showing only the state Badge, an explicit "Inflation" label beside it
@@ -796,15 +797,44 @@ and at most 1 recent occurrence as a compact line, reusing `ReleaseDateBadge`/
 schedule disclosure sentence, previously hardcoded inline only in
 `pages/Releases.tsx`, was extracted into a new shared
 `components/releases/ReleaseScheduleDisclosure.tsx` so both pages
-render the identical sentence. A new, narrowly-scoped
+render the identical sentence. A narrowly-scoped
 `test/no-overview-mutation.test.ts` proves every Overview file imports
 no AI/news module, references no sync/process endpoint, never calls
 `fetch` directly, and (for `pages/Overview.tsx` specifically) imports
-only the four documented read functions from `api/*` — Increment #18's
-release-processing evidence is deliberately not surfaced anywhere on
-this page yet; that requires a read-only endpoint that doesn't exist
-today (see [docs/architecture/release-processing-v1.md](./release-processing-v1.md)),
-and is deferred to a future increment.
+only the five documented read functions from `api/*`.
+
+**Latest Data Detected** (`components/overview/LatestDataDetected.tsx`,
+Increment #19C) is the first frontend surface for #18's release-driven
+evidence, consuming #19B's `GET /api/v1/releases/processing-status`
+exclusively through its public contract — never #18's internal ORM
+names (checked structurally; see `no-overview-mutation.test.ts`'s
+extended guard). It shows ONE occurrence, chosen by a deterministic
+PRODUCT priority rule (`lib/selectLatestDataDetected.ts`:
+`CHANGES_DETECTED` > `PARTIAL_CHECK` > `CHECK_FAILED` > `NO_CHANGE` >
+`NOT_CHECKED`, preserving the backend's own order within one tier) —
+not "the most recently scheduled occurrence," since #18/#19B processing
+is manual-only and the most-recently-scheduled item is almost always
+an uninformative future `NOT_CHECKED` row. `latest_check.status` alone
+drives the primary message (`lib/detectedChangeFormat.ts`'s
+`processingStatusLabel`); historical `detected_observation_changes`/
+`detected_analysis_changes` are shown separately and, for `NO_CHANGE`/
+`CHECK_FAILED` specifically, explicitly framed as "earlier" evidence —
+proven with a contradictory-fixture regression test (a `NO_CHANGE`
+item carrying real historical evidence must still show "No new data
+detected," never switch to "Data changes detected"). The two evidence
+lists render as sibling groups, "Source data changes"/"Tracked
+analysis changes," never nested and never implying causation between
+them (see [ADR-023](../adr/023-release-processing-read-model-no-causal-nesting.md)).
+`api/processingStatus.ts`/`.types.ts`, `lib/detectedChangeFormat.ts`,
+`lib/selectLatestDataDetected.ts`, and `content/explanations/processingStatus.ts`
+deliberately avoid the substring "release" in their file paths — an
+import-boundary necessity, not a naming preference: `DetectedAnalysisChange`
+reuses Inflation's own `ChangeComponent`/`ChangeEventType` vocabulary
+and label maps, and `test/no-release-sync-or-coupling.test.ts` forbids
+any "release"-pathed file from importing anything Inflation-shaped
+(the same reason `pages/Overview.tsx` itself avoids that substring —
+see that guard's own docstring). Zero backend changes — this endpoint
+already existed (#19B); #19C only adds a consumer.
 
 **Local development** (see [Flow 26](./request-flows.md#flow-26--frontend-local-development-proxy-increment-16a)):
 the Vite dev server proxies `/api/*` requests to
@@ -1085,3 +1115,15 @@ siblings, never nested by causality (ADR-023); `successful_series_count`/
 `failed_series_count` are omitted from V1, not approximated (not
 reconstructable from persisted data alone). Zero frontend production
 changes in this increment — no consumer of this endpoint exists yet.
+
+**Increment #19C (Latest Data Detected UI)** is that consumer —
+frontend-only, zero backend changes (confirmed by an unchanged
+854-passed/0-skipped backend regression run). See "Latest Data
+Detected" above for the component's own design (deterministic
+status-priority item selection, backend-status-controls-the-message,
+sibling not nested evidence groups) and
+docs/ENGINEERING_JOURNAL.md's #19C entry for the full account,
+including a real bug (a dangling empty section heading for the common
+`NOT_CHECKED`-with-no-evidence case) caught only by live visual review
+against a real, freshly-migrated dev database, not by the 487 passing
+jsdom tests — fixed, with a permanent regression test added.

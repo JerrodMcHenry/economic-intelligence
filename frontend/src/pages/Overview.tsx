@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
 
 import { getInflationMonitor, getInflationWhatChanged } from "../api/inflation";
+import { fetchReleaseProcessingStatus } from "../api/processingStatus";
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
 import { useApiResource } from "../api/useApiResource";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { CurrentStateSection } from "../components/overview/CurrentStateSection";
+import { LatestDataDetected } from "../components/overview/LatestDataDetected";
 import { RecentReleasePreview } from "../components/overview/RecentReleasePreview";
 import { UpcomingReleasesPreview } from "../components/overview/UpcomingReleasesPreview";
 import { WhatChangedPreview } from "../components/overview/WhatChangedPreview";
@@ -13,6 +15,7 @@ import { ReleaseScheduleDisclosure } from "../components/releases/ReleaseSchedul
 
 const MONITOR_ERROR_MESSAGE = "Inflation data could not be loaded.";
 const CHANGES_ERROR_MESSAGE = "What changed could not be loaded.";
+const PROCESSING_STATUS_ERROR_MESSAGE = "Release-processing status is temporarily unavailable.";
 const UPCOMING_ERROR_MESSAGE = "Upcoming releases could not be loaded.";
 const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
 
@@ -29,17 +32,20 @@ const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
  * section (see docs/ENGINEERING_JOURNAL.md's #19A entry for why an
  * aggregate endpoint was deliberately not built).
  *
- * Hierarchy: Current State -> What Changed -> Releases. This page
- * composes and formats only -- it never recalculates a metric,
- * reclassifies a state, derives economic significance, ranks
- * importance, or infers publication/data availability. Increment #18's
- * release-driven detected-change/analytical-consequence evidence is
- * deliberately NOT surfaced here -- that is #19B/#19C's job, once a
- * read-only endpoint for it exists (none does today).
+ * Hierarchy: Current State -> What Changed -> Latest Data Detected ->
+ * Releases (NOW -> CHANGED -> DETECTED -> NEXT). This page composes
+ * and formats only -- it never recalculates a metric, reclassifies a
+ * state, derives economic significance, ranks importance, or infers
+ * publication/data availability. Increment #19C adds the fifth
+ * independent resource, `fetchReleaseProcessingStatus` (Increment
+ * #19B's `GET /api/v1/releases/processing-status`), surfacing #18's
+ * release-driven detected-change/analytical-consequence evidence for
+ * the first time -- see components/overview/LatestDataDetected.tsx.
  */
 export function OverviewPage() {
   const monitor = useApiResource(getInflationMonitor);
   const whatChanged = useApiResource(getInflationWhatChanged);
+  const processingStatus = useApiResource(fetchReleaseProcessingStatus);
   const upcoming = useApiResource(fetchUpcomingReleases);
   const recent = useApiResource(fetchRecentReleases);
 
@@ -60,6 +66,15 @@ export function OverviewPage() {
         {whatChanged.status === "loading" && <LoadingSkeleton label="Loading what changed" heightClassName="h-24" />}
         {whatChanged.status === "error" && <ErrorMessage message={CHANGES_ERROR_MESSAGE} onRetry={whatChanged.reload} />}
         {whatChanged.status === "success" && <WhatChangedPreview events={whatChanged.data.changes} />}
+
+        {/* Latest Data Detected */}
+        {processingStatus.status === "loading" && (
+          <LoadingSkeleton label="Loading latest data detected" heightClassName="h-32" />
+        )}
+        {processingStatus.status === "error" && (
+          <ErrorMessage message={PROCESSING_STATUS_ERROR_MESSAGE} onRetry={processingStatus.reload} />
+        )}
+        {processingStatus.status === "success" && <LatestDataDetected items={processingStatus.data.occurrences} />}
 
         {/* Releases -- one section, two independently-loading parts */}
         <section aria-labelledby="overview-releases-heading">

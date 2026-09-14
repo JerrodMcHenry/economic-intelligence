@@ -7,7 +7,7 @@
  * direction, per the frozen contract's own requirement that missing
  * evidence must never look like an economic conclusion.
  */
-import type { ChangeComponent, ConfirmationRelationship, InflationState } from "../api/inflation.types";
+import type { ChangeComponent, ChangeEventType, ConfirmationRelationship, InflationState } from "../api/inflation.types";
 
 export type Tone = "cool" | "neutral" | "warm" | "caution" | "unavailable";
 
@@ -106,6 +106,26 @@ export const CHANGE_FIELD_LABELS: Record<string, string> = {
 
 export function changeFieldLabel(field: string): string {
   return CHANGE_FIELD_LABELS[field] ?? field;
+}
+
+/**
+ * Labels for `ChangeEvent.event_type` (Increment #16B) and
+ * `DetectedAnalysisChange.event_type` (Increment #19C -- reuses this
+ * exact type, see api/processingStatus.types.ts's own docstring for
+ * why). Added here rather than in a separate #19C-only module so every
+ * `ChangeComponent`/`ChangeEventType` label lookup stays in this one
+ * canonical place, regardless of which increment's UI consumes it.
+ */
+export const CHANGE_EVENT_TYPE_LABELS: Record<ChangeEventType, string> = {
+  METRIC_CHANGED: "Metric changed",
+  STATE_CHANGED: "State changed",
+  AVAILABILITY_LOST: "Availability lost",
+  AVAILABILITY_RESTORED: "Availability restored",
+  CONFIRMATION_CHANGED: "Confirmation changed",
+};
+
+export function changeEventTypeLabel(eventType: ChangeEventType): string {
+  return CHANGE_EVENT_TYPE_LABELS[eventType];
 }
 
 /**

@@ -6897,3 +6897,211 @@ persisted causal link between a specific observation change and a
 specific analysis change (see ADR-023 -- would require a #18 write-path
 change, not a #19B read-model one); any recomputation, reclassification,
 or economic-significance judgment inside the read path itself.
+
+## Increment #19C — Latest Data Detected UI
+
+Frontend-only: the first UI consumer of #19B's read model. Overview's
+hierarchy becomes Current State -> What Changed -> Latest Data
+Detected -> Releases (NOW -> CHANGED -> DETECTED -> NEXT). Zero
+backend production changes -- confirmed directly (`git status` shows
+every change confined to `frontend/`) and by an unchanged
+854-passed/0-skipped backend regression run, twice.
+
+### A fifth independent resource, not a sixth section on an existing one
+
+`fetchReleaseProcessingStatus` (`GET /api/v1/releases/processing-status`)
+is loaded via its own `useApiResource` call in `pages/Overview.tsx`,
+completely independent of the other four -- no `Promise.all`, no
+aggregate endpoint, loading/error handled inline exactly like the
+other four sections. One resource failing never blocks or blanks any
+other; a dedicated live check confirmed this against the real dev
+backend (see "Visual review" below): with the endpoint genuinely
+returning 500, the rest of Overview rendered normally and the section
+showed only "Release-processing status is temporarily unavailable.",
+no console error, no crash.
+
+### Where the new code lives, and why (an import-boundary constraint, not a naming preference)
+
+`api/processingStatus.ts`/`.types.ts`, `lib/detectedChangeFormat.ts`,
+`lib/selectLatestDataDetected.ts`, `content/explanations/processingStatus.ts`,
+and `components/overview/LatestDataDetected.tsx` deliberately never put
+the substring "release" in a file path. This is not a stylistic choice:
+`test/no-release-sync-or-coupling.test.ts` forbids any file whose path
+contains "release" from importing `lib/inflationLabels`/`api/inflation`
+-- and #19C's whole reason to exist is rendering `DetectedAnalysisChange`
+evidence that reuses Inflation's own `ChangeComponent`/`ChangeEventType`
+vocabulary and label maps verbatim (mirroring the backend's own #18
+`app/services/release_processing.py` bridge). `pages/Overview.tsx`/
+`CurrentStateSection.tsx`/`WhatChangedPreview.tsx` already established
+this exact pattern in #19A for the identical reason (see that guard's
+own docstring). `api/processingStatus.types.ts` imports `ChangeComponent`/
+`ChangeEventType` directly from `api/inflation.types.ts` rather than
+forking a parallel enum -- the backend's own `DetectedAnalysisChange`
+model does the identical thing.
+
+### Backend-status-controls-the-message, always -- proven with a contradictory fixture
+
+`latest_check.status` -- and only that field -- drives the primary
+status line (`processingStatusLabel`); historical
+`detected_observation_changes`/`detected_analysis_changes` are never
+inspected to override it. The required contradictory-evidence
+regression test constructs a `NO_CHANGE` item carrying real historical
+observation AND analysis evidence (simulating exactly the retry
+scenario #19B's own read model exists to preserve) and asserts the
+section still says "No new data detected in the latest check." --
+never "Data changes detected." -- while still showing the older
+evidence, explicitly labeled "Earlier changes were detected for this
+release occurrence." The same "earlier evidence" framing applies to
+`CHECK_FAILED`, since a failed run adds no rows of its own by
+construction (`_determine_status`'s own logic) -- so labeling
+pre-existing evidence as "earlier" there is a true inference from the
+status alone, not a guess.
+
+### Deterministic UI selection rule (`lib/selectLatestDataDetected.ts`)
+
+The backend orders its response `scheduled_date DESC`, but #18/#19B
+processing is manual-only (no scheduler) -- so "first item exactly as
+returned" would almost always show a boring, uninformative future
+`NOT_CHECKED` row and bury real detected evidence beneath it. #19C
+instead ranks by `latest_check.status` priority (`CHANGES_DETECTED` >
+`PARTIAL_CHECK` > `CHECK_FAILED` > `NO_CHANGE` > `NOT_CHECKED`),
+preserving the backend's own order within one tier -- a documented
+PRODUCT priority rule using only the already-returned `status` field,
+never a date computation or economic ranking. Because the selected
+item is not always the most-recently-scheduled one, the section never
+says "latest release" -- only "Most recent detected update."
+
+### Sibling structure, no causal language (ADR-023 extended to the UI)
+
+`detected_observation_changes`/`detected_analysis_changes` render as
+two separate headed groups, "Source data changes" and "Tracked
+analysis changes" -- never nested, never a `detected_change` wrapper.
+A dedicated regression test asserts neither group's DOM contains the
+other, and that no rendered text anywhere matches "caused"/"because
+of"/"impact of this revision"/"resulting analysis change". When
+observation changes exist but analysis changes don't, the copy is "No
+tracked Inflation evidence changed during this processing history." --
+deliberately scoped to the whole occurrence's history, never "this
+check," since #19B's response doesn't expose which run an update
+belongs to.
+
+### A schedule_status gap #19B's own contract doesn't cover, resolved honestly
+
+The spec's suggested NOT_CHECKED copy distinguishes SCHEDULED vs.
+PAST_DUE occurrences -- but `ReleaseProcessingStatusItem` deliberately
+has no `schedule_status` field (see
+`app/models/release_processing_read.py`'s own docstring), and deriving
+it client-side from a raw date comparison would violate this project's
+standing rule that schedule-status classification is backend-owned,
+never recomputed (see `lib/releases.ts`'s own docstring). #19C uses the
+one wording the spec itself names as acceptable for BOTH cases -- "Not
+yet checked by Economic Intelligence." -- uniformly, rather than
+inventing the distinction. Not a stop condition: a real product need
+for the SCHEDULED/PAST_DUE distinction here is the trigger to add
+`schedule_status` to a future version of #19B's contract deliberately,
+not to guess at it now.
+
+### Value formatting stays conservative
+
+`formatObservationValue` appends "%" only when the backend's own
+`EconomicSeries.units` string says "percent" -- an index-level or
+dollar-denominated value renders as a plain formatted number, never
+converted, annualized, or normalized. `formatAnalysisValue` shows a
+`DetectedAnalysisChange.previous_value`/`current_value` (persisted
+strings) exactly as stored, reinterpreted only for the two enum-shaped
+fields ("state"/"relationship") this project already has a canonical
+label map for. `NEW`/`REVISED` map to "New observation"/"Revision
+detected" only -- never "Published"/"Released"/"Corrected"/"Finalized".
+
+### Dates and timestamps
+
+`scheduled_date`/`observation_date`/`evaluation_period` reuse
+`lib/releases.ts`'s existing digit-parsing `formatFullDate` (never
+`new Date(dateOnlyString)`, which can roll a date back a day in
+timezones behind UTC). `latest_check.checked_at` is a NEW case this
+project hadn't needed before -- a full, timezone-aware ISO datetime,
+safe to parse via `new Date(...)` (unlike a bare date) -- formatted by
+a new `formatCheckedAt` helper with no seconds, avoiding false
+precision.
+
+### Tests
+
+55 new frontend tests (487 total, up from 432 -- some of that delta is
+the two existing architectural guards' automatic recursive pickup of
+6 new source files, zero edits needed to either guard, the same
+pattern #19A's own journal entry describes): 20 in
+`components/overview/LatestDataDetected.test.tsx` (every one of the
+five statuses, the contradictory-evidence regression, the
+no-causal-nesting regression, NEW/REVISED copy, order/truncation for
+both change lists, date-shift regression, methodology/data-basis
+disclosure, and the empty-groups regression described below); 6
+integration-level additions to `pages/Overview.test.tsx` (fifth-resource
+independence and placement, empty state, and failure isolation in both
+directions -- the new resource failing alone, and it succeeding while
+every other resource fails); unit tests for `lib/selectLatestDataDetected.ts`,
+`lib/detectedChangeFormat.ts`, `content/explanations/processingStatus.ts`,
+and `api/processingStatus.ts`. `test/no-overview-mutation.test.ts`'s
+own allowlist and one previously-"deferred" assertion were updated (not
+weakened -- see "Where the new code lives" above and this file's own
+updated doc comments) to reflect that #19C is the increment where #18's
+evidence legitimately reaches the browser, through #19B's public
+contract only.
+
+One real bug was caught by live visual review, not by the 487 passing
+jsdom tests: with a `NOT_CHECKED` item (no observation or analysis
+evidence at all -- the actual common case, confirmed live against real
+dev data), the component rendered a dangling "Tracked analysis
+changes" heading with nothing under it, because that group's wrapping
+`<div>` was gated on `analysisChanges.length > 0` internally rather
+than on whether either evidence list had anything to show. Every
+existing jsdom test happened to exercise a scenario where at least one
+list was non-empty. Fixed by gating the whole group on
+`analysisChanges.length > 0 || observationChanges.length > 0`, with a
+new regression test added specifically for the empty-both case.
+
+### Verification
+
+Frontend: `npx vitest run`, run twice: **487 passed** both times.
+`npm run typecheck`, `npm run lint`, `npm run build`: all clean.
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run twice: **854
+passed**, 0 skipped -- unchanged, confirming zero backend impact.
+
+### Visual review
+
+Checked live in a real browser against the running dev backend. The
+dev database was found not migrated past an old #17A-era revision
+(missing #18's tables entirely, since no prior increment's dev-server
+session had run `alembic upgrade head` against it) -- a pre-existing
+gap unrelated to this increment. With the user's explicit approval,
+`alembic upgrade head` was run against the dev database (two
+already-committed, already-tested migrations applied: `dbd9a2889ef3`,
+`cd476d227f99` -- no new migration written, no migration file touched).
+This unblocked a genuine live check: the section renders correctly
+between What Changed and Releases with real backend data (all real
+mapped occurrences are `NOT_CHECKED`, since #18 processing has never
+been run against this dev database -- expected, given it's
+manual/CLI-only), the info-icon explanation trigger and compact layout
+matched the rest of the page, and no console errors appeared on load.
+A genuine 500 from the endpoint (captured before the migration fix)
+was also verified live: the section showed its local error message
+with a Retry button, and Current State/What Changed/Releases rendered
+completely normally around it. Real `CHANGES_DETECTED`/`PARTIAL_CHECK`/
+observation-and-analysis-evidence rendering could not be verified
+live -- no dev-database data exists in any of those states, and
+generating it would require running #18's data-mutating operational
+CLI against real data, out of scope for this frontend-only increment.
+That content is instead covered by the component test suite above.
+Narrow/mobile visual verification could not be completed -- the same
+known window-resize limitation noted in every prior increment's
+journal entry (#16B.1/#17B/#17C/#19A).
+
+### Deferred (named explicitly, not built here)
+
+`schedule_status` on #19B's contract (see above -- a real need for the
+SCHEDULED/PAST_DUE distinction here is the trigger, not a guess now);
+a persisted causal link between an observation change and an analysis
+change (ADR-023, unchanged by this increment); any "Check now"/refresh
+control (#19C adds no mutation path anywhere); a release-detail surface
+showing full per-occurrence history (the single-occurrence endpoint
+#19B itself deferred); any economic ranking, importance score, or
+cross-release comparison.
