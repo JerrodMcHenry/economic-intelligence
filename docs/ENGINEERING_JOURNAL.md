@@ -7564,3 +7564,188 @@ same-period revision comparison this increment's own
 `previous_period == current_period` support was built to enable, but
 does not itself perform (no `ReleaseSeriesMapping` row exists for
 Labor yet — see #20B's own deferred section).
+
+## Increment #20D.2 — Employment Situation Release Integration
+
+Makes #18's release-driven update pipeline process Employment
+Situation (FRED 50) and update canonical Labor intelligence,
+implementing exactly what #20D.1 froze in
+`docs/architecture/labor-release-integration-v1.md`. Release processing
+orchestrates; `labor_v1.0` still calculates every economic value;
+`labor_what_changed_v1.0` still performs every comparison — no layer
+duplicates another's methodology.
+
+### The mapping — a data migration, mirroring the CPI/PIO precedent exactly
+
+`alembic/versions/09f4c0959e9f_*.py` seeds `Employment Situation →
+PAYEMS`, `Employment Situation → UNRATE` — a straight copy of
+`cd476d227f99`'s own established shape (release id resolved by
+`(provider, provider_release_id)` lookup at migration-run time, never
+hardcoded; downgrade removes only the rows this migration seeded).
+Verified upgrade → downgrade → re-upgrade → `alembic check` all
+produce the expected state, including "No new upgrade operations
+detected" at head. A pre-existing #18 test
+(`test_no_mapping_seeded_for_unrelated_release_families`) asserted
+Employment Situation had NO mapping — correctly updated to remove it
+from that list and given its own positive assertion
+(`test_employment_situation_maps_exactly_payems_and_unrate`), since
+that fact is now the frozen, intended state.
+
+### `app/domain/labor_release_processing.py` — a new, independent propagation module
+
+Mirrors `app/domain/release_processing.py`'s own role, scoped to Labor
+only: `payems_affected_evaluation_periods` (the frozen sparse `{0,3,6}`
+set, forward-only), `unrate_affected_evaluation_periods` (the frozen
+`{0,1,2}∪{12,13,14}` two-cluster set, forward-only), and
+`labor_affected_evaluation_periods` (their cross-series union). Every
+offset was re-verified by direct execution against
+`app.domain.labor.compute_employment_result`/`compute_unemployment_result`
+(not copied from the #20D.1 freeze doc's own numbers) before being
+encoded as constants. Imports no other domain module — re-derives its
+own tiny `_add_months` calendar helper rather than importing
+`month_before`, the identical self-containment discipline
+`app.domain.release_processing._add_months` already established.
+Deliberately `frozenset[date]` (periods only), never
+`set[(component, date)]` pairs — Labor has no per-component evaluation
+split the way Inflation does (one `compute_labor_monitor_result_at`
+call already produces `LABOR`+`EMPLOYMENT`+`UNEMPLOYMENT` together).
+
+### The service layer — explicit dispatch, two independent branches, never `elif`
+
+`ReleaseProcessingService._apply_changes_and_compute_analysis` gained a
+Labor branch alongside its existing Inflation one:
+`_affected_labor_periods` (partition by series membership),
+`_load_canonical_labor_observations`, `_evaluate_labor_at` (dispatches
+to `compute_labor_monitor_result_at`, unmodified), `_diff_labor_at`
+(dispatches to `compare_employment_section`/`compare_unemployment_section`/
+`compare_labor_state`, unmodified, `previous_period = current_period =
+period` — never `month_over_month_labor_periods`). Membership in
+`_CANONICAL_SERIES_IDS` (Inflation) and `LABOR_SERIES_IDS` (Labor) is
+checked independently for every changed observation, never as mutually
+exclusive branches of one `if`/`elif` — a series belonging to both in
+some future integration would correctly feed both, per the frozen
+contract's own future-compatibility requirement. No adapter framework,
+no registry beyond these two plain frozensets.
+
+### A real, pre-existing #18 defect found and fixed — benefits Inflation too
+
+While building the Labor branch's `AVAILABILITY_RESTORED` test (a NEW
+PAYEMS observation completing a previously-incomplete window), the
+"after" evidence read kept returning stale, pre-write data even though
+the write had genuinely happened. Root cause: this project's session
+factory sets `autoflush=False`
+(`app.db.session._get_session_factory`), and
+`ReleaseProcessingRepository.write_observation` never flushed. A
+REVISED write mutates an already-identity-mapped ORM object in place,
+so a later `select()`-based re-read happened to see it correctly
+regardless (same Python object); a genuinely NEW observation has no
+such object to mutate, so its `session.add(...)` alone was invisible to
+a later re-read without an explicit flush — silently producing an
+empty before/after diff for exactly the scenario
+`labor_what_changed_v1.0`'s own `AVAILABILITY_RESTORED` event exists to
+detect. This defect predates #20D.2 and affects Inflation's own write
+path identically — it was never caught before because every existing
+Inflation "before/after analysis" integration test happens to revise
+already-persisted observations only, never introduces a genuinely NEW
+one. Fixed with one `self._session.flush()` call at the end of
+`write_observation` (the same "flush after a write that needs to be
+immediately re-readable" pattern `create_series`/`add_check_run`
+already establish in this exact file). Verified this fixes the Labor
+scenario and causes zero regression across the full existing #18/#19B
+suite (164 tests, unchanged, before and after).
+
+### Multiple Labor evaluation periods — no schema change, confirmed empirically
+
+A single revision that moves two of PAYEMS's own affected offsets (`r`
+and `r+3`) produces `ReleaseAnalysisUpdate` rows at both evaluation
+periods within one check run, each row carrying its own
+`evaluation_period` — exactly the "no uniqueness constraint, one row
+per event" cardinality #20D.1 predicted from the schema alone,
+confirmed here against a real Postgres write/read.
+
+### Component boundary widened, not the comparators
+
+`AnalysisChangeRecord.component`/`DetectedAnalysisChange.component`
+widened from `ChangeComponent` (Inflation's own Literal) to plain
+`str`, exactly as frozen — the release-processing/read-model boundary
+is generic transport/provenance metadata, never the owner of a
+component vocabulary. `LaborChangeComponent`/`ChangeComponent`
+themselves remain fully strongly-typed at their own comparator layers,
+untouched. Regression-tested both directions: existing Inflation
+component values still round-trip unchanged, and all three Labor
+values (`LABOR`/`EMPLOYMENT`/`UNEMPLOYMENT`) now validate through both
+the write model and the #19B read model, including a mixed
+Inflation-and-Labor response in one occurrence.
+
+### JOLTS / CIVPART / frontend / public endpoint — all confirmed absent
+
+No `JTS*` series id, no `CIVPART`, no hardcoded `50_000`/`0.2` deadband
+literal, and no reimplemented `EmploymentState`/`LaborState` table cell
+string appears anywhere in the release-processing call graph — all
+checked by dedicated AST-level architecture-guard tests, mirroring
+#20C.2's own comparator-purity guard discipline. No `frontend/` file
+touched; no new HTTP route; no scheduler/worker/cron; the CLI's only
+change is two cosmetic wording updates ("Inflation" → "Inflation or
+Labor").
+
+### Tests
+
+62 new backend tests (1,111 → **1,173**): 24 pure-domain unit tests
+(`tests/test_domain_labor_release_processing.py`: exact PAYEMS/UNRATE
+offset sets, the cancellation-zone exclusion, forward-only
+directionality, multi-observation and cross-series union/dedup); 11
+new architecture-guard tests
+(`tests/test_release_processing_architecture.py`: Labor comparator/
+evaluator reuse-by-name, no hardcoded deadband literal, no reimplemented
+state-table string, no JOLTS/CIVPART) plus 1 new
+`tests/test_domain_architectural_independence.py` test (the new
+propagation module joins the domain-file allowlist and gets its own
+no-other-domain-module-import guard); 1 new positive mapping assertion
+in `tests/integration/test_release_processing_repository.py`
+(alongside a corrected pre-existing negative one); 25 new/updated
+service-level integration tests in
+`tests/integration/test_release_processing_service.py` (real isolated
+Postgres, the real Employment Situation release/mapping: availability
+restoration, the exact `{0,3,6}`/`{0,1,2}∪{12,13,14}` propagation sets
+including the cancellation-zone exclusion, cross-series union with an
+overlapping period evaluated once, same-period-never-t-1 comparator
+reuse, the full analysis-event matrix, observation-changed/analysis-
+unchanged, multiple-period persistence, provider failure isolation in
+both directions, database-failure rollback, and idempotency); 5 new
+#19B read-model tests
+(`tests/api/test_release_processing_read_api.py`: Labor component
+round-tripping, mixed Inflation-and-Labor responses, historical
+preservation across a later NO_CHANGE run); 1 new CLI integration test
+(`tests/integration/test_process_release_cli.py`: the real Employment
+Situation occurrence processes successfully through the unmodified
+CLI entrypoint).
+
+### Verification
+
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run twice: **1,173
+passed** both times, 0 skipped. `alembic check`: "No new upgrade
+operations detected" at the new head (`09f4c0959e9f`) — the one new
+migration is a data migration only, verified upgrade → downgrade →
+re-upgrade against the real test database. No Python lint/typecheck
+tooling exists in this project (unchanged from every prior increment).
+Frontend: not touched; `git status` confined to five modified
+production files (`app/models/release_processing.py`,
+`app/models/release_processing_read.py`,
+`app/repositories/release_processing_repository.py`,
+`app/services/release_processing.py`,
+`app/operations/process_release.py`), one new production file
+(`app/domain/labor_release_processing.py`), one new migration, and six
+modified/new test files.
+
+### Deferred (named explicitly, not built here)
+
+Everything #20B/#20C.2 already deferred remains deferred. Additionally,
+per #20D.1's own frozen scope: any frontend consumption of Employment
+Situation's processing evidence; a generic release-analysis adapter
+framework (rejected for V1, per #20D.1 §24 — a third integration
+reusing this same explicit-dispatch shape a second time would be the
+appropriate trigger to reconsider); the future release-processing
+same-period revision comparison this whole mechanism enables but a
+production release-driven trigger has not yet actually exercised
+against real FRED data (mocked FRED only, in every test here, per this
+project's own established no-live-provider-in-tests discipline).

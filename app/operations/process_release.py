@@ -1,5 +1,6 @@
 """Operational CLI entry point for Increment #18's release-driven
-update pipeline.
+update pipeline (extended in #20D.2 to also cover Employment
+Situation/Labor -- this file itself required no change; see below).
 
     python -m app.operations.process_release --occurrence-id <id> [--as-of-date YYYY-MM-DD]
 
@@ -82,7 +83,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "Process one release occurrence: fetch its mapped canonical series from FRED over a bounded "
             "five-year window, detect and persist genuine NEW/REVISED observation changes, and compute+persist "
-            "any resulting deterministic Inflation analytical consequence."
+            "any resulting deterministic Inflation or Labor analytical consequence."
         ),
     )
     parser.add_argument("--occurrence-id", type=int, required=True, help="The internal ReleaseOccurrence id to process.")

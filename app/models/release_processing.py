@@ -20,7 +20,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.models.inflation import DATA_BASIS, METHODOLOGY_ID
-from app.models.inflation_what_changed import ChangeComponent, ChangeEventType
+from app.models.inflation_what_changed import ChangeEventType
 
 ObservationChangeType = Literal["NEW", "REVISED"]
 CheckRunStatus = Literal["NO_CHANGE", "CHANGED", "PARTIAL_FAILURE", "FAILED_PROVIDER"]
@@ -55,12 +55,28 @@ class ObservationChangeRecord(BaseModel):
 class AnalysisChangeRecord(BaseModel):
     """One structured, typed analytical consequence -- the in-memory
     shape persisted as one `ReleaseAnalysisUpdate` row. Reuses the
-    frozen `inflation_what_changed_v1.0` event vocabulary verbatim
-    (`component`/`event_type`/`field` from
-    `app.models.inflation_what_changed.ChangeEvent`); never a new,
-    parallel taxonomy."""
+    frozen `inflation_what_changed_v1.0`/`labor_what_changed_v1.0`
+    event vocabularies verbatim (`component`/`event_type`/`field` from
+    `app.models.inflation_what_changed.ChangeEvent`/
+    `app.models.labor_what_changed.LaborChangeEvent`); never a new,
+    parallel taxonomy.
 
-    component: ChangeComponent
+    `component` is deliberately plain `str`, NOT `ChangeComponent`
+    (Increment #20D.2) -- this release-processing record is generic
+    transport/provenance metadata, not the owner of any analysis
+    family's semantic vocabulary. Each comparator's own model
+    (`ChangeComponent` for Inflation, `LaborChangeComponent` for Labor)
+    remains strongly typed at its own layer; widening this one boundary
+    field is what lets a `ReleaseAnalysisUpdate` row carry EITHER
+    family's component values (`"PRIMARY_MOMENTUM"` or `"EMPLOYMENT"`,
+    for example) without a union type that grows a new member every
+    time a future third monitor is integrated. See
+    docs/architecture/labor-release-integration-v1.md §17. `event_type`
+    stays `ChangeEventType` -- Inflation's own vocabulary is already a
+    strict superset of Labor's four-value vocabulary, so no widening is
+    needed there."""
+
+    component: str
     event_type: ChangeEventType
     field: str
     previous_value: float | str | None

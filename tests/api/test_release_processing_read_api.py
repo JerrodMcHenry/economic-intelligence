@@ -88,6 +88,30 @@ def _seed_analysis_update(session, run_id, evaluation_period=date(2026, 7, 1)):
     return update
 
 
+def _seed_labor_analysis_update(session, run_id, evaluation_period=date(2026, 7, 1), component="EMPLOYMENT"):
+    """Increment #20D.2: a persisted Labor-family
+    `ReleaseAnalysisUpdate` row -- `component` is a Labor value
+    (`LABOR`/`EMPLOYMENT`/`UNEMPLOYMENT`), never an Inflation one, and
+    must round-trip through the read model without a Pydantic
+    validation failure (docs/architecture/labor-release-integration-v1.md
+    §22)."""
+    update = ReleaseAnalysisUpdate(
+        release_check_run_id=run_id,
+        component=component,
+        event_type="STATE_CHANGED",
+        field="state",
+        previous_value="CONTRACTING",
+        current_value="RECOVERING",
+        delta=None,
+        evaluation_period=evaluation_period,
+        methodology_id="labor_v1.0",
+        data_basis="latest_revised_data",
+    )
+    session.add(update)
+    session.commit()
+    return update
+
+
 class TestGetProcessingStatus:
     def test_never_checked_occurrence_is_a_normal_200(self, client, release_seed_session):
         release = _seed_release(release_seed_session, "9201")
@@ -236,3 +260,89 @@ class TestGetProcessingStatus:
 
         response = client.get(f"/api/v1/releases/{occurrence.id}/processing-status")
         assert response.status_code == 404
+
+
+class TestLaborComponentValuesSurviveTheReadModel:
+    """Increment #20D.2: the exact §22 concern -- a persisted Labor
+    `ReleaseAnalysisUpdate.component` value must deserialize into
+    `DetectedAnalysisChange` without a Pydantic validation error, and
+    must appear verbatim (never remapped to an Inflation component
+    name) in the public response."""
+
+    def test_employment_component_value_round_trips(self, client, release_seed_session):
+        release = _seed_release(release_seed_session, "9220")
+        _seed_mapping(release_seed_session, release.id, series_id="PAYEMS")
+        occurrence = _seed_occurrence(release_seed_session, release.id, "2026-07-01")
+        run = _seed_check_run(release_seed_session, occurrence.id, status="CHANGED")
+        _seed_labor_analysis_update(release_seed_session, run.id, component="EMPLOYMENT")
+
+        response = client.get("/api/v1/releases/processing-status", params={"occurrence_id": occurrence.id})
+        assert response.status_code == 200
+        item = response.json()["occurrences"][0]
+        assert len(item["detected_analysis_changes"]) == 1
+        change = item["detected_analysis_changes"][0]
+        assert change["component"] == "EMPLOYMENT"
+        assert change["methodology_id"] == "labor_v1.0"
+        assert change["previous_value"] == "CONTRACTING"
+        assert change["current_value"] == "RECOVERING"
+
+    def test_all_three_labor_component_values_round_trip(self, client, release_seed_session):
+        release = _seed_release(release_seed_session, "9221")
+        _seed_mapping(release_seed_session, release.id, series_id="UNRATE")
+        occurrence = _seed_occurrence(release_seed_session, release.id, "2026-07-01")
+        run = _seed_check_run(release_seed_session, occurrence.id, status="CHANGED")
+        for component in ("LABOR", "EMPLOYMENT", "UNEMPLOYMENT"):
+            _seed_labor_analysis_update(release_seed_session, run.id, component=component)
+
+        response = client.get("/api/v1/releases/processing-status", params={"occurrence_id": occurrence.id})
+        assert response.status_code == 200
+        item = response.json()["occurrences"][0]
+        components_present = {c["component"] for c in item["detected_analysis_changes"]}
+        assert components_present == {"LABOR", "EMPLOYMENT", "UNEMPLOYMENT"}
+
+    def test_inflation_component_values_still_round_trip_unchanged(self, client, release_seed_session):
+        """Regression: the §17/§22 `str` widening must not break
+        existing Inflation values -- an ordinary `PRIMARY_MOMENTUM` row
+        still round-trips exactly as before."""
+        release = _seed_release(release_seed_session, "9222")
+        _seed_mapping(release_seed_session, release.id, series_id="PCEPILFE")
+        occurrence = _seed_occurrence(release_seed_session, release.id, "2026-07-01")
+        run = _seed_check_run(release_seed_session, occurrence.id, status="CHANGED")
+        _seed_analysis_update(release_seed_session, run.id)
+
+        response = client.get("/api/v1/releases/processing-status", params={"occurrence_id": occurrence.id})
+        assert response.status_code == 200
+        item = response.json()["occurrences"][0]
+        change = item["detected_analysis_changes"][0]
+        assert change["component"] == "PRIMARY_MOMENTUM"
+        assert change["field"] == "r_3m_annualized"
+
+    def test_mixed_inflation_and_labor_rows_in_the_same_response(self, client, release_seed_session):
+        release = _seed_release(release_seed_session, "9223")
+        _seed_mapping(release_seed_session, release.id, series_id="PAYEMS")
+        occurrence = _seed_occurrence(release_seed_session, release.id, "2026-07-01")
+        run = _seed_check_run(release_seed_session, occurrence.id, status="CHANGED")
+        _seed_analysis_update(release_seed_session, run.id)
+        _seed_labor_analysis_update(release_seed_session, run.id, component="EMPLOYMENT")
+
+        response = client.get("/api/v1/releases/processing-status", params={"occurrence_id": occurrence.id})
+        assert response.status_code == 200
+        item = response.json()["occurrences"][0]
+        components_present = {c["component"] for c in item["detected_analysis_changes"]}
+        assert components_present == {"PRIMARY_MOMENTUM", "EMPLOYMENT"}
+
+    def test_historical_labor_analysis_changes_preserved_across_a_later_no_change_run(self, client, release_seed_session):
+        """Mirrors test_retry_history_survives_a_subsequent_no_change_run_over_http
+        exactly, for a Labor-family row."""
+        release = _seed_release(release_seed_session, "9224")
+        _seed_mapping(release_seed_session, release.id, series_id="UNRATE")
+        occurrence = _seed_occurrence(release_seed_session, release.id, "2026-07-01")
+        first_run = _seed_check_run(release_seed_session, occurrence.id, status="CHANGED", completed_at=datetime(2026, 7, 1, tzinfo=timezone.utc))
+        _seed_labor_analysis_update(release_seed_session, first_run.id, component="UNEMPLOYMENT")
+        _seed_check_run(release_seed_session, occurrence.id, status="NO_CHANGE", completed_at=datetime(2026, 7, 2, tzinfo=timezone.utc))
+
+        response = client.get("/api/v1/releases/processing-status", params={"occurrence_id": occurrence.id})
+        item = response.json()["occurrences"][0]
+        assert item["latest_check"]["status"] == "NO_CHANGE"
+        assert len(item["detected_analysis_changes"]) == 1
+        assert item["detected_analysis_changes"][0]["component"] == "UNEMPLOYMENT"

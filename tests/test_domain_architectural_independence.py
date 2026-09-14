@@ -23,6 +23,7 @@ DOMAIN_FILES = [
     Path("app/domain/release_processing.py"),
     Path("app/domain/labor.py"),
     Path("app/domain/labor_what_changed.py"),
+    Path("app/domain/labor_release_processing.py"),
 ]
 
 # Forbidden if an imported module IS one of these, or is a submodule of
@@ -138,3 +139,18 @@ class TestDomainLayerArchitecturalIndependence:
         imported = _imported_module_names(Path("app/domain/labor_what_changed.py"))
         forbidden = {m for m in imported if m.startswith("app.domain.")}
         assert forbidden == set(), f"app/domain/labor_what_changed.py must not import another domain module: {forbidden}"
+
+    def test_labor_release_processing_module_imports_no_other_domain_module(self):
+        """Increment #20D.2: app/domain/labor_release_processing.py --
+        the pure Labor dependency-propagation module -- must not import
+        app.domain.release_processing (Inflation's own, structurally
+        separate propagation module), app.domain.labor, or
+        app.domain.labor_what_changed. It re-derives its own tiny
+        calendar-offset helper independently (mirroring
+        app.domain.release_processing's own `_add_months` precedent)
+        rather than importing `month_before` from app.domain.labor --
+        the same "each domain module independent of every other one"
+        discipline every other guard in this file already proves."""
+        imported = _imported_module_names(Path("app/domain/labor_release_processing.py"))
+        forbidden = {m for m in imported if m.startswith("app.domain.")}
+        assert forbidden == set(), f"app/domain/labor_release_processing.py must not import another domain module: {forbidden}"

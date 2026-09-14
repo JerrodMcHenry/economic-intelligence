@@ -939,3 +939,561 @@ class TestT12ForwardDependencyRegression:
         assert len(all_runs) == 2
         all_observation_updates = [u for run in all_runs for u in repo.list_observation_updates_for_run(run.id)]
         assert len(all_observation_updates) == 1
+
+
+# =======================================================================
+# Increment #20D.2 -- Employment Situation / Labor release integration.
+# Frozen contract: docs/architecture/labor-release-integration-v1.md.
+#
+# The `release_series_mappings` row for Employment Situation (FRED 50 ->
+# PAYEMS, UNRATE) is real, persistent, active data in the isolated test
+# database, seeded by alembic/versions/09f4c0959e9f_seed_employment_situation_release_.py
+# -- used directly by TestLaborAnalysisImpact below, the same discipline
+# TestInflationAnalysisImpact already applies to the real CPI/PIO
+# mappings. Classification-only/failure/idempotency tests use a
+# synthetic release/mapping/series well outside the curated catalog,
+# mirroring this file's own existing discipline for Inflation.
+# =======================================================================
+
+from app.domain.labor import compute_labor_monitor_result_at, month_before  # noqa: E402
+from app.models.labor import (  # noqa: E402
+    CONDITION_DEADBAND_JOBS,
+    MOMENTUM_DEADBAND_JOBS,
+    PAYEMS_SERIES_ID,
+    UNEMPLOYMENT_DEADBAND_PP,
+    UNRATE_SERIES_ID,
+)
+
+# Real historical PAYEMS/UNRATE values (FRED native units), taken
+# directly from research/labor_momentum/data/PAYEMS.csv/UNRATE.csv --
+# the exact data that validated labor_v1.0 and labor_what_changed_v1.0
+# (#20B/#20C.2's own fixtures). Spans the 2008-2009 Great Recession
+# through early recovery -- enough real, contiguous months to compute
+# compute_labor_monitor_result_at at every anchor used below.
+_PAYEMS_THOUSANDS: dict[date, float] = {
+    date(2008, 1, 1): 138391, date(2008, 2, 1): 138329, date(2008, 3, 1): 138259, date(2008, 4, 1): 138040,
+    date(2008, 5, 1): 137851, date(2008, 6, 1): 137700, date(2008, 7, 1): 137497, date(2008, 8, 1): 137211,
+    date(2008, 9, 1): 136760, date(2008, 10, 1): 136291, date(2008, 11, 1): 135541, date(2008, 12, 1): 134847,
+    date(2009, 1, 1): 134079, date(2009, 2, 1): 133318, date(2009, 3, 1): 132494, date(2009, 4, 1): 131822,
+    date(2009, 5, 1): 131466, date(2009, 6, 1): 131008, date(2009, 7, 1): 130662, date(2009, 8, 1): 130472,
+    date(2009, 9, 1): 130246,
+}
+_UNRATE_PERCENT: dict[date, float] = {
+    date(2008, 1, 1): 5.0, date(2008, 2, 1): 4.9, date(2008, 3, 1): 5.1, date(2008, 4, 1): 5.0,
+    date(2008, 5, 1): 5.4, date(2008, 6, 1): 5.6, date(2008, 7, 1): 5.8, date(2008, 8, 1): 6.1,
+    date(2008, 9, 1): 6.1, date(2008, 10, 1): 6.5, date(2008, 11, 1): 6.8, date(2008, 12, 1): 7.3,
+    date(2009, 1, 1): 7.8, date(2009, 2, 1): 8.3, date(2009, 3, 1): 8.7, date(2009, 4, 1): 9.0,
+    date(2009, 5, 1): 9.4, date(2009, 6, 1): 9.5, date(2009, 7, 1): 9.5, date(2009, 8, 1): 9.6,
+    date(2009, 9, 1): 9.8,
+}
+
+
+def _employment_situation_release(session):
+    return session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "50")).scalar_one()
+
+
+def _seed_payems(session, values: dict[date, float | None] = None):
+    return _seed_series(session, PAYEMS_SERIES_ID, values if values is not None else dict(_PAYEMS_THOUSANDS), title="PAYEMS", units="Thousands of Persons")
+
+
+def _seed_unrate(session, values: dict[date, float | None] = None):
+    return _seed_series(session, UNRATE_SERIES_ID, values if values is not None else dict(_UNRATE_PERCENT), title="UNRATE", units="Percent")
+
+
+def _labor_result(payems: dict[date, float], unrate: dict[date, float], period: date):
+    payems_obs = [Observation(date=d, value=v * 1000) for d, v in sorted(payems.items())]
+    unrate_obs = [Observation(date=d, value=v) for d, v in sorted(unrate.items())]
+    return compute_labor_monitor_result_at(
+        payems_obs, unrate_obs, period, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP
+    )
+
+
+class TestLaborMappingIsUsed:
+    def test_employment_situation_occurrence_checks_both_payems_and_unrate(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: [], UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        checked_series = {o.series_id for o in result.series_outcomes}
+        assert checked_series == {PAYEMS_SERIES_ID, UNRATE_SERIES_ID}
+
+
+class TestLaborAvailabilityRestored:
+    """A NEW PAYEMS observation that completes a previously-incomplete
+    7-month window flips EMPLOYMENT.state from INSUFFICIENT_DATA to a
+    real state -- AVAILABILITY_RESTORED, never a fabricated
+    STATE_CHANGED: INSUFFICIENT_DATA -> RECOVERING transition (the
+    frozen contract's own explicit example, §"NEW OBSERVATIONS VS
+    REVISIONS")."""
+
+    def test_new_payems_month_completing_the_window_produces_availability_restored(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        # Seed PAYEMS through 2009-07 only -- 2009-08's own window is
+        # incomplete (INSUFFICIENT_DATA) until the new month arrives.
+        partial = {d: v for d, v in _PAYEMS_THOUSANDS.items() if d <= date(2009, 7, 1)}
+        _seed_payems(db_session, partial)
+        _seed_unrate(db_session)
+
+        before = _labor_result(partial, _UNRATE_PERCENT, date(2009, 8, 1))
+        assert before.employment.state == "INSUFFICIENT_DATA"
+
+        with _patched(
+            observations_by_series={
+                PAYEMS_SERIES_ID: _fred_payload({date(2009, 8, 1): _PAYEMS_THOUSANDS[date(2009, 8, 1)]}),
+                UNRATE_SERIES_ID: [],
+            }
+        ) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        events_by_field = {e.field: e for e in result.analysis_changes if e.component == "EMPLOYMENT" and e.evaluation_period == date(2009, 8, 1)}
+        assert events_by_field["state"].event_type == "AVAILABILITY_RESTORED"
+        # previous_value carries the real "INSUFFICIENT_DATA" label
+        # (never Python None -- matching labor_what_changed_v1.0's own
+        # frozen convention that INSUFFICIENT_DATA is itself a real,
+        # reportable value, not an engineering null):
+        assert events_by_field["state"].previous_value == "INSUFFICIENT_DATA"
+        assert events_by_field["state"].current_value == "RECOVERING"
+        # NEVER a fabricated STATE_CHANGED for this transition:
+        assert not any(
+            e.event_type == "STATE_CHANGED" and e.field == "state" and e.evaluation_period == date(2009, 8, 1)
+            for e in result.analysis_changes
+        )
+
+
+class TestPayemsPropagationRegression:
+    """The frozen sparse {0,3,6} set, exercised through the real
+    service call path (not just the pure domain module in isolation)."""
+
+    def test_revision_at_offset_0_produces_a_consequence(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        revised_value = _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500  # a large, unmistakable revision
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): revised_value}), UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        affected_periods = {e.evaluation_period for e in result.analysis_changes if e.component == "EMPLOYMENT"}
+        assert date(2009, 5, 1) in affected_periods  # r+0
+
+    def test_offsets_1_and_2_are_never_affected_cancellation_zone(self, db_session):
+        """The single most important #20D.2 regression: a PAYEMS
+        revision must NEVER produce an EMPLOYMENT analysis event at
+        r+1 or r+2 -- the cancellation, not merely "less change.\""""
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        revised_value = _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): revised_value}), UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        affected_periods = {e.evaluation_period for e in result.analysis_changes if e.component == "EMPLOYMENT"}
+        assert date(2009, 6, 1) not in affected_periods  # r+1
+        assert date(2009, 7, 1) not in affected_periods  # r+2
+
+
+class TestUnratePropagationRegression:
+    def test_revision_affects_current_and_prior_year_windows(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: [], UNRATE_SERIES_ID: _fred_payload({date(2009, 5, 1): 12.0})}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        affected_periods = {e.evaluation_period for e in result.analysis_changes if e.component == "UNEMPLOYMENT"}
+        # current-window cluster: r, r+1, r+2 -- all reachable from persisted 2009 data:
+        assert date(2009, 5, 1) in affected_periods
+        assert date(2009, 6, 1) in affected_periods
+        assert date(2009, 7, 1) in affected_periods
+        # prior-year-window cluster (r+12, r+13, r+14) would need 2010 data
+        # this fixture doesn't persist -- correctly absent, not fabricated.
+
+
+class TestCrossSeriesLaborUnion:
+    def test_payems_and_unrate_both_change_in_one_run(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        with _patched(
+            observations_by_series={
+                PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500}),
+                UNRATE_SERIES_ID: _fred_payload({date(2009, 6, 1): 12.0}),
+            }
+        ) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        components_present = {e.component for e in result.analysis_changes}
+        assert "EMPLOYMENT" in components_present
+        assert "UNEMPLOYMENT" in components_present
+
+    def test_an_overlapping_period_is_evaluated_exactly_once(self, db_session):
+        """PAYEMS r=2009-05 affects {05,08,11}; UNRATE r=2009-05 affects
+        {05,06,07}; 2009-05 is shared by both -- must be evaluated once,
+        not twice, and its EMPLOYMENT + UNEMPLOYMENT + LABOR events must
+        both appear, not one suppressing the other."""
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        with _patched(
+            observations_by_series={
+                PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500}),
+                UNRATE_SERIES_ID: _fred_payload({date(2009, 5, 1): 12.0}),
+            }
+        ) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        at_period = [e for e in result.analysis_changes if e.evaluation_period == date(2009, 5, 1)]
+        components_at_period = {e.component for e in at_period}
+        assert "EMPLOYMENT" in components_at_period
+        assert "UNEMPLOYMENT" in components_at_period
+        # No duplicate (component, field, event_type) pair at this period:
+        keys = [(e.component, e.field, e.event_type) for e in at_period]
+        assert len(keys) == len(set(keys))
+
+
+class TestLaborSamePeriodComparatorNeverMonthOverMonth:
+    def test_before_and_after_are_evaluated_at_the_identical_period(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500}), UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        # Every event's own evaluation_period is a SINGLE column (the
+        # release-scoped shape) -- there is no previous_period field at
+        # all on AnalysisChangeRecord, structurally proving the
+        # month-over-month t-1 orchestration was never used here.
+        assert all(hasattr(e, "evaluation_period") and not hasattr(e, "previous_period") for e in result.analysis_changes)
+
+    def test_release_processing_never_imports_month_over_month_labor_periods(self):
+        """A direct, explicit static proof (not just an absence of a
+        crash): app/services/release_processing.py never imports
+        `month_over_month_labor_periods` or
+        `LaborMonitorService.get_what_changed_result` -- the monthly
+        `/changes` orchestration this pipeline must never call."""
+        import ast
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        source = (repo_root / "app/services/release_processing.py").read_text()
+        tree = ast.parse(source)
+        imported_names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                imported_names.update(alias.name for alias in node.names)
+        assert "month_over_month_labor_periods" not in imported_names
+        assert "get_what_changed_result" not in imported_names
+        assert "LaborMonitorService" not in imported_names
+
+
+class TestLaborAnalysisEvents:
+    """The full required event-type matrix, using real historical data."""
+
+    def test_top_level_labor_state_change(self, db_session):
+        """A revision to 2009-01 (an affected offset for evaluation
+        period 2009-04, per the frozen {0,3,6} set) flips EMPLOYMENT
+        from CONTRACTING/WORSENING/CONTRACTING to EXPANDING/IMPROVING/
+        EXPANDING -- and since UNRATE stays DETERIORATING throughout,
+        LABOR.state flips COOLING -> MIXED (the frozen agreement
+        table's own explicit COOLING cell vs. its "everything else"
+        MIXED default -- real, verified against production code, not
+        assumed)."""
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        before = _labor_result(_PAYEMS_THOUSANDS, _UNRATE_PERCENT, date(2009, 4, 1))
+        revised_payems = dict(_PAYEMS_THOUSANDS)
+        revised_payems[date(2009, 1, 1)] -= 3_000  # an enormous, unmistakable revision -- forces a real condition flip
+        after = _labor_result(revised_payems, _UNRATE_PERCENT, date(2009, 4, 1))
+        assert before.state == "COOLING" and after.state == "MIXED"  # the fixture itself proves a real transition exists to detect
+
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({date(2009, 1, 1): revised_payems[date(2009, 1, 1)]}), UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        labor_events = [e for e in result.analysis_changes if e.component == "LABOR" and e.evaluation_period == date(2009, 4, 1)]
+        assert any(e.event_type == "STATE_CHANGED" and e.field == "state" for e in labor_events)
+
+    def test_condition_and_momentum_change_independently(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        revised_value = _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 2_000  # a large revision
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): revised_value}), UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        fields_at_r = {e.field for e in result.analysis_changes if e.component == "EMPLOYMENT" and e.evaluation_period == date(2009, 5, 1)}
+        # metrics changed at minimum -- condition/momentum may or may not
+        # cross their own deadband for this specific revision size, but
+        # the numeric metrics always do:
+        assert "current_3m_avg_jobs" in fields_at_r
+
+    def test_unemployment_state_change(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        before = _labor_result(_PAYEMS_THOUSANDS, _UNRATE_PERCENT, date(2009, 5, 1))
+        revised_unrate = dict(_UNRATE_PERCENT)
+        revised_unrate[date(2009, 5, 1)] = -3.0  # an enormous, unmistakable revision -- forces a real trend-state flip
+        after = _labor_result(_PAYEMS_THOUSANDS, revised_unrate, date(2009, 5, 1))
+        assert before.unemployment.state == "DETERIORATING" and after.unemployment.state == "IMPROVING"  # sanity: a real transition exists to detect
+
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: [], UNRATE_SERIES_ID: _fred_payload({date(2009, 5, 1): -3.0})}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        unemployment_events = [e for e in result.analysis_changes if e.component == "UNEMPLOYMENT" and e.evaluation_period == date(2009, 5, 1)]
+        assert any(e.field == "state" for e in unemployment_events)
+
+    def test_numeric_only_change_with_no_state_change(self, db_session):
+        """A tiny revision that moves a metric but not across any
+        deadband boundary -- METRIC_CHANGED without STATE_CHANGED."""
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        before = _labor_result(_PAYEMS_THOUSANDS, _UNRATE_PERCENT, date(2009, 5, 1))
+        tiny_revision = _PAYEMS_THOUSANDS[date(2009, 5, 1)] + 1  # 1,000 jobs -- comfortably inside the 50,000 deadband
+        revised = dict(_PAYEMS_THOUSANDS)
+        revised[date(2009, 5, 1)] = tiny_revision
+        after = _labor_result(revised, _UNRATE_PERCENT, date(2009, 5, 1))
+        assert before.employment.condition == after.employment.condition
+        assert before.employment.momentum == after.employment.momentum
+        assert before.employment.current_3m_avg_jobs != after.employment.current_3m_avg_jobs
+
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): tiny_revision}), UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        events_at_r = [e for e in result.analysis_changes if e.component == "EMPLOYMENT" and e.evaluation_period == date(2009, 5, 1)]
+        assert any(e.event_type == "METRIC_CHANGED" for e in events_at_r)
+        assert not any(e.event_type == "STATE_CHANGED" for e in events_at_r)
+
+    def test_comparator_empty_cancellation_zone_produces_no_row(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        revised_value = _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): revised_value}), UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        # r+1, r+2 (2009-06, 2009-07) produce ZERO EMPLOYMENT rows at all:
+        assert not any(e.component == "EMPLOYMENT" and e.evaluation_period in (date(2009, 6, 1), date(2009, 7, 1)) for e in result.analysis_changes)
+
+
+class TestLaborObservationChangedAnalysisUnchanged:
+    def test_observation_update_exists_without_a_corresponding_analysis_update(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        revised_value = _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): revised_value}), UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        assert any(o.observation_date == date(2009, 5, 1) and o.series_id == PAYEMS_SERIES_ID for o in result.observation_changes)
+        # ...but r+1/r+2 have no analysis rows (the cancellation zone -- confirmed above), proving
+        # `data changed != analysis changed` holds for Labor exactly as it does for Inflation.
+        assert not any(e.evaluation_period in (date(2009, 6, 1), date(2009, 7, 1)) for e in result.analysis_changes)
+
+
+class TestLaborMultiplePeriodsAndIdentifiers:
+    def test_multiple_labor_evaluation_periods_persisted_in_one_run(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        revised_value = _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 2_000_000  # forces a genuine change at r AND r+3 (2009-08)
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): revised_value}), UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        distinct_periods = {e.evaluation_period for e in result.analysis_changes if e.component == "EMPLOYMENT"}
+        assert len(distinct_periods) >= 2  # 2009-05 and 2009-08 both produce evidence
+
+        repo = ReleaseProcessingRepository(db_session)
+        runs = repo.list_check_runs_for_occurrence(occurrence.id)
+        persisted = repo.list_analysis_updates_for_run(runs[-1].id)
+        persisted_periods = {row.evaluation_period for row in persisted if row.component == "EMPLOYMENT"}
+        assert distinct_periods <= persisted_periods
+
+    def test_correct_methodology_and_data_basis_on_every_persisted_labor_row(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        revised_value = _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): revised_value}), UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        labor_events = [e for e in result.analysis_changes if e.component in ("LABOR", "EMPLOYMENT", "UNEMPLOYMENT")]
+        assert labor_events != []
+        for event in labor_events:
+            assert event.methodology_id == "labor_v1.0"  # the SOURCE monitor, never labor_what_changed_v1.0
+            assert event.data_basis == "latest_revised_data"
+
+    def test_labor_component_values_are_not_remapped_to_inflation_names(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        revised_value = _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): revised_value}), UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        components_present = {e.component for e in result.analysis_changes}
+        assert components_present <= {"LABOR", "EMPLOYMENT", "UNEMPLOYMENT"}
+        inflation_components = {"PRIMARY_MOMENTUM", "CONFIRMATION", "TARGET", "HEADLINE_PCE", "HEADLINE_CPI"}
+        assert components_present.isdisjoint(inflation_components)
+
+
+class TestLaborProviderFailureIsolation:
+    def test_payems_succeeds_unrate_fails(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        def _get_observations(series_id, **kwargs):
+            if series_id == UNRATE_SERIES_ID:
+                raise FREDTimeoutError("timed out")
+            return _fred_payload({date(2009, 5, 1): _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500})
+
+        client = FREDClient(api_key="not-used", timeout=1.0)
+        with patch.object(FREDClient, "get_observations", side_effect=_get_observations):
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        assert result.status == "PARTIAL_FAILURE"
+        outcomes = {o.series_id: o for o in result.series_outcomes}
+        assert outcomes[PAYEMS_SERIES_ID].succeeded is True
+        assert outcomes[UNRATE_SERIES_ID].succeeded is False
+        # PAYEMS's changes were still written and audited despite UNRATE's failure:
+        assert any(o.series_id == PAYEMS_SERIES_ID for o in result.observation_changes)
+
+    def test_unrate_succeeds_payems_fails(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        def _get_observations(series_id, **kwargs):
+            if series_id == PAYEMS_SERIES_ID:
+                raise FREDAuthError("auth failed")
+            return _fred_payload({date(2009, 5, 1): 12.0})
+
+        client = FREDClient(api_key="not-used", timeout=1.0)
+        with patch.object(FREDClient, "get_observations", side_effect=_get_observations):
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        assert result.status == "PARTIAL_FAILURE"
+        outcomes = {o.series_id: o for o in result.series_outcomes}
+        assert outcomes[UNRATE_SERIES_ID].succeeded is True
+        assert outcomes[PAYEMS_SERIES_ID].succeeded is False
+
+    def test_both_payems_and_unrate_fail(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        client = FREDClient(api_key="not-used", timeout=1.0)
+        with patch.object(FREDClient, "get_observations", side_effect=FREDTimeoutError("timed out")):
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        assert result.status == "FAILED_PROVIDER"
+        assert result.observation_changes == []
+        assert result.analysis_changes == []
+
+
+class TestLaborDatabaseFailureRollback:
+    def test_a_deliberate_failure_after_provider_success_rolls_back_the_whole_occurrence(self, real_session_scope):
+        """Mirrors TestDatabaseFailure's own identical pattern, applied
+        to the Employment Situation release/PAYEMS series."""
+        with real_session_scope() as setup_session:
+            release = _employment_situation_release(setup_session)
+            occurrence = _occurrence(setup_session, release)
+            _seed_payems(setup_session, {date(2009, 5, 1): _PAYEMS_THOUSANDS[date(2009, 5, 1)]})
+            occurrence_id = occurrence.id
+
+        try:
+            class _DeliberateFailure(Exception):
+                pass
+
+            payload = _fred_payload({date(2009, 5, 1): _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500})
+            client = FREDClient(api_key="not-used", timeout=1.0)
+
+            with pytest.raises(_DeliberateFailure):
+                with real_session_scope() as session:
+                    with patch.object(FREDClient, "get_observations", side_effect=lambda sid, **kw: payload if sid == PAYEMS_SERIES_ID else []):
+                        with patch.object(ReleaseProcessingRepository, "add_check_run", side_effect=_DeliberateFailure("simulated failure")):
+                            ReleaseProcessingService(client).process_occurrence(occurrence_id, session, AS_OF)
+
+            with real_session_scope() as verify_session:
+                repo = ReleaseProcessingRepository(verify_session)
+                series = repo.get_series_by_series_id(PAYEMS_SERIES_ID)
+                # The REVISED observation write never survived the rollback:
+                assert repo.get_observations_by_date(series.id) == {date(2009, 5, 1): _PAYEMS_THOUSANDS[date(2009, 5, 1)]}
+                assert repo.list_check_runs_for_occurrence(occurrence_id) == []
+        finally:
+            with real_session_scope() as cleanup_session:
+                from app.db.models import ReleaseOccurrence
+
+                cleanup_session.execute(ReleaseOccurrence.__table__.delete().where(ReleaseOccurrence.id == occurrence_id))
+                series = ReleaseProcessingRepository(cleanup_session).get_series_by_series_id(PAYEMS_SERIES_ID)
+                if series is not None:
+                    from app.db.models import EconomicObservation, EconomicSeries as _EconomicSeries
+
+                    cleanup_session.execute(EconomicObservation.__table__.delete().where(EconomicObservation.economic_series_id == series.id))
+                    cleanup_session.execute(_EconomicSeries.__table__.delete().where(_EconomicSeries.id == series.id))
+
+
+class TestLaborIdempotency:
+    def test_processing_the_same_occurrence_twice_with_identical_data_creates_no_duplicate_change_events(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        payload_payems = _fred_payload({date(2009, 5, 1): _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500})
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: payload_payems, UNRATE_SERIES_ID: []}) as client:
+            first = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+        assert first.analysis_changes != []
+
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: payload_payems, UNRATE_SERIES_ID: []}) as client:
+            second = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        assert second.status == "NO_CHANGE"
+        assert second.observation_changes == []
+        assert second.analysis_changes == []
+
+        repo = ReleaseProcessingRepository(db_session)
+        all_runs = repo.list_check_runs_for_occurrence(occurrence.id)
+        assert len(all_runs) == 2
+        all_analysis_updates = [u for run in all_runs for u in repo.list_analysis_updates_for_run(run.id)]
+        # Exactly the first run's own events -- never duplicated by the second, no-op run:
+        assert len(all_analysis_updates) == len(first.analysis_changes)

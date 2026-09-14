@@ -103,7 +103,24 @@ class ReleaseProcessingRepository:
         decided (via `app.domain.release_processing.classify_observation_change`,
         evaluated against `get_observations_by_date`'s snapshot) that
         this write is a genuine NEW or REVISED change; an UNCHANGED
-        observation is never passed here at all."""
+        observation is never passed here at all.
+
+        Flushes immediately (Increment #20D.2 fix -- this project's own
+        session factory sets `autoflush=False`, see `app.db.session`).
+        A REVISED write mutates an already-identity-mapped object
+        in-place, so the caller's later `get_observations_by_date`
+        re-read happened to see it correctly even without a flush
+        (same Python object, same session); a genuinely NEW observation
+        has no such object to mutate, so its `session.add(...)` alone
+        was invisible to a later `select()`-based "after" evidence read
+        without an explicit flush here -- silently producing an empty
+        before/after diff for exactly the case
+        `labor_what_changed_v1.0`'s own `AVAILABILITY_RESTORED` event
+        exists to detect. This was a latent defect in #18's own shared
+        write path (present for Inflation too, never previously
+        exercised by any existing Inflation test, all of which revise
+        already-persisted observations only) -- fixing it here benefits
+        both families identically, not a Labor-specific workaround."""
         existing = self._session.execute(
             select(EconomicObservation).where(
                 EconomicObservation.economic_series_id == economic_series_id,
@@ -116,6 +133,7 @@ class ReleaseProcessingRepository:
             self._session.add(
                 EconomicObservation(economic_series_id=economic_series_id, observation_date=observation_date, value=value)
             )
+        self._session.flush()
 
     # -----------------------------------------------------------------
     # ReleaseCheckRun / ReleaseObservationUpdate / ReleaseAnalysisUpdate

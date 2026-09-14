@@ -19,6 +19,7 @@ RELEASE_PROCESSING_FILES = [
     Path("app/repositories/release_processing_repository.py"),
     Path("app/services/release_processing.py"),
     Path("app/operations/process_release.py"),
+    Path("app/domain/labor_release_processing.py"),
 ]
 
 
@@ -130,6 +131,50 @@ class TestExistingComparisonPrimitivesAreReused:
         assert required <= imported_names, f"missing reused evaluator imports: {required - imported_names}"
 
 
+class TestExistingLaborComparisonPrimitivesAreReused:
+    """Guard #6's Increment #20D.2 sibling: release processing calls
+    the EXISTING `app.domain.labor`/`app.domain.labor_what_changed`
+    primitives rather than reimplementing `labor_v1.0`/
+    `labor_what_changed_v1.0` -- checked directly by asserting the
+    service module actually imports those exact functions by name,
+    mirroring TestExistingComparisonPrimitivesAreReused's identical
+    discipline for Inflation."""
+
+    def test_service_imports_the_existing_labor_evaluator_by_name(self):
+        source = (REPO_ROOT / "app/services/release_processing.py").read_text()
+        tree = ast.parse(source)
+        imported_names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "app.domain.labor":
+                imported_names.update(alias.name for alias in node.names)
+        assert "compute_labor_monitor_result_at" in imported_names, (
+            f"app/services/release_processing.py must import compute_labor_monitor_result_at from app.domain.labor, "
+            f"found: {imported_names}"
+        )
+
+    def test_service_imports_the_existing_labor_comparators_by_name(self):
+        source = (REPO_ROOT / "app/services/release_processing.py").read_text()
+        tree = ast.parse(source)
+        imported_names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "app.domain.labor_what_changed":
+                imported_names.update(alias.name for alias in node.names)
+        required = {"compare_employment_section", "compare_unemployment_section", "compare_labor_state"}
+        assert required <= imported_names, f"missing reused Labor comparator imports: {required - imported_names}"
+
+    def test_service_imports_the_labor_propagation_functions_by_name(self):
+        source = (REPO_ROOT / "app/services/release_processing.py").read_text()
+        tree = ast.parse(source)
+        imported_names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "app.domain.labor_release_processing":
+                imported_names.update(alias.name for alias in node.names)
+        assert "labor_affected_evaluation_periods" in imported_names, (
+            f"app/services/release_processing.py must import labor_affected_evaluation_periods from "
+            f"app.domain.labor_release_processing, found: {imported_names}"
+        )
+
+
 class TestNoInflationThresholdOrClassificationLogicInReleaseProcessing:
     """Guard #7: the same forbidden-pattern discipline
     tests/test_domain_architectural_independence.py's spirit and
@@ -158,6 +203,71 @@ class TestNoInflationThresholdOrClassificationLogicInReleaseProcessing:
                 if re.search(pattern, contents):
                     violations.append(f"{file_path}: appears to contain {name}")
         assert violations == [], "release-processing code appears to reimplement Inflation logic:\n" + "\n".join(violations)
+
+
+class TestNoLaborThresholdOrClassificationLogicInReleaseProcessing:
+    """Guard #7's Increment #20D.2 sibling: none of the release-
+    processing files may contain a hardcoded `labor_v1.0` deadband
+    literal, an employment condition/momentum classification, or the
+    `EmploymentState`/`LaborState` agreement tables -- release
+    processing must only ever REUSE `app.domain.labor`'s existing
+    classification primitives (via `compute_labor_monitor_result_at`,
+    guarded above), never reimplement them. Mirrors #20C.2's own
+    AST-level comparator-purity guard
+    (tests/test_labor_architecture.py::TestWhatChangedComparatorNeverKnowsLaborV1Methodology)."""
+
+    def test_no_release_processing_file_hardcodes_a_frozen_labor_deadband_literal(self):
+        forbidden_literals = {50_000, 50_000.0, 0.2}
+        violations = []
+        for file_path in RELEASE_PROCESSING_FILES:
+            tree = ast.parse((REPO_ROOT / file_path).read_text(), filename=str(file_path))
+            found = {
+                node.value
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and node.value in forbidden_literals
+            }
+            if found:
+                violations.append(f"{file_path}: hardcodes {found}")
+        assert violations == [], "release-processing code hardcodes a frozen labor_v1.0 deadband literal:\n" + "\n".join(violations)
+
+    def test_no_release_processing_file_reimplements_the_employment_or_labor_state_tables(self):
+        """A cheap, direct proof against the specific failure mode
+        this guard exists for: the frozen table cells themselves
+        (e.g. "RECOVERING", the state that only `combine_employment_state`
+        produces) never appear as a string literal anywhere in
+        release-processing's own code -- if they did, that would mean
+        a table was copied/reimplemented rather than reached only via
+        `compute_labor_monitor_result_at`'s own return value."""
+        forbidden_state_literals = ('"RECOVERING"', "'RECOVERING'", '"STRENGTHENING"', "'STRENGTHENING'")
+        violations = []
+        for file_path in RELEASE_PROCESSING_FILES:
+            contents = (REPO_ROOT / file_path).read_text()
+            for literal in forbidden_state_literals:
+                if literal in contents:
+                    violations.append(f"{file_path}: contains {literal}")
+        assert violations == [], "release-processing code appears to reimplement a labor_v1.0 state table:\n" + "\n".join(violations)
+
+
+class TestNoJoltsOrCivpartInReleaseProcessing:
+    """Guard: JOLTS/CIVPART remain deferred from Labor's release
+    integration too -- neither should appear anywhere in the release-
+    processing call graph, mirroring
+    tests/test_labor_architecture.py::TestNoJoltsOrCivpartInV1's
+    identical discipline for the Labor Monitor itself."""
+
+    def test_no_jolts_series_id_anywhere_in_release_processing_files(self):
+        forbidden = ("JTSJOR", "JTSQUR", "JTSHIR", "JTSJOL", "JTSQUL", "JTSHIL", "JTSLDR", "JTSLDL")
+        violations = []
+        for file_path in RELEASE_PROCESSING_FILES:
+            contents = (REPO_ROOT / file_path).read_text()
+            for series_id in forbidden:
+                if series_id in contents:
+                    violations.append(f"{file_path}: references {series_id}")
+        assert violations == [], "JOLTS was deferred but appears in release-processing files:\n" + "\n".join(violations)
+
+    def test_no_civpart_anywhere_in_release_processing_files(self):
+        violations = [str(f) for f in RELEASE_PROCESSING_FILES if "CIVPART" in (REPO_ROOT / f).read_text()]
+        assert violations == [], f"CIVPART was deferred but appears in: {violations}"
 
 
 class TestNoFullMonitorSnapshot:

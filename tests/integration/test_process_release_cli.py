@@ -63,6 +63,46 @@ def _cleanup(release_id: int):
         session.execute(EconomicSeries.__table__.delete().where(EconomicSeries.series_id == "UNRATE"))
 
 
+def _seed_employment_situation_occurrence(scheduled_date=AS_OF):
+    """The REAL Employment Situation release (FRED 50), already mapped
+    to PAYEMS/UNRATE by migration 09f4c0959e9f -- not a synthetic
+    release, proving Increment #20D.2's own mapping is processable
+    through this exact same CLI entrypoint with zero code change to
+    this file (docs/architecture/labor-release-integration-v1.md §23)."""
+    import sqlalchemy as sa
+
+    from app.db.session import session_scope
+
+    with session_scope() as session:
+        release = session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "50")).scalar_one()
+        occurrence = ReleaseRepository(session).upsert_occurrence(release.id, scheduled_date)
+        session.flush()
+        return occurrence.id
+
+
+def _cleanup_employment_situation_occurrence(occurrence_id: int):
+    from app.db.models import ReleaseOccurrence
+    from app.db.session import session_scope
+
+    with session_scope() as session:
+        session.execute(ReleaseOccurrence.__table__.delete().where(ReleaseOccurrence.id == occurrence_id))
+
+
+class TestEmploymentSituationProcessableThroughTheSameCli:
+    def test_employment_situation_occurrence_processes_successfully(self, configured_settings, capsys):
+        occurrence_id = _seed_employment_situation_occurrence()
+        try:
+            with patch.object(FREDClient, "get_observations", return_value=[]):
+                exit_code = main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
+        finally:
+            _cleanup_employment_situation_occurrence(occurrence_id)
+
+        assert exit_code == 0
+        out = capsys.readouterr().out
+        assert "Status: NO_CHANGE" in out
+        assert f"Release occurrence: {occurrence_id}" in out
+
+
 class TestValidOccurrence:
     def test_valid_occurrence_no_change_succeeds_with_zero_exit(self, configured_settings, capsys):
         release_id, occurrence_id = _seed_release_mapping_and_occurrence()

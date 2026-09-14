@@ -50,7 +50,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from app.models.inflation_what_changed import ChangeComponent, ChangeEventType
+from app.models.inflation_what_changed import ChangeEventType
 from app.models.release_processing import ObservationChangeType
 from app.models.releases import PaginationMeta
 
@@ -109,9 +109,16 @@ class DetectedAnalysisChange(BaseModel):
     already carries the numeric change when one exists. `recorded_at` is
     `ReleaseAnalysisUpdate.created_at` -- named differently from
     `DetectedObservationChange.detected_at` because `ReleaseAnalysisUpdate`
-    has no `detected_at` column at all (see that model's docstring)."""
+    has no `detected_at` column at all (see that model's docstring).
 
-    component: ChangeComponent
+    `component` is deliberately plain `str`, NOT `ChangeComponent`
+    (Increment #20D.2) -- this is the read-model twin of
+    `app.models.release_processing.AnalysisChangeRecord.component`;
+    the identical reasoning applies (generic transport/provenance
+    metadata, not the owner of a component vocabulary). See
+    docs/architecture/labor-release-integration-v1.md §22."""
+
+    component: str
     event_type: ChangeEventType
     field: str
     previous_value: str | None

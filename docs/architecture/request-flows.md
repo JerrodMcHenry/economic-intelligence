@@ -1480,6 +1480,49 @@ It never persists a full `InflationMonitorResult`. It never writes to
 occurrence's scheduled date. Nothing in this flow's call graph imports
 AI or news.
 
+### Flow 32B — the same pipeline, for Employment Situation / Labor (Increment #20D.2)
+
+Employment Situation (FRED 50, mapped to PAYEMS/UNRATE by migration
+`09f4c0959e9f`) is processed through the EXACT SAME `process_occurrence`
+call as Flow 32 above -- same CLI, same eligibility checks, same
+per-series fetch/classify loop, same transaction boundary. The only
+difference is inside `_apply_changes_and_compute_analysis`, which now
+runs a second, independent branch alongside the Inflation one shown in
+Flow 32's own sequence diagram:
+
+```mermaid
+sequenceDiagram
+    participant Svc as ReleaseProcessingService
+    participant PRepo as ReleaseProcessingRepository
+    participant LDom as app.domain.labor_release_processing (pure)
+    participant LEng as app.domain.labor (unmodified)
+    participant LCmp as app.domain.labor_what_changed (unmodified)
+
+    Note over Svc: PAYEMS/UNRATE changed observations,<br/>partitioned independently from the Inflation ones -- never `elif`
+    Svc->>LDom: labor_affected_evaluation_periods(payems_changed, unrate_changed)
+    LDom-->>Svc: frozenset[date] -- periods only, no component dimension
+    Svc->>PRepo: read current persisted PAYEMS/UNRATE (BEFORE snapshot)
+    Svc->>LEng: compute_labor_monitor_result_at(period) -- per affected period
+    Svc->>PRepo: write_observation() for every NEW/REVISED PAYEMS/UNRATE row
+    Svc->>PRepo: read current persisted PAYEMS/UNRATE (AFTER snapshot)
+    Svc->>LEng: compute_labor_monitor_result_at(period), again
+    Svc->>LCmp: compare_labor_state / compare_employment_section /<br/>compare_unemployment_section (previous_period == current_period == t)
+    Note over Svc: analysis_changes = Inflation's own list + Labor's own list, concatenated
+    Svc->>PRepo: add_analysis_update()* (Inflation rows and Labor rows, same call, same transaction)
+```
+
+Same explicit "no analysis without at least one comparator event" rule
+(Flow 32's own §8.2 logic, unchanged); a PAYEMS revision landing in the
+cancellation zone (offset 1 or 2 from the changed month) produces a
+`ReleaseObservationUpdate` row but zero `ReleaseAnalysisUpdate` rows at
+that period, for the identical reason `data changed != analysis
+changed` already holds for Inflation. Never calls
+`GET /api/v1/monitors/labor/changes` or
+`month_over_month_labor_periods` -- same reasoning as Flow 32's own
+"what this flow explicitly does NOT do" note, restated for Labor. See
+[docs/architecture/labor-release-integration-v1.md](./labor-release-integration-v1.md)
+for the full frozen contract.
+
 ## Flow 33 — `/` Economic Overview Page Load (Increment #19A, extended #19C)
 
 `frontend/src/pages/Overview.tsx` calls `useApiResource(getInflationMonitor)`,

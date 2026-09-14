@@ -47,16 +47,32 @@ class TestMappings:
         assert sorted(m.series_id for m in mappings) == ["PCEPI", "PCEPILFE"]
 
     def test_no_mapping_seeded_for_unrelated_release_families(self, db_session):
-        """Employment Situation, JOLTS, GDP, and Advance Retail Sales
-        have no canonical Inflation Monitor consumer yet -- #18 V1
-        deliberately does not seed a mapping for them."""
-        unmapped_provider_release_ids = ["50", "192", "53", "9"]
+        """JOLTS, GDP, and Advance Retail Sales have no canonical
+        monitor consumer yet -- deliberately no seeded mapping for
+        them. Employment Situation (50) is NOT in this list as of
+        Increment #20D.2 -- it now has a canonical Labor Monitor
+        consumer (PAYEMS/UNRATE), seeded by migration 09f4c0959e9f
+        per docs/architecture/labor-release-integration-v1.md §5 --
+        see test_employment_situation_maps_exactly_payems_and_unrate
+        below for its own positive assertion."""
+        unmapped_provider_release_ids = ["192", "53", "9"]
         for provider_release_id in unmapped_provider_release_ids:
             release = db_session.execute(
                 sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == provider_release_id)
             ).scalar_one()
             mappings = ReleaseProcessingRepository(db_session).get_active_mappings(release.id)
             assert mappings == [], f"provider_release_id {provider_release_id} unexpectedly has a mapping"
+
+    def test_employment_situation_maps_exactly_payems_and_unrate(self, db_session):
+        """Increment #20D.2: Employment Situation (FRED 50) maps
+        exactly PAYEMS and UNRATE -- no CIVPART, no JOLTS, no wages/
+        claims/hours/earnings/other CES series (per the frozen
+        contract's own explicit exclusion list, §5)."""
+        release = db_session.execute(
+            sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "50")
+        ).scalar_one()
+        mappings = ReleaseProcessingRepository(db_session).get_active_mappings(release.id)
+        assert sorted(m.series_id for m in mappings) == ["PAYEMS", "UNRATE"]
 
     def test_get_active_mappings_works_without_any_economic_series_row_existing(self, db_session):
         """The central design decision: a curated mapping is readable
