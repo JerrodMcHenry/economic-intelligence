@@ -13,6 +13,16 @@ __pycache__/
 research/inflation_momentum/data/
 research/inflation_momentum/outputs/
 
+# Labor Momentum Methodology Validation (research/, not production,
+# Increment #20A.1): fetched raw FRED data and generated study outputs
+# are both fully regenerable (fetch_data.py / study.py) from FRED's
+# public, unauthenticated CSV export -- no credential involved at all,
+# but still not committed as large, effectively-derived datasets, the
+# same discipline as research/inflation_momentum/ above. The study
+# code itself and its markdown reports ARE tracked.
+research/labor_momentum/data/
+research/labor_momentum/outputs/
+
 # Frontend (frontend/, Increment #16A): installed packages and the
 # production build are both fully regenerable (`npm install` /
 # `npm run build`) -- not committed. frontend/.env.example IS tracked
