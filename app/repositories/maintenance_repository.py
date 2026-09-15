@@ -73,10 +73,28 @@ class MaintenanceRepository:
 
     def get_latest_sweep(self) -> MaintenanceSweep | None:
         """The most recent sweep, by `started_at` (ties broken by
-        `id`) -- the one read this repository provides in support of a
-        future CLI health/inspection command (frozen contract §31's
-        own explicit allowance), without this increment building that
-        command's own UI or alerting."""
+        `id`) -- regardless of whether it has finished. The one read
+        this repository provides in support of a future CLI health/
+        inspection command (frozen contract §31's own explicit
+        allowance), without this increment building that command's own
+        UI or alerting."""
         return self._session.execute(
             select(MaintenanceSweep).order_by(MaintenanceSweep.started_at.desc(), MaintenanceSweep.id.desc()).limit(1)
+        ).scalar_one_or_none()
+
+    def get_latest_finished_sweep(self) -> MaintenanceSweep | None:
+        """The most recent sweep that has actually COMPLETED
+        (`finished_at IS NOT NULL`) -- distinct from `get_latest_sweep`
+        above, which may return a still-in-progress or crashed row.
+        Increment #26E's own maintenance-health command needs both: the
+        very latest attempt (to detect a crashed/hung sweep,
+        `app.domain.maintenance_health`'s own `UNFINISHED` status) and
+        the latest genuinely completed one (to judge overall health
+        when the very latest attempt simply hasn't concluded yet --
+        #26E source prompt §23/§54)."""
+        return self._session.execute(
+            select(MaintenanceSweep)
+            .where(MaintenanceSweep.finished_at.is_not(None))
+            .order_by(MaintenanceSweep.started_at.desc(), MaintenanceSweep.id.desc())
+            .limit(1)
         ).scalar_one_or_none()

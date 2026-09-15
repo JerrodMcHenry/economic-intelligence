@@ -2603,3 +2603,45 @@ processing pass remain #26F's own bootstrap scope). See
 [ADR-028](../adr/028-single-container-image-and-ci-validates-never-deploys.md),
 and [docs/operations/production-release-runbook.md](../operations/production-release-runbook.md)
 for the full contract and operator-facing detail.
+
+---
+
+## Flow 46 — Maintenance-Worker Health Check (`app.operations.maintenance_health`, Increment #26E)
+
+Not an HTTP flow, and never triggers a sweep. Operator- or monitoring-
+integration-invoked, read-only, any number of times.
+
+```mermaid
+sequenceDiagram
+    participant Op as Operator / monitoring integration
+    participant CLI as app.operations.maintenance_health
+    participant Svc as check_maintenance_health()
+    participant Check as check_schema_compatibility() (Flow 44, unmodified)
+    participant Repo as MaintenanceRepository (read-only)
+    participant Domain as classify_maintenance_health() (pure, app.domain.maintenance_health)
+
+    Op->>CLI: python -m app.operations.maintenance_health [--json]
+    CLI->>Svc: check_maintenance_health(stale_threshold, unfinished_grace_period)
+    Svc->>Check: check_schema_compatibility()
+    alt not COMPATIBLE
+        Check-->>Svc: schema_status
+        Svc-->>CLI: health = None
+        CLI-->>Op: schema status printed, exit 2 -- sweep history NOT interpreted
+    else COMPATIBLE
+        Svc->>Repo: get_latest_sweep()
+        Svc->>Repo: get_latest_finished_sweep()
+        Repo-->>Svc: SweepSnapshot | None (x2)
+        Svc->>Domain: classify_maintenance_health(latest, latest_finished, now, thresholds)
+        Domain-->>Svc: HEALTHY | DEGRADED | STALE | UNFINISHED | NEVER_RUN
+        Svc-->>CLI: MaintenanceHealthCheckResult
+        CLI-->>Op: status + latest/latest-finished sweep printed (or JSON), exit 0 (HEALTHY) / 1 (otherwise)
+    end
+```
+
+**`now` is resolved exactly once**, at the service's own entry point (defaulting to the real UTC clock, overridable — tests always inject it) — never read a second time anywhere downstream, mirroring `automated-economic-maintenance-v1.md` §57's own frozen clock discipline for a new consumer.
+
+**What this flow explicitly does NOT do**: it never calls FRED or OpenAI; it never constructs a `MaintenanceOrchestrator` or calls `run_sweep`; it never writes to `maintenance_sweeps` or any other table; it never treats a sweep still running within its own grace period as crashed; it never treats `NEVER_RUN` as equivalent to a previously-working scheduler having stopped. See
+[docs/product/production-reliability-deployment-v1.md](../product/production-reliability-deployment-v1.md),
+[ADR-029](../adr/029-maintenance-health-semantics-and-scheduler-activation-deferred.md),
+and [docs/operations/production-release-runbook.md](../operations/production-release-runbook.md)
+for the full contract and the exact automatic-maintenance claim threshold.

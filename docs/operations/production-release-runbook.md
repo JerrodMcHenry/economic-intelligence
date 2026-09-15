@@ -152,7 +152,42 @@ Required for any private beta (`production-reliability-deployment-v1.md` §32/§
 
 ## Scheduler / automation status
 
-**Not activated by #26D.** `python -m app.operations.run_maintenance` runs one bounded sweep and exits — nothing in this repository invokes it on a schedule yet. Activating a real scheduler (and the operator observability that goes with it) is **#26E's own explicit scope**, named here only so an operator reading this runbook does not assume "automatically maintained" is already a true claim for any environment this release process deploys.
+**Increment #26E's verdict: B — IMPLEMENTATION READY, NOT ACTIVATED.** Every portable piece exists and is tested against real PostgreSQL: `python -m app.operations.run_maintenance` (unchanged, one bounded sweep per invocation, already gated by the schema-compatibility preflight), `python -m app.operations.maintenance_health` (new — the operator-facing heartbeat query, below), and a reviewable, syntactically-valid scheduler template (`.github/workflows/scheduled-maintenance.yml.disabled`). **Nothing in this repository currently invokes the maintenance command on a real, external schedule.**
+
+**Why not activated:** activation requires a real, network-reachable production database, and this project has never been deployed anywhere. The scheduler *mechanism* (GitHub Actions, chosen because it needs no hosting decision of its own) is not the blocker — the blocker is a genuinely unanswered security question: can a scheduler reach that database without weakening its own network/access controls? GitHub-hosted runners have broad, shared, non-allowlistable IP ranges; answering "yes, safely" requires a real database with a real network boundary to reason about, which does not exist yet. Fabricating an active `schedule:` trigger against nothing would be exactly the "code existence is not automation" mistake this increment's own truthfulness requirement forbids — so the template file is named with a `.disabled` suffix specifically so GitHub Actions cannot recognize or run it at all, regardless of its own content, until an operator deliberately renames it after that security question has a real answer for a real environment (see the template's own header comment for the exact activation checklist).
+
+**The automatic-maintenance claim threshold, restated and now made checkable:** the product may only be described as "automatically maintained" once (1) the template is renamed and its secrets configured against a real database, (2) at least two separate scheduled (never merely `workflow_dispatch`-triggered) invocations have occurred without a human manually triggering either one, (3) each produced its own `MaintenanceSweep` row, and (4) `python -m app.operations.maintenance_health` reports `HEALTHY` against that same database afterward. A manual test run (`workflow_dispatch`, or running the command by hand) proves the *configuration* works — it does not, on its own, prove *scheduled* automation, and must never be described as if it did.
+
+### Maintenance-worker health — the operator's own heartbeat query
+
+```
+python -m app.operations.maintenance_health [--json] [--stale-threshold-hours N] [--unfinished-grace-minutes N]
+```
+
+Read-only; checks schema compatibility first (refusing to interpret sweep history at all if incompatible — the exact same shared check `/readiness` uses) and then classifies the worker's own recent history from persisted `MaintenanceSweep` evidence alone:
+
+| Status | Meaning | Exit code |
+|---|---|---|
+| `HEALTHY` | A sweep completed within the last 3 hours (default), with zero occurrence failures. | `0` |
+| `DEGRADED` | A sweep completed within the last 3 hours, but `failed_count > 0` — the worker itself is fine; at least one occurrence's own processing failed. | `1` |
+| `STALE` | The most recent *completed* sweep's own `started_at` is older than 3 hours (default) — the scheduler may have stopped firing. | `1` |
+| `UNFINISHED` | The most recent sweep started more than 30 minutes ago (default) and still has not finished — plausibly crashed or hung, not merely still running. | `1` |
+| `NEVER_RUN` | Zero sweep rows exist at all. **Expected and normal before activation** — never treat this the same as a broken, previously-working scheduler. | `1` |
+| *(schema incompatible / DB unavailable / config missing)* | Reported directly, sweep history not interpreted at all. | `2` |
+
+Both thresholds (3 hours staleness, 30 minutes unfinished-grace) are operator-tunable via the flags above — derived from, not empirically measured against, the frozen hourly-order sweep cadence (`automated-economic-maintenance-v1.md` §15); adjust them if the real cadence chosen for a given environment differs materially from hourly. `--json` emits one machine-readable object for a monitoring/alerting integration to consume instead of parsing human-readable text.
+
+### Minimum private-beta operator alerts (semantics frozen, no paging infrastructure built)
+
+- The scheduled job itself exits non-zero, or times out (bound the job at the scheduler/platform level — no arbitrary economic timeout is invented; the underlying due-work volume is small, §49 of the maintenance contract, so a generous bound like 15-30 minutes is a safety net, not a tight economic constraint).
+- `maintenance_health` reports anything other than `HEALTHY` when checked on a regular cadence (a second, independent scheduled check, or folded into the same job as an informational, non-blocking step — see the template's own final step).
+- `/readiness` fails, if the hosting platform's own monitoring supports checking it.
+
+No specific alert destination (Slack/email/PagerDuty) is chosen or wired here — whatever notification mechanism the eventual scheduler platform already provides (GitHub Actions' own default failure email, for instance) is sufficient for private beta; do not build a bespoke integration speculatively.
+
+### Sweep-level locking: deliberately not added
+
+Occurrence-level advisory locking (ADR-024) already prevents the one dangerous outcome (duplicate audit rows for the same occurrence). Two full sweeps overlapping in time is not itself prevented, and is not given its own lock: the frozen hourly-order cadence against a small, typically-seconds-long sweep duration (§49) makes genuine overlap implausible in practice, and — per this project's own repeated "do not add locking reflexively" discipline (see `app/operations/release.py`'s identical reasoning for the migration step) — no observed problem currently justifies the added complexity. Revisit only if real operational evidence of overlap-caused confusion appears.
 
 ---
 

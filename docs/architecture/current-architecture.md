@@ -1272,12 +1272,10 @@ The following are intentionally absent — not overlooked:
   and [ADR-007](../adr/007-synchronous-sqlalchemy.md)), even though
   FastAPI/Uvicorn support async routes and SQLAlchemy supports async
   sessions.
-- **Cloud infrastructure / chosen hosting platform / scheduler activation** —
-  still none (`docs/product/production-reliability-deployment-v1.md` #26B's
-  own explicit scope for a later, dedicated increment, #26E). Increment
-  #26D added a `Dockerfile`/`.dockerignore` (one image, reused for the web
-  process and every operational CLI via command override — see
-  [ADR-028](../adr/028-single-container-image-and-ci-validates-never-deploys.md)),
+- **Cloud infrastructure / chosen hosting platform** — still none.
+  Increment #26D added a `Dockerfile`/`.dockerignore` (one image, reused
+  for the web process and every operational CLI via command override —
+  see [ADR-028](../adr/028-single-container-image-and-ci-validates-never-deploys.md)),
   **not build-verified in this project's own development environment** (no
   Docker daemon available where it was written — disclosed honestly, not
   pretended), and `.github/workflows/ci.yml` (backend/frontend
@@ -1285,8 +1283,22 @@ The following are intentionally absent — not overlooked:
   PostgreSQL service — no deploy job, never a production database or
   credential). `app/operations/release.py` (`preflight`/`migrate`) is the
   one place this application's own schema is ever advanced — see
-  `docs/operations/production-release-runbook.md`. Still nothing invokes
-  `app/operations/run_maintenance.py` on any cadence.
+  `docs/operations/production-release-runbook.md`.
+- **Scheduler activation** — Increment #26E's own verdict: **implementation
+  ready, not activated** (see
+  [ADR-029](../adr/029-maintenance-health-semantics-and-scheduler-activation-deferred.md)).
+  `app/operations/maintenance_health.py` (new) gives an operator a
+  read-only heartbeat query over persisted `MaintenanceSweep` evidence
+  (`HEALTHY`/`DEGRADED`/`STALE`/`UNFINISHED`/`NEVER_RUN`, classified by the
+  pure `app.domain.maintenance_health` module); a reviewable, syntactically
+  valid GitHub Actions template exists
+  (`.github/workflows/scheduled-maintenance.yml.disabled`) but is
+  deliberately named so GitHub Actions cannot recognize or run it —
+  activation requires a real, network-reachable production database and an
+  answered security question (can a scheduler reach it without weakening
+  its own access controls) that this project, never having been deployed
+  anywhere, cannot yet answer. Nothing in this repository invokes
+  `app/operations/run_maintenance.py` on any real, external cadence.
 - **Observability** — no structured logging, metrics, or tracing beyond
   Uvicorn's default access logs and each CLI's own existing safe stdout
   summary. `GET /readiness` (#26C) narrowly answers one specific

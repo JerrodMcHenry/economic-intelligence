@@ -9185,3 +9185,109 @@ verification (no Docker daemon available in this environment);
 migration-role separation; connection-pool tuning; economic
 methodology; AI; product analytics; onboarding; notifications;
 accounts.
+
+## Increment #26E — Maintenance Scheduler Activation + Operator Observability
+
+Implements the operator-observability half of
+`docs/product/production-reliability-deployment-v1.md` (#26B) §26/§54:
+a read-only maintenance-worker heartbeat, and an honest verdict on
+scheduler activation itself. See
+`docs/adr/029-maintenance-health-semantics-and-scheduler-activation-deferred.md`
+for the durable decisions; `docs/operations/production-release-runbook.md`
+for the operator-facing detail (health-status table, alert minimums,
+the exact automatic-maintenance claim threshold).
+
+### Five states, derived from `MaintenanceSweep` alone
+
+`app/domain/maintenance_health.py` (new, pure -- no SQLAlchemy, no
+clock read, mirrors `app.domain.since_last_visit`'s own established
+shape): `HEALTHY`/`DEGRADED`/`STALE`/`UNFINISHED`/`NEVER_RUN`, derived
+from exactly two facts (the latest sweep regardless of completion, the
+latest sweep that has actually finished) plus two operator-tunable
+thresholds. `NEVER_RUN` is deliberately not treated as a failure in
+the "something broke" sense -- it is the honest, expected answer
+before activation. A sweep still running within its own grace period
+never gets misclassified as crashed; overall health instead falls back
+to the most recent sweep that has actually completed.
+`app/services/maintenance_health.py` orchestrates: schema
+compatibility (Increment #26C's own shared checker, reused unmodified)
+is checked FIRST, before any sweep evidence is interpreted at all.
+`app/repositories/maintenance_repository.py` gained one small,
+additive method, `get_latest_finished_sweep` (no migration -- same
+table, a narrower `WHERE` clause).
+
+### The operator CLI, live-proven against the real incident once more
+
+`python -m app.operations.maintenance_health` (new, read-only, never
+calls FRED, never triggers a sweep) -- exit `0` healthy, `1`
+unhealthy/degraded/stale/unfinished/never-run, `2` schema-incompatible/
+DB-unavailable/config-missing, `--json` for machine consumption. Run
+live against the real dev server's own still-unrepaired database: correctly
+refused to interpret sweep history at all (`SCHEMA_BEHIND`, exit `2`)
+-- the same real incident, once again diagnosed mechanically without
+touching the affected database.
+
+### Scheduler activation: implementation ready, honestly not activated
+
+A reviewable GitHub Actions template
+(`.github/workflows/scheduled-maintenance.yml.disabled`) exists --
+syntactically valid, invoking the exact, unmodified production
+maintenance command on the frozen hourly-order cadence, secrets
+referenced by name only. Deliberately named with a `.disabled` suffix
+so GitHub Actions cannot recognize or execute it on any trigger,
+regardless of content -- this project has never been deployed
+anywhere, so the question "can a scheduler reach the production
+database without weakening its own access controls" has no honest
+answer yet, and fabricating an active trigger against nothing would be
+exactly the "code existence is not automation" mistake this
+increment's own truthfulness requirement forbids. **Verdict: B --
+IMPLEMENTATION READY, NOT ACTIVATED**, restated in the runbook as a
+precise, checkable list of what activation actually requires.
+
+### Sweep-level locking: audited again, still not added
+
+Occurrence-level advisory locking (ADR-024) already prevents the one
+dangerous outcome (duplicate audit rows for one occurrence). Two
+overlapping full sweeps remain theoretically possible but operationally
+implausible (hourly-order cadence against a typically-seconds-long
+sweep, §49 of the maintenance contract) -- no sweep-level lock added,
+reasoning recorded in ADR-029, mirroring #26D's own identical
+migration-locking decision.
+
+### Verification
+
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run twice: **1,605
+passed** both times, identical, 0 skipped (1,552 baseline at #26D →
+1,605; +53 new tests: 14 pure domain tests, 10 real-Postgres service/
+repository integration tests, 9 CLI integration tests, 20 architecture
+guards -- all against the isolated schema-drift database, never
+`TEST_DATABASE_URL` or the developer's own database). Existing #25C
+maintenance tests (50), release-processing tests (101), and #26C/#26D
+deployment tests (89) all re-confirmed green, unchanged. Frontend:
+unchanged, **1,137 passed**. `tsc -b --noEmit`, `oxlint`, `vite build`
+all pass cleanly. The developer's own `economic_intelligence` database
+remains exactly as #26A found it.
+
+### New files
+
+`app/domain/maintenance_health.py`, `app/services/maintenance_health.py`,
+`app/operations/maintenance_health.py`,
+`.github/workflows/scheduled-maintenance.yml.disabled`,
+`tests/test_maintenance_health_domain.py`,
+`tests/integration/test_maintenance_health.py`,
+`tests/integration/test_maintenance_health_cli.py`,
+`tests/test_maintenance_health_architecture.py`,
+`docs/adr/029-maintenance-health-semantics-and-scheduler-activation-deferred.md`.
+Modified: `app/repositories/maintenance_repository.py`
+(`get_latest_finished_sweep`), `docs/operations/production-release-runbook.md`.
+No migration.
+
+### Deferred (named explicitly)
+
+Real scheduler activation (blocked on host selection + a security
+review this project cannot perform against a nonexistent production
+database); a real, wired alert destination (Slack/email/PagerDuty);
+sweep-level locking (no observed need); persisted manual-vs-scheduled
+sweep origin (no identified product requirement); production bootstrap
+and the real backup/restore rehearsal (#26F); economic methodology;
+AI; product analytics; onboarding; notifications; accounts.

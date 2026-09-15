@@ -1,0 +1,77 @@
+# Increment #26E — INERT TEMPLATE, NOT AN ACTIVE WORKFLOW.
+#
+# The `.disabled` suffix is deliberate: GitHub Actions only recognizes
+# files ending exactly in `.yml`/`.yaml` directly under
+# `.github/workflows/` — this file cannot run, on any trigger,
+# regardless of its own content, for as long as it keeps this name.
+# That is the whole point: "code existence is not automation"
+# (docs/product/production-reliability-deployment-v1.md, this
+# increment's own truthfulness requirement) applies to this file
+# itself, literally, not merely as a slogan.
+#
+# WHY THIS EXISTS, INERT, RATHER THAN NOT AT ALL: #26B named GitHub
+# Actions as the one scheduler option that needs zero hosting decision
+# for the SCHEDULER MECHANISM itself. It does NOT resolve the separate,
+# harder question this file's own docstring below states explicitly:
+# whether a GitHub-hosted runner can reach a real production database
+# without weakening that database's own network/access controls. No
+# production database exists yet (this project has never been deployed
+# anywhere) — so that question has no honest answer today. This
+# template proves the MECHANISM is ready (the exact production command,
+# reused unmodified, on the frozen cadence) without pretending the
+# SECURITY question is answered.
+#
+# TO ACTIVATE (only once a real, network-reachable production database
+# exists, AND the question above has a real, reviewed answer for that
+# specific environment):
+#   1. Rename this file to `scheduled-maintenance.yml` (drop `.disabled`).
+#   2. Set the two secrets it references, by NAME, in this repository's
+#      own GitHub Actions secrets (Settings -> Secrets and variables ->
+#      Actions) — DATABASE_URL and FRED_API_KEY. Never commit a value.
+#   3. Confirm the database's own network/firewall rules are compatible
+#      with GitHub-hosted runner IP ranges (broad and shared with every
+#      other GitHub Actions user) OR switch `runs-on` to a self-hosted
+#      runner already inside the production network.
+#   4. Run once via the manual `workflow_dispatch` trigger this file
+#      already includes, and confirm with
+#      `python -m app.operations.maintenance_health` before trusting
+#      the `schedule:` trigger below.
+#
+# Frozen cadence (docs/product/automated-economic-maintenance-v1.md
+# §15, restated exactly, not re-derived): "a uniform sweep interval on
+# the order of hourly-to-a-few-times-daily" — this template uses
+# hourly (`cron: "0 * * * *"`), the shortest end of that already-frozen
+# range, never invented sub-hourly precision the underlying release-
+# date data cannot support.
+
+name: Scheduled Maintenance (INERT until renamed off .disabled)
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production dependencies
+        run: pip install .
+
+      - name: Schema compatibility preflight + one bounded maintenance sweep
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python -m app.operations.run_maintenance
+
+      - name: Report maintenance-worker health (never fails the job on its own -- informational)
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m app.operations.maintenance_health || true
