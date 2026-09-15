@@ -19,7 +19,11 @@ dependencies = [
 # Increment 010: the first committed automated test suite (previously all
 # verification was ad hoc, never repeatable). pytest is the only addition;
 # nothing here is imported by app/ at runtime.
-dev = ["pytest"]
+# Increment #26D: pyyaml added so tests/test_release_architecture.py can
+# parse .github/workflows/ci.yml as real, structured YAML (job/step
+# presence, absence of a `secrets.` reference) rather than fragile
+# string matching -- also test-only, never imported by app/ at runtime.
+dev = ["pytest", "pyyaml"]
 
 [build-system]
 requires = ["setuptools>=68"]

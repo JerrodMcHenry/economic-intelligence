@@ -41,19 +41,43 @@ _THREE_BEFORE_HEAD = "dbd9a2889ef3"
 
 @pytest.fixture
 def drift_engine(schema_drift_database_url):
-    engine = create_engine(schema_drift_database_url)
+    # Deliberately does NOT open a connection here -- `create_engine`
+    # is lazy by construction, so this fixture holds no live database
+    # session across the test body. A real hang this project hit while
+    # writing these tests traced directly to an EARLIER version of
+    # this fixture that opened a `Connection` (and bound a `Session`
+    # to it) at fixture-setup time, i.e. BEFORE the test body's own
+    # `migrate_schema_drift_database`/`reset_schema_drift_database_to_nothing`
+    # calls ran -- that still-open connection then blocked those
+    # calls' own `DROP SCHEMA ... CASCADE` on a lock indefinitely.
+    # Every check in this file now goes through `_check(engine)`
+    # below, which opens a session only at the exact point it's used,
+    # always AFTER this file's own arrangement calls have already run.
+    # `pool_pre_ping=True` mirrors `app/db/session.py`'s own real,
+    # already-established production engine exactly: a test that calls
+    # `migrate_schema_drift_database` a SECOND time (e.g. to re-arrange
+    # state mid-test, `TestPreviousRevisionThenUpgradedToHead`) causes
+    # that helper's own defensive "terminate every other backend"
+    # step (`reset_schema_drift_database_to_nothing`, above) to kill
+    # whatever connection this engine's own pool was quietly holding
+    # onto from the FIRST check -- pre-ping detects and transparently
+    # replaces a dead pooled connection instead of surfacing it as a
+    # false `DATABASE_UNAVAILABLE`.
+    engine = create_engine(schema_drift_database_url, pool_pre_ping=True)
     yield engine
     engine.dispose()
 
 
-@pytest.fixture
-def drift_session(drift_engine):
-    with drift_engine.connect() as connection:
-        session = Session(bind=connection)
-        try:
-            yield session
-        finally:
-            session.close()
+def _check(engine):
+    """Runs the shared compatibility check against a session opened
+    fresh, right now -- never a connection left open since fixture
+    setup. See `drift_engine`'s own docstring above for why this
+    matters."""
+    session = Session(engine)
+    try:
+        return check_schema_compatibility(session)
+    finally:
+        session.close()
 
 
 def _alembic_version_rows(engine) -> list[tuple]:
@@ -77,9 +101,9 @@ class TestExpectedRevisionMatchesRealMigrationGraph:
 
 
 class TestCompatibleAtHead:
-    def test_database_at_head_is_compatible(self, schema_drift_database_url, drift_session):
+    def test_database_at_head_is_compatible(self, schema_drift_database_url, drift_engine):
         migrate_schema_drift_database(schema_drift_database_url, _HEAD)
-        result = check_schema_compatibility(drift_session)
+        result = _check(drift_engine)
         assert result.status is SchemaCompatibilityStatus.COMPATIBLE
         assert result.compatible is True
         assert result.expected_revision == _HEAD
@@ -91,9 +115,9 @@ class TestSchemaBehindOneRevision:
     against the isolated drift database -- never the developer's own
     `economic_intelligence` database."""
 
-    def test_one_revision_behind_is_not_compatible(self, schema_drift_database_url, drift_session, drift_engine):
+    def test_one_revision_behind_is_not_compatible(self, schema_drift_database_url, drift_engine):
         migrate_schema_drift_database(schema_drift_database_url, _ONE_BEFORE_HEAD)
-        result = check_schema_compatibility(drift_session)
+        result = _check(drift_engine)
         assert result.status is SchemaCompatibilityStatus.SCHEMA_BEHIND
         assert result.compatible is False
         assert result.expected_revision == _HEAD
@@ -106,9 +130,9 @@ class TestSchemaBehindOneRevision:
 
 
 class TestSchemaBehindMultipleRevisions:
-    def test_three_revisions_behind_is_not_compatible(self, schema_drift_database_url, drift_session):
+    def test_three_revisions_behind_is_not_compatible(self, schema_drift_database_url, drift_engine):
         migrate_schema_drift_database(schema_drift_database_url, _THREE_BEFORE_HEAD)
-        result = check_schema_compatibility(drift_session)
+        result = _check(drift_engine)
         assert result.status is SchemaCompatibilityStatus.SCHEMA_BEHIND
         assert result.actual_revision == _THREE_BEFORE_HEAD
 
@@ -121,13 +145,13 @@ class TestSchemaAhead:
     migrations this increment). Directly overwrites `alembic_version`'s
     own tracked value via raw SQL on the isolated drift database only."""
 
-    def test_unknown_newer_revision_is_not_compatible(self, schema_drift_database_url, drift_session, drift_engine):
+    def test_unknown_newer_revision_is_not_compatible(self, schema_drift_database_url, drift_engine):
         migrate_schema_drift_database(schema_drift_database_url, _HEAD)
         with drift_engine.connect() as connection:
             connection.execute(text("UPDATE alembic_version SET version_num = :fake"), {"fake": "9" * 12})
             connection.commit()
 
-        result = check_schema_compatibility(drift_session)
+        result = _check(drift_engine)
         assert result.status is SchemaCompatibilityStatus.SCHEMA_AHEAD
         assert result.compatible is False
         assert result.expected_revision == _HEAD
@@ -138,11 +162,11 @@ class TestUninitializedDatabase:
     """A genuinely fresh database -- no `alembic_version` table at all,
     not merely a downgraded-to-base one (#26C source prompt §10/§35)."""
 
-    def test_no_alembic_version_table_is_not_compatible(self, schema_drift_database_url, drift_session, drift_engine):
+    def test_no_alembic_version_table_is_not_compatible(self, schema_drift_database_url, drift_engine):
         reset_schema_drift_database_to_nothing(schema_drift_database_url)
         assert _table_exists(drift_engine, "alembic_version") is False
 
-        result = check_schema_compatibility(drift_session)
+        result = _check(drift_engine)
         assert result.status is SchemaCompatibilityStatus.SCHEMA_UNINITIALIZED
         assert result.compatible is False
         assert result.expected_revision == _HEAD
@@ -153,13 +177,13 @@ class TestUninitializedDatabase:
         assert _table_exists(drift_engine, "recorded_monitor_results") is False
 
     def test_downgraded_to_base_with_an_empty_but_existing_table_is_also_uninitialized(
-        self, schema_drift_database_url, drift_session, drift_engine
+        self, schema_drift_database_url, drift_engine
     ):
         migrate_schema_drift_database(schema_drift_database_url, "base")
         assert _table_exists(drift_engine, "alembic_version") is True
         assert _alembic_version_rows(drift_engine) == []
 
-        result = check_schema_compatibility(drift_session)
+        result = _check(drift_engine)
         assert result.status is SchemaCompatibilityStatus.SCHEMA_UNINITIALIZED
         assert result.actual_revision is None
 
@@ -171,14 +195,14 @@ class TestAmbiguousMultipleVersionRows:
     simulated directly via raw SQL on the isolated drift database."""
 
     def test_two_version_rows_is_not_compatible_and_never_guessed(
-        self, schema_drift_database_url, drift_session, drift_engine
+        self, schema_drift_database_url, drift_engine
     ):
         migrate_schema_drift_database(schema_drift_database_url, _HEAD)
         with drift_engine.connect() as connection:
             connection.execute(text("INSERT INTO alembic_version (version_num) VALUES (:rev)"), {"rev": "8" * 12})
             connection.commit()
 
-        result = check_schema_compatibility(drift_session)
+        result = _check(drift_engine)
         assert result.status is SchemaCompatibilityStatus.SCHEMA_AMBIGUOUS
         assert result.compatible is False
         assert result.actual_revision is None
@@ -232,10 +256,10 @@ class TestFreshDatabaseMigratedFromZero:
     "head" means, independently arrived at (one via the files on disk,
     the other via a real `alembic upgrade` run)."""
 
-    def test_zero_to_head_then_compatible(self, schema_drift_database_url, drift_session):
+    def test_zero_to_head_then_compatible(self, schema_drift_database_url, drift_engine):
         reset_schema_drift_database_to_nothing(schema_drift_database_url)
         migrate_schema_drift_database(schema_drift_database_url, _HEAD)
-        result = check_schema_compatibility(drift_session)
+        result = _check(drift_engine)
         assert result.status is SchemaCompatibilityStatus.COMPATIBLE
 
 
@@ -246,14 +270,14 @@ class TestPreviousRevisionThenUpgradedToHead:
     itself) -> compatible."""
 
     def test_behind_becomes_compatible_only_after_an_explicit_external_upgrade(
-        self, schema_drift_database_url, drift_session
+        self, schema_drift_database_url, drift_engine
     ):
         migrate_schema_drift_database(schema_drift_database_url, _ONE_BEFORE_HEAD)
-        before = check_schema_compatibility(drift_session)
+        before = _check(drift_engine)
         assert before.status is SchemaCompatibilityStatus.SCHEMA_BEHIND
 
         migrate_schema_drift_database(schema_drift_database_url, _HEAD)  # the test harness, not the checker
-        after = check_schema_compatibility(drift_session)
+        after = _check(drift_engine)
         assert after.status is SchemaCompatibilityStatus.COMPATIBLE
 
 

@@ -1,0 +1,45 @@
+# Increment #26D. Mirrors .gitignore's own exclusions plus everything
+# additionally irrelevant to (or dangerous inside) a production image --
+# see docs/product/production-reliability-deployment-v1.md #26B's own
+# "development file exclusion" requirement. Never inspected for secret
+# CONTENT here, only used to keep those files out of the build context.
+
+.git/
+.github/
+
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+.env
+.env.*
+!.env.example
+
+# Test/local databases and dumps never belong in an image.
+*.sql
+*.dump
+
+# Frontend: an independently-built, independently-deployed static
+# artifact (see #26D's own §6 packaging decision) -- never bundled into
+# this backend image at all.
+frontend/
+
+# Research data (already excluded from version control for the same
+# "regenerable, not committed" reason -- see .gitignore).
+research/*/data/
+research/*/outputs/
+
+# Editor/OS artifacts.
+.DS_Store
+.idea/
+.vscode/
+
+# Documentation and product/process artifacts have no runtime purpose
+# inside the image -- smaller build context, faster builds, and one
+# less way an unrelated file could accidentally end up shippable.
+docs/
+README.md

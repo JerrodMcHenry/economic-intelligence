@@ -2526,3 +2526,80 @@ later concern). See
 [docs/product/production-reliability-deployment-v1.md](../product/production-reliability-deployment-v1.md)
 and [ADR-027](../adr/027-schema-compatibility-exact-equality-and-readiness-split.md)
 for the full frozen contract.
+
+---
+
+## Flow 45 — Deployment Release: Migration Preflight and Apply (`app.operations.release`, Increment #26D)
+
+Not an HTTP flow. Operator- or pipeline-invoked, one explicit release
+phase, always before web deployment (never concurrent with it, never
+invoked by web-process startup).
+
+```mermaid
+sequenceDiagram
+    participant Op as Operator / deployment pipeline
+    participant CLI as app.operations.release
+    participant Check as check_schema_compatibility() (Flow 44, unmodified)
+    participant Alembic as alembic.command.upgrade
+    participant DB as Configured database
+
+    Op->>CLI: python -m app.operations.release preflight
+    CLI->>Check: check_schema_compatibility()
+    alt COMPATIBLE / SCHEMA_BEHIND / SCHEMA_UNINITIALIZED
+        Check-->>CLI: safe to migrate
+        CLI-->>Op: exit 0
+    else SCHEMA_AHEAD / SCHEMA_AMBIGUOUS / DATABASE_UNAVAILABLE / CONFIGURATION_MISSING
+        Check-->>CLI: refuse
+        CLI-->>Op: exit 2, no mutation, no downgrade ever attempted
+    end
+
+    Op->>CLI: python -m app.operations.release migrate
+    CLI->>Check: check_schema_compatibility()  (identical preflight, run again)
+    alt refused (same states as above)
+        CLI-->>Op: exit 2 -- alembic.command.upgrade is NEVER called
+    else safe (already COMPATIBLE)
+        CLI-->>Op: exit 0, "Already at head -- nothing to migrate." (idempotent no-op)
+    else safe (BEHIND / UNINITIALIZED)
+        CLI->>Alembic: command.upgrade(config, "head")
+        Alembic->>DB: apply pending migrations (transactional DDL -- a failure rolls back cleanly, §7)
+        alt upgrade raises
+            Alembic-->>CLI: exception
+            CLI-->>Op: exit 2, exception TYPE only (never its message) -- new app version must not deploy
+        else upgrade succeeds
+            CLI->>Check: check_schema_compatibility()  (re-verify, never inferred from "didn't raise")
+            alt still not COMPATIBLE
+                Check-->>CLI: unexpected state
+                CLI-->>Op: exit 2, "migration completed but the database is still not compatible"
+            else COMPATIBLE
+                Check-->>CLI: verified
+                CLI-->>Op: exit 0, "Migration verified: database is COMPATIBLE."
+            end
+        end
+    end
+```
+
+**Migration locking**: none added. #26B's release process is already a
+single, serialized pipeline phase; a genuinely conflicting concurrent
+attempt fails loudly via Postgres's own transactional DDL rather than
+corrupting the schema (reasoning recorded in full in
+`app/operations/release.py`'s own docstring, restated in ADR-028).
+
+**Web readiness transitions only via this explicit command** — proven
+directly, end-to-end: a database migrated to one revision behind head
+leaves `/readiness` reporting `503`; calling `migrate()` against that
+same database (never the web process itself) is what makes the next
+`/readiness` call report `200`
+(`tests/integration/test_release_cli.py::TestReadinessTransitionsOnlyViaExplicitMigration`).
+
+**What this flow explicitly does NOT do**: it never runs inside the
+web process or at its startup; it never invokes the maintenance
+orchestrator or any economic service; it never attempts a downgrade or
+any other automatic correction on `SCHEMA_AHEAD`/`SCHEMA_AMBIGUOUS`;
+it never seeds actual economic observation data (only the release
+*catalog* is seeded, as a side effect of the migration chain's own
+existing data migrations — real observation data and a first
+processing pass remain #26F's own bootstrap scope). See
+[docs/product/production-reliability-deployment-v1.md](../product/production-reliability-deployment-v1.md),
+[ADR-028](../adr/028-single-container-image-and-ci-validates-never-deploys.md),
+and [docs/operations/production-release-runbook.md](../operations/production-release-runbook.md)
+for the full contract and operator-facing detail.

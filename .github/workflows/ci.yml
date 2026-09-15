@@ -1,0 +1,93 @@
+# Increment #26D — validation only, never deployment.
+# docs/product/production-reliability-deployment-v1.md (#26B) §26-28:
+# "CI must NOT automatically migrate production DB merely because code
+# was pushed. Deployment migration is a controlled release phase."
+#
+# This workflow runs the existing backend + frontend test/typecheck/
+# lint/build suites against an ephemeral, CI-local PostgreSQL service
+# container that exists for the lifetime of this job only -- it is
+# never the production database, never contains production data, and
+# is discarded the moment the job ends. No production secret
+# (FRED_API_KEY/OPENAI_API_KEY/a real DATABASE_URL) is set anywhere in
+# this file -- the backend test suite mocks every FRED call at the
+# client-method boundary (see tests/integration/test_transaction_and_safety.py's
+# own NETWORK_EXCEPTIONS discipline) and never needs a real key.
+#
+# No deploy job exists here, deliberately (#26B §29: "if hosting
+# remains unselected, do NOT create a fake deploy workflow"). The
+# actual deployment/migration release phase is
+# `python -m app.operations.release` (see app/operations/release.py,
+# ADR-027, docs/runbook/production-release-runbook.md) -- a
+# platform-neutral command a FUTURE, real deployment pipeline invokes
+# as its own separate, explicit step, never triggered by this workflow.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # Trust auth, matching this project's own established local
+          # development convention (README.md, tests/conftest.py) --
+          # an ephemeral, CI-only database with no real credential of
+          # any kind, not a production connection.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Create isolated test database
+        run: psql "postgresql://postgres@localhost:5432/postgres" -c "CREATE DATABASE economic_intelligence_test;"
+
+      - name: Run backend test suite
+        env:
+          # The isolated, ephemeral CI database above -- migrated to
+          # head automatically by tests/conftest.py's own
+          # `_apply_migrations` fixture, exactly as it already is for
+          # every local developer run. This step, by running the full
+          # suite (including tests/integration/test_schema_compatibility.py
+          # and tests/integration/test_release_cli.py), already
+          # exercises the migration chain from a fresh database and
+          # from prior real revisions -- no separate CI step is needed
+          # to satisfy that requirement a second time.
+          TEST_DATABASE_URL: postgresql+psycopg://postgres@localhost:5432/economic_intelligence_test
+        run: pytest tests/ -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm test -- --run
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build

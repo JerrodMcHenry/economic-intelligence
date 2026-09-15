@@ -474,7 +474,7 @@ Notes on the current implementation:
   the only operation that writes, and the only path that touches both
   FRED and PostgreSQL.
 
-## Health and readiness endpoints (extended #26C: `/readiness` + schema compatibility)
+## Health, readiness, and the migration command (extended #26C: `/readiness` + schema compatibility; #26D: `app.operations.release`)
 
 `GET /health` is unchanged since Increment 001: a synchronous route with no
 dependencies, returning `{"status": "ok"}`. It exists to prove the process
@@ -508,6 +508,17 @@ as a preflight before either CLI does anything else — an incompatible
 schema performs zero economic processing and creates zero
 `MaintenanceSweep`/`ReleaseCheckRun`/`ReleaseObservationUpdate`/
 `ReleaseAnalysisUpdate`/`RecordedMonitorResult` rows.
+
+`app/operations/release.py` (Increment #26D, `docs/product/production-reliability-deployment-v1.md`
+#26B §11-13, [ADR-028](../adr/028-single-container-image-and-ci-validates-never-deploys.md))
+is the ONE place this application's own database schema is ever
+advanced: `preflight` reports the identical shared compatibility
+result read-only; `migrate` runs `preflight` first (aborting
+identically if it refuses), calls `alembic.command.upgrade` exactly
+once, and re-runs the compatibility check afterward to verify
+`COMPATIBLE` before reporting success. Never invoked by web-process
+startup, never by the maintenance worker — an operator- or
+pipeline-invoked, separate release-phase step (`docs/operations/production-release-runbook.md`).
 
 ## External provider boundary
 
@@ -1261,13 +1272,21 @@ The following are intentionally absent — not overlooked:
   and [ADR-007](../adr/007-synchronous-sqlalchemy.md)), even though
   FastAPI/Uvicorn support async routes and SQLAlchemy supports async
   sessions.
-- **Containerization / cloud infrastructure** — no Dockerfile, no deployment
-  configuration, no Terraform, no CI/CD, no chosen hosting platform, no
-  scheduler actually invoking `app/operations/run_maintenance.py` on a
-  cadence (`docs/product/production-reliability-deployment-v1.md` #26B's
-  own explicit scope for a later, dedicated increment; #26C added only the
-  schema-compatibility checking and `/readiness` route this future
-  deployment pipeline will depend on, not the pipeline itself).
+- **Cloud infrastructure / chosen hosting platform / scheduler activation** —
+  still none (`docs/product/production-reliability-deployment-v1.md` #26B's
+  own explicit scope for a later, dedicated increment, #26E). Increment
+  #26D added a `Dockerfile`/`.dockerignore` (one image, reused for the web
+  process and every operational CLI via command override — see
+  [ADR-028](../adr/028-single-container-image-and-ci-validates-never-deploys.md)),
+  **not build-verified in this project's own development environment** (no
+  Docker daemon available where it was written — disclosed honestly, not
+  pretended), and `.github/workflows/ci.yml` (backend/frontend
+  test/typecheck/lint/build validation only, against an ephemeral CI-local
+  PostgreSQL service — no deploy job, never a production database or
+  credential). `app/operations/release.py` (`preflight`/`migrate`) is the
+  one place this application's own schema is ever advanced — see
+  `docs/operations/production-release-runbook.md`. Still nothing invokes
+  `app/operations/run_maintenance.py` on any cadence.
 - **Observability** — no structured logging, metrics, or tracing beyond
   Uvicorn's default access logs and each CLI's own existing safe stdout
   summary. `GET /readiness` (#26C) narrowly answers one specific

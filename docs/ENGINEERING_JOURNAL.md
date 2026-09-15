@@ -9047,3 +9047,141 @@ Deployment pipeline, Docker, CI/CD, hosting configuration, scheduler
 execution, maintenance-automation activation, backups, product
 analytics, frontend features, economic methodology, AI — all
 explicitly #26D/#26E/#26F's own scope, per #26B §61.
+
+## Increment #26D — Deployment Packaging + Migration Release Process
+
+Implements the frozen `docs/product/production-reliability-deployment-v1.md`
+(#26B) contract's own deployment-packaging half: build → test →
+migration preflight → apply migrations once → verify → deploy web →
+smoke test, made real and repeatable for the first time in this
+project's history. See `docs/adr/028-single-container-image-and-ci-validates-never-deploys.md`
+for the durable architecture decisions; `docs/operations/production-release-runbook.md`
+for the operator-facing companion.
+
+### The one place this application's schema is ever advanced
+
+`app/operations/release.py` (new) — `preflight` (read-only, reuses
+#26C's own shared `check_schema_compatibility`, refuses on
+`SCHEMA_AHEAD`/`SCHEMA_AMBIGUOUS`, never a downgrade) and `migrate`
+(runs `preflight` first, calls `alembic.command.upgrade` exactly once,
+then re-verifies `COMPATIBLE` before reporting success — a completed
+upgrade that somehow leaves the database still incompatible is a
+failure, never inferred success from "the call didn't raise"). Proven,
+live, against a real dev server pointed at the real, still-unrepaired
+database #26A's own incident describes:
+`python -m app.operations.release preflight` reports `SCHEMA_BEHIND`
+without mutating anything; `migrate` (exercised only against the
+isolated schema-drift database in tests, never against that real
+database this increment) genuinely reaches `COMPATIBLE`.
+
+### A real hang, root-caused and fixed during this increment's own test-writing
+
+Writing real-Postgres tests for `migrate`'s own idempotency and
+refusal behavior surfaced a genuine bug in #26C's own test
+infrastructure (`tests/conftest.py`'s `migrate_schema_drift_database`):
+a test-only fixture (`drift_session`, since removed) opened a database
+connection at PYTEST FIXTURE SETUP time -- before the test body's own
+`migrate_schema_drift_database` call ran -- which then blocked that
+call's own `DROP SCHEMA ... CASCADE` on a lock indefinitely. Fixed by
+(1) never opening a connection until the exact point it's used, always
+after arrangement (`drift_engine` now yields a lazy `Engine`, never a
+pre-connected `Session`); (2) making the reset helper itself robust
+regardless of cause -- force-terminating every OTHER backend connected
+to the isolated drift database before resetting it, plus a short
+`statement_timeout` so any future, unanticipated lock contention fails
+loudly and fast rather than hanging the whole suite silently; (3)
+`pool_pre_ping=True` on the test file's own engine, mirroring
+`app/db/session.py`'s own already-established production pattern
+exactly, so a connection killed by that termination step is
+transparently replaced rather than surfaced as a false
+`DATABASE_UNAVAILABLE`. A second, related fix: `revision="base"` now
+genuinely reaches "alembic_version table exists, empty" (a real
+`alembic downgrade base`, reached via head first) rather than "no
+table at all" -- the two are distinct, real database states this
+project's own compatibility module classifies identically but arrives
+at via different code paths, and #26D's own test suite needed both
+distinctly reachable, not merged by an implementation shortcut.
+
+### Packaging: one image, three entry points
+
+`Dockerfile` (new, **not build-verified in this environment -- no
+Docker daemon available; honestly disclosed, not pretended**): pins
+Python 3.12, installs only production dependencies, copies no
+`.env`/`.git`/test artifacts (`.dockerignore`), defaults to the web
+command, and documents the other two (`release`/`run_maintenance`/
+`process_release`) as command overrides against the identical image --
+never three separately-built, potentially-divergent images. Frontend
+remains independently built/deployed static assets (confirmed
+unchanged, existing architecture) -- not bundled into this image.
+
+### CI: validates, never deploys
+
+`.github/workflows/ci.yml` (new) -- backend suite against an ephemeral,
+CI-local PostgreSQL service container (never production, never a real
+credential -- confirmed by the complete absence of any `secrets.`
+reference), plus frontend test/typecheck/lint/build. No deploy job
+exists; CI never invokes `app.operations.release`/`run_maintenance`/
+`process_release` (architecture-guarded). Validated with PyYAML
+(`pyproject.toml`'s own `dev` extra, extended) as far as tooling in
+this environment permits -- a real GitHub Actions run was not
+triggered.
+
+### Smoke test
+
+`app/operations/smoke_test.py` (new) -- GET-only, checks `/health`,
+`/readiness`, both monitor endpoints, `/since-last-visit`, and
+`/releases`. Live-run against the real dev server this increment
+otherwise left untouched: correctly reported 2 of 6 checks failing
+(`/readiness` unready, `/since-last-visit` `500`) -- the exact, real
+incident, detected mechanically by a read-only script, without
+mutating anything.
+
+### CORS, HTTPS, environment contract
+
+CORS middleware remains absent, deliberately -- not required for the
+current same-origin local-dev architecture; the runbook documents the
+exact narrow-allowlist requirement for whenever frontend/backend
+deploy cross-origin, not implemented here since the real origin(s)
+depend on a hosting choice this increment does not make. HTTPS
+requirement restated, not implemented (a platform/reverse-proxy
+concern). `docs/operations/production-release-runbook.md`'s own
+environment-variable table documents every variable NAME (never a
+value) and its required/optional classification.
+
+### Verification
+
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run twice:
+**1,552 passed** both times, identical, 0 skipped (1,507 baseline at
+#26C → 1,552; +45 new tests: 21 release-command integration tests
+against the isolated schema-drift database, 24 architecture guards
+covering the release command, the web/migration boundary, the smoke
+test's read-only property, the Dockerfile/`.dockerignore`, and the CI
+workflow). Frontend: unchanged, **1,137 passed** -- confirmed zero
+frontend files touched. `tsc -b --noEmit`, `oxlint`, `vite build` all
+pass cleanly. The developer's own `economic_intelligence` database
+remains exactly as #26A found it (`alembic current` →
+`09f4c0959e9f`) -- deliberately not repaired.
+
+### New files
+
+`app/operations/release.py`, `app/operations/smoke_test.py`,
+`Dockerfile`, `.dockerignore`, `.github/workflows/ci.yml`,
+`tests/integration/test_release_cli.py`,
+`tests/test_release_architecture.py`,
+`docs/adr/028-single-container-image-and-ci-validates-never-deploys.md`,
+`docs/operations/production-release-runbook.md`. Modified:
+`tests/conftest.py` (the schema-drift fixture hang fix above),
+`pyproject.toml` (`pyyaml` added to the `dev` extra). No migration --
+this increment adds zero new Alembic revisions.
+
+### Deferred (named explicitly, per #26B's own implementation split)
+
+Hosting platform selection; scheduler activation and operator
+observability (#26E); production bootstrap and reliability
+verification, including the failure drills and the real backup/restore
+rehearsal (#26F); CORS middleware itself (documented, not implemented,
+pending a hosting/origin decision); a real `docker build`/`docker run`
+verification (no Docker daemon available in this environment);
+migration-role separation; connection-pool tuning; economic
+methodology; AI; product analytics; onboarding; notifications;
+accounts.
