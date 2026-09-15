@@ -2378,3 +2378,72 @@ merges Inflation and Labor into one cross-domain structure or claim.
 See [docs/product/since-last-visit-v1.md](../product/since-last-visit-v1.md)
 and [ADR-026](../adr/026-since-last-visit-server-watermark-and-event-spine.md)
 for the full frozen contract.
+
+---
+
+## Flow 43 — Since Last Visit Checkpoint Lifecycle (Overview, Increment #25H)
+
+```mermaid
+sequenceDiagram
+    participant Storage as localStorage
+    participant Hook as useSinceLastVisit
+    participant API as api/sinceLastVisit.ts
+    participant Component as SinceLastVisit.tsx
+
+    Note over Hook: mount, or reload() called
+    Hook->>Storage: readSinceLastVisitCheckpoint()
+    Note over Storage: missing key, malformed JSON, wrong<br/>schemaVersion, or getItem() throwing all<br/>degrade identically to "no checkpoint" -- never a thrown error
+    Storage-->>Hook: { through } | null
+
+    Hook->>API: getSinceLastVisit(checkpoint?.through ?? null)
+    API->>API: GET /api/v1/since-last-visit?after=<through, if any>
+    Note over Hook,API: Flow 42's own backend contract, unchanged
+
+    alt request succeeds
+        API-->>Hook: SinceLastVisitResponse
+        Hook->>Hook: setState({ status: "success", data })
+        Note over Component: renders the already-categorized response verbatim --<br/>no transition derivation, no "remains" inference,<br/>no evaluation-period selection, no salience recomputation
+        Component-->>Hook: (React commits the success render)
+        Note over Hook: a SEPARATE effect, keyed on `state`,<br/>fires only once the "success" state is committed --<br/>never inside the fetch's own .then()
+        Hook->>Storage: writeSinceLastVisitCheckpoint(data.through)
+        Note over Hook,Storage: idempotent -- a ref tracks the already-persisted<br/>through value, so React Strict Mode's own deliberate<br/>double-invocation of this effect writes nothing twice
+    else request fails
+        API-->>Hook: rejected promise
+        Hook->>Hook: setState({ status: "error", error })
+        Note over Storage: NEVER written -- the checkpoint only ever<br/>advances from a genuine "success" state (contract §91)
+    end
+```
+
+**The one hard rule this entire flow exists to enforce**: the ONLY value ever
+written to `localStorage` is `response.through`, copied verbatim from a
+successful backend response — never `Date.now()`, `new Date()`, or any
+other browser-clock read, anywhere in this path (contract §8/§10-13,
+proven structurally by `test/no-since-last-visit-derivation.test.ts`
+and behaviorally by a dedicated test that mocks `Date.now()` to a wrong
+value and confirms the persisted checkpoint is unaffected).
+
+**Why the checkpoint write lives in its own effect, not inside the
+fetch's own `.then()`**: a `useEffect` keyed on `state` fires only
+after React has actually committed the "success" state — the
+structural proxy this project uses for "the response has reached the
+rendered success state" (contract §92's own explicit "V1 practical
+semantics," which does not require proving a human visually consumed
+every pixel). Writing inside the raw `.then()` callback instead would
+acknowledge the response the instant the network call resolves,
+*before* React has processed or rendered anything — a subtly weaker
+guarantee the frozen contract's own §11/§92 do not accept.
+
+**Why the fetch effect never re-runs on its own write**: it depends
+only on an internal `reloadToken`, never on storage state — so
+persisting a new checkpoint can never itself trigger the reactive
+refetch-then-recap-disappears loop the frozen contract's own §13 names
+as the exact failure mode to avoid.
+
+**What this flow explicitly does NOT do**: it never reads
+`Date.now()`/`new Date()`/`performance.now()` to construct or
+influence a checkpoint value; it never advances the checkpoint from an
+`"error"` or `"loading"` state; it never re-reads storage reactively
+mid-request; visiting `/inflation`/`/labor`/`/releases` directly never
+triggers any part of this flow (only Overview owns the checkpoint,
+contract §15-16). See [docs/product/since-last-visit-v1.md](../product/since-last-visit-v1.md)
+for the full frozen contract.

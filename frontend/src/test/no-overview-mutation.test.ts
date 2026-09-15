@@ -1,15 +1,18 @@
 /**
  * Architectural guard, originally for Increment #19A, extended for
- * #19C and #20E.2: the Economic Overview (`pages/Overview.tsx` and
- * every `components/overview/*` file) must remain completely
- * read-only. It may only call the seven documented canonical read
- * functions (`getInflationMonitor`/`getInflationWhatChanged`/
+ * #19C, #20E.2, and #25H: the Economic Overview (`pages/Overview.tsx`
+ * and every `components/overview/*` file) must remain completely
+ * read-only. It may only call the eight documented canonical read
+ * functions/hooks (`getInflationMonitor`/`getInflationWhatChanged`/
  * `getLaborMonitor`/`getLaborWhatChanged`/`fetchReleaseProcessingStatus`/
- * `fetchUpcomingReleases`/`fetchRecentReleases`) -- never a
- * sync/mutation endpoint, never AI, and never `fetch` directly (every
- * network call must go through an `api/*` client module, the same
- * discipline `no-release-sync-or-coupling.test.ts` already enforces
- * for release-calendar files).
+ * `fetchUpcomingReleases`/`fetchRecentReleases`/`useSinceLastVisit`) --
+ * never a sync/mutation endpoint, never AI, and never `fetch` directly
+ * (every network call must go through an `api/*` client module, the
+ * same discipline `no-release-sync-or-coupling.test.ts` already
+ * enforces for release-calendar files). `useSinceLastVisit` (#25H) is
+ * itself read-only -- it wraps `GET /api/v1/since-last-visit` (#25G)
+ * plus a purely-local checkpoint read/write, never a write-capable
+ * backend call.
  *
  * Deliberately narrow and separate from `no-release-sync-or-coupling.test.ts`:
  * that guard only scans files whose path contains "release" (so it
@@ -107,6 +110,11 @@ describe("Economic Overview is read-only", () => {
       "fetchUpcomingReleases",
       "fetchRecentReleases",
       "useApiResource",
+      // Increment #25H: Since Last Visit V1's own dedicated resource
+      // hook (app/api/since_last_visit.py's `GET /since-last-visit`,
+      // wrapped by api/useSinceLastVisit.ts) -- read-only, exactly like
+      // every other name in this list.
+      "useSinceLastVisit",
     ]);
     const violations = importedNames.filter((name) => name.length > 0 && !allowed.has(name));
     expect(violations, `pages/Overview.tsx imports an undocumented api function: ${violations.join(", ")}`).toEqual([]);

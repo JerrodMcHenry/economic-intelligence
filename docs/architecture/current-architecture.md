@@ -515,7 +515,7 @@ structurally, not just by convention, and were each verified directly
   same, unmodified `EconomicDataService`/`AnalysisService` methods every
   HTTP endpoint already uses.
 
-## Frontend architecture (Increment #19A: Economic Overview UI V1; extended #19C: Latest Data Detected UI; extended #20E.2: Labor UI + Overview Integration; extended #22B: Overview Attention & Navigation, "Latest Data Detected" renamed "Recent Data Updates"; extended #23C: Relate V1 composition; extended #24D: State Duration V1 UI)
+## Frontend architecture (Increment #19A: Economic Overview UI V1; extended #19C: Latest Data Detected UI; extended #20E.2: Labor UI + Overview Integration; extended #22B: Overview Attention & Navigation, "Latest Data Detected" renamed "Recent Data Updates"; extended #23C: Relate V1 composition; extended #24D: State Duration V1 UI; extended #25H: Since Last Visit V1 return experience)
 
 ```
 Browser
@@ -578,6 +578,12 @@ frontend/
                                            only) + getReleases/fetchUpcomingReleases/
                                            fetchRecentReleases -- GET only, never the sync path
       useApiResource.ts             one independent load/error/success/reload hook per resource
+      sinceLastVisit.types.ts, sinceLastVisit.ts   TS mirror of app/models/since_last_visit.py
+                                           (Increment #25G) + getSinceLastVisit -- GET only
+      useSinceLastVisit.ts          Increment #25H -- a specialized useApiResource sibling: reads
+                                     the local checkpoint once per request, persists the response's
+                                     own `through` only after a successful render, never reactively
+                                     re-fetches on its own write (see "Since Last Visit V1" below)
     components/
       PageContainer.tsx, Disclosure.tsx, LoadingSkeleton.tsx, ErrorMessage.tsx
       explanations/  ExplanationTrigger.tsx -- the one reusable "i" progressive-
@@ -629,7 +635,11 @@ frontend/
                    (Increment #23C -- Relate V1, one deterministic COMPOSITION
                    sentence over Inflation's and Labor's own already-canonical
                    states, reusing the same two useApiResource results
-                   CurrentStateSection already consumes; see "Relate V1" below);
+                   CurrentStateSection already consumes; see "Relate V1" below),
+                   SinceLastVisit (Increment #25H -- the return-orientation
+                   section, deliberately FIRST in page order; renders the
+                   already-categorized `useSinceLastVisit()` resource verbatim,
+                   no derivation of its own -- see "Since Last Visit V1" below);
                    each only truncates/formats/composes already-canonical
                    backend values, reusing Badge/WhyThisState/WhyLaborState/
                    ReleaseRow/ReleaseDateBadge rather than re-deriving anything
@@ -671,17 +681,26 @@ frontend/
                  relateComposition.ts (Increment #23C -- Relate V1's two pure
                  COMPOSITION functions, composeMonitorRelation/
                  composeLaborComponents; no backend import, no calculation,
-                 no score -- see "Relate V1" below)
+                 no score -- see "Relate V1" below), sinceLastVisitCheckpoint.ts
+                 (Increment #25H -- the frontend's first localStorage usage of
+                 any kind; reads/writes only a server-issued `through`
+                 watermark, never the browser's own clock -- see "Since Last
+                 Visit V1" below), sinceLastVisitCopy.ts (Increment #25H --
+                 pure copy templates over the already-categorized backend
+                 response, mirroring stateDurationCopy.ts's own "zero economic
+                 content" boundary)
     pages/       one component per route (Overview -- the real Economic
                  Overview, now genuinely multi-domain as of #20E.2; Inflation;
                  Labor, Increment #20E.2; Releases; NotFound)
     styles/      global.css (Tailwind entry + minimal visual foundation)
     test/        Vitest setup, fixtures/, the no-economic-logic,
                  no-release-sync-or-coupling, no-explanation-classification-logic,
-                 no-overview-mutation, and (Increment #23C) no-relate-inference
-                 architectural guards -- the last deliberately scoped to just
-                 the three Relate implementation files rather than the whole
-                 tree (see "Relate V1" below for why)
+                 no-overview-mutation, (Increment #23C) no-relate-inference, and
+                 (Increment #25H) no-since-last-visit-derivation architectural
+                 guards -- no-relate-inference and no-since-last-visit-derivation
+                 are both deliberately scoped to their own small implementation
+                 file sets rather than the whole tree (see "Relate V1"/"Since
+                 Last Visit V1" below for why)
     App.tsx      route table
     main.tsx     React root, router provider
   public/
@@ -913,14 +932,20 @@ aggregate endpoint, no `Promise.all` across domains, and no aggregate
 fabricates any of the other six (proven directly by dedicated
 partial-failure tests, one per resource, plus cross-domain
 failure-isolation tests added in #20E.2 — e.g. Labor failing never
-blanks Inflation's card, and vice versa). Hierarchy is Current State →
-How They Relate → What Changed → Recent Data Updates → Releases (NOW →
-RELATE → CHANGED → DETECTED → NEXT — "How They Relate" added #23C
+blanks Inflation's card, and vice versa). Increment #25H adds an
+eighth, independent resource (`useSinceLastVisit`, its own dedicated
+`GET /api/v1/since-last-visit` call, #25G) with the identical
+failure-isolation discipline. Hierarchy is Since Your Last Check →
+Current State → How They Relate → What Changed → Recent Data Updates →
+Releases (RETURN → NOW → RELATE → CHANGED → DETECTED → NEXT — "Since
+Your Last Check" added #25H deliberately FIRST, since a return-
+orientation layer's whole purpose is preceding, not following, the
+page's own current-state re-scan; "How They Relate" added #23C
 immediately after Current State, since relating is itself a
 current-state question, not a change question; "Recent Data Updates"
 renamed from "Latest Data Detected" in #22B, see below), each still
 exactly one `<h2>` (proven by the `heading-sequence` test, updated for
-both changes). `components/overview/CurrentStateSection.tsx`
+every change). `components/overview/CurrentStateSection.tsx`
 is a thin peer-domain wrapper — one shared `<h2>Current State</h2>`
 over two independently-gated `<div>` sub-cards, `InflationCurrentStateCard`
 and `LaborCurrentStateCard` (Increment #20E.2), neither owning the
@@ -929,6 +954,46 @@ domain label beside it ("Inflation"/"Labor," so the page reads as
 "Inflation is MIXED"/"Labor is COOLING," never "the economy is X"), the
 period, and its own `WhyThisState`/`WhyLaborState` (each reused
 unmodified, including their existing contradictory-evidence guarantees).
+
+**"Since Your Last Check"** (`components/overview/SinceLastVisit.tsx`,
+Increment #25H — Since Last Visit V1, frozen by
+[docs/product/since-last-visit-v1.md](../product/since-last-visit-v1.md))
+is the page's first RETURN capability, and the first frontend module in
+this project to use `localStorage`. `api/useSinceLastVisit.ts` — a
+specialized sibling of `useApiResource`, not `useApiResource` itself —
+reads the local checkpoint (`lib/sinceLastVisitCheckpoint.ts`'s
+`readSinceLastVisitCheckpoint`) exactly once per request, calls
+`GET /api/v1/since-last-visit` (#25G) with that checkpoint's own
+`through` value as `after` (or omits it entirely on a genuine first
+visit), and — only once the response has been committed to this hook's
+own rendered "success" state, never merely upon fetch resolution —
+persists the response's own `through` value verbatim via a second,
+independent effect keyed on that state transition. This ordering is
+deliberate: writing in a *separate* effect, rather than inside the
+fetch's own `.then()`, is what makes "checkpoint advances only after a
+successful render" (contract §5/§92) a structural property rather than
+a hoped-for one, and comparing against an already-persisted-value ref
+before writing again makes the write idempotent under React Strict
+Mode's own deliberate double-invocation of effects. The fetch effect
+itself depends only on its own internal reload counter, never on
+storage state, so persisting a new checkpoint can never itself trigger
+a reactive refetch (the exact loop the frozen contract's own §13 warns
+against). `lib/sinceLastVisitCheckpoint.ts` treats `localStorage` as
+untrusted input throughout — a missing key, malformed JSON, a
+`schemaVersion` mismatch, or `getItem`/`setItem` throwing all degrade
+identically to "no checkpoint" (read) or "write silently skipped"
+(write), never a thrown error. The component itself
+(`components/overview/SinceLastVisit.tsx`) and its own pure copy module
+(`lib/sinceLastVisitCopy.ts`) render the backend's already-categorized
+response verbatim — no transition derivation, no "remains" inference,
+no evaluation-period selection, no deduplication, no salience
+recomputation; every classification was already made by #25G's own
+deterministic summarizer (contract §63). A dedicated, narrowly-scoped
+guard (`test/no-since-last-visit-derivation.test.ts`) proves this
+structurally, plus the hard, separately-tested requirement that no
+`Date.now()`/`new Date()` call anywhere in the checkpoint path can ever
+construct or influence a persisted checkpoint value — the *only*
+value ever written is the server's own `through`, copied verbatim.
 
 **"How They Relate"** (`components/overview/HowTheyRelate.tsx`,
 Increment #23C — Relate V1, frozen by
@@ -1772,3 +1837,31 @@ tests (1,375 → 1,463, run twice, identical); zero frontend changes
 (1,032-passed frontend suite unchanged). See ADR-026 and
 [docs/product/since-last-visit-v1.md](../product/since-last-visit-v1.md).
 Full account: docs/ENGINEERING_JOURNAL.md's #25G entry.
+
+**Increment #25H (Since Last Visit V1 Frontend)** completes the RETURN
+loop #25A first identified and #25B/#25C/#25D/#25E/#25F/#25G each
+sequentially made real: a new "Since Your Last Check" section
+(deliberately first on Overview), a local, server-watermark-driven
+checkpoint (`lib/sinceLastVisitCheckpoint.ts` — this frontend's first
+use of `localStorage` of any kind), and a specialized resource hook
+(`api/useSinceLastVisit.ts`) that writes that checkpoint only after a
+successful, rendered response, never reactively, never from the
+browser's own clock. The frontend renders truth; it does not derive
+it — every transition, coverage state, and aggregation was already
+decided by #25G's own deterministic summarizer, proven both by direct
+inspection and by a dedicated, narrowly-scoped architecture guard
+(`test/no-since-last-visit-derivation.test.ts`). A genuine, small
+factual correction to #25F's own contract was discovered and applied
+during implementation: §74's own claim that "no time-of-day formatter
+exists yet" was superseded by `lib/detectedChangeFormat.ts`'s own,
+already-existing `formatCheckedAt` (built for #19C's processing-status
+display) — reused verbatim rather than building a redundant new one, a
+smaller, more correct diff than the frozen contract itself anticipated.
+Frontend-only — no backend, migration, or methodology change. 105 new
+frontend tests (1,032 → 1,137, run twice, identical); zero backend
+changes (1,463-passed backend suite unchanged). No new ADR — the
+durable architectural decisions (server watermark, event spine,
+coverage model) were already recorded by ADR-026; this increment's own
+choices are implementation detail governed by, not extending, that
+decision. See [docs/product/since-last-visit-v1.md](../product/since-last-visit-v1.md).
+Full account: docs/ENGINEERING_JOURNAL.md's #25H entry.

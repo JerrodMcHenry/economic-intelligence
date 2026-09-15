@@ -5,6 +5,7 @@ import { getLaborMonitor, getLaborWhatChanged } from "../api/labor";
 import { fetchReleaseProcessingStatus } from "../api/processingStatus";
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
 import { useApiResource } from "../api/useApiResource";
+import { useSinceLastVisit } from "../api/useSinceLastVisit";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { CurrentStateSection } from "../components/overview/CurrentStateSection";
@@ -12,6 +13,7 @@ import { HowTheyRelate } from "../components/overview/HowTheyRelate";
 import { LaborWhatChangedPreview } from "../components/overview/LaborWhatChangedPreview";
 import { RecentDataUpdates } from "../components/overview/RecentDataUpdates";
 import { RecentReleasePreview } from "../components/overview/RecentReleasePreview";
+import { SinceLastVisit } from "../components/overview/SinceLastVisit";
 import { UpcomingReleasesPreview } from "../components/overview/UpcomingReleasesPreview";
 import { WhatChangedPreview } from "../components/overview/WhatChangedPreview";
 import { ReleaseScheduleDisclosure } from "../components/releases/ReleaseScheduleDisclosure";
@@ -37,8 +39,17 @@ const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
  * never hides Labor's card, and vice versa, at every section
  * (docs/architecture/labor-ui-v1.md §33/§38).
  *
- * Hierarchy: Current State -> How They Relate -> What Changed ->
- * Recent Data Updates -> Releases. "How They Relate" (Increment #23C,
+ * Hierarchy: Since Your Last Check -> Current State -> How They Relate
+ * -> What Changed -> Recent Data Updates -> Releases. "Since Your Last
+ * Check" (Increment #25H, frozen by docs/product/since-last-visit-v1.md)
+ * is deliberately FIRST -- a returning-user orientation layer over a
+ * dedicated, already-categorized backend recap
+ * (`GET /api/v1/since-last-visit`, #25G) plus a local, server-watermark-
+ * driven checkpoint (`useSinceLastVisit`, `lib/sinceLastVisitCheckpoint.ts`)
+ * -- this page never re-derives a transition, a coverage state, or an
+ * evaluation period from raw data; it renders the backend's own
+ * already-categorized response verbatim (contract §63). "How They
+ * Relate" (Increment #23C,
  * frozen by docs/product/relate-composition-v1.md) renders exactly one
  * deterministic COMPOSITION sentence over Inflation's and Labor's own
  * already-canonical states -- never a new economic conclusion, never
@@ -67,6 +78,7 @@ const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
  * publication/data availability.
  */
 export function OverviewPage() {
+  const sinceLastVisit = useSinceLastVisit();
   const monitor = useApiResource(getInflationMonitor);
   const whatChanged = useApiResource(getInflationWhatChanged);
   const laborMonitor = useApiResource(getLaborMonitor);
@@ -83,6 +95,10 @@ export function OverviewPage() {
       </header>
 
       <div className="mt-8 divide-y divide-neutral-200 [&>*]:pt-8 [&>*:first-child]:pt-0">
+        {/* Since Your Last Check (Increment #25H) -- deliberately first;
+            see this page's own docstring for why. */}
+        <SinceLastVisit sinceLastVisit={sinceLastVisit} />
+
         {/* Current State -- Inflation and Labor as independent peers */}
         <CurrentStateSection inflation={monitor} labor={laborMonitor} />
 

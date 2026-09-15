@@ -25,6 +25,7 @@ import { getInflationMonitor, getInflationWhatChanged } from "../api/inflation";
 import { getLaborMonitor, getLaborWhatChanged } from "../api/labor";
 import { fetchReleaseProcessingStatus } from "../api/processingStatus";
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
+import { getSinceLastVisit } from "../api/sinceLastVisit";
 import {
   buildChangeEvent,
   buildMomentum,
@@ -35,6 +36,7 @@ import {
 import { buildLaborChangeEvent, buildLaborMonitor, buildLaborWhatChanged } from "../test/fixtures/labor";
 import { buildLatestCheck, buildReleaseContext, buildReleaseProcessingStatusItem, buildReleaseProcessingStatusResponse } from "../test/fixtures/processingStatus";
 import { buildReleaseListResponse, buildReleaseOccurrenceItem } from "../test/fixtures/releases";
+import { buildSinceLastVisitResponse } from "../test/fixtures/sinceLastVisit";
 import { OverviewPage } from "./Overview";
 
 vi.mock("../api/inflation", () => ({
@@ -52,6 +54,9 @@ vi.mock("../api/releases", () => ({
   fetchUpcomingReleases: vi.fn(),
   fetchRecentReleases: vi.fn(),
 }));
+vi.mock("../api/sinceLastVisit", () => ({
+  getSinceLastVisit: vi.fn(),
+}));
 
 const mockedGetMonitor = vi.mocked(getInflationMonitor);
 const mockedGetWhatChanged = vi.mocked(getInflationWhatChanged);
@@ -60,6 +65,7 @@ const mockedGetLaborWhatChanged = vi.mocked(getLaborWhatChanged);
 const mockedFetchProcessingStatus = vi.mocked(fetchReleaseProcessingStatus);
 const mockedFetchUpcoming = vi.mocked(fetchUpcomingReleases);
 const mockedFetchRecent = vi.mocked(fetchRecentReleases);
+const mockedGetSinceLastVisit = vi.mocked(getSinceLastVisit);
 
 beforeEach(() => {
   mockedGetMonitor.mockReset();
@@ -69,6 +75,15 @@ beforeEach(() => {
   mockedFetchProcessingStatus.mockReset();
   mockedFetchUpcoming.mockReset();
   mockedFetchRecent.mockReset();
+  mockedGetSinceLastVisit.mockReset();
+  // A safe default so every pre-existing test -- most of which set up
+  // only the ONE resource they're specifically exercising, not every
+  // resource via resolveAll() -- doesn't have to know about this new,
+  // unrelated resource. Tests that specifically exercise Since Last
+  // Visit override this via resolveAll({ sinceLastVisit: ... }) or a
+  // direct mockedGetSinceLastVisit call.
+  mockedGetSinceLastVisit.mockResolvedValue(buildSinceLastVisitResponse());
+  window.localStorage.clear();
 });
 
 function resolveAll(overrides: {
@@ -79,6 +94,7 @@ function resolveAll(overrides: {
   processingStatus?: ReturnType<typeof buildReleaseProcessingStatusResponse>;
   upcoming?: ReturnType<typeof buildReleaseListResponse>;
   recent?: ReturnType<typeof buildReleaseListResponse>;
+  sinceLastVisit?: ReturnType<typeof buildSinceLastVisitResponse>;
 } = {}) {
   mockedGetMonitor.mockResolvedValue(overrides.monitor ?? buildMonitor());
   mockedGetWhatChanged.mockResolvedValue(overrides.whatChanged ?? buildWhatChanged());
@@ -87,6 +103,7 @@ function resolveAll(overrides: {
   mockedFetchProcessingStatus.mockResolvedValue(overrides.processingStatus ?? buildReleaseProcessingStatusResponse({ occurrences: [] }));
   mockedFetchUpcoming.mockResolvedValue(overrides.upcoming ?? buildReleaseListResponse({ releases: [] }));
   mockedFetchRecent.mockResolvedValue(overrides.recent ?? buildReleaseListResponse({ releases: [] }));
+  mockedGetSinceLastVisit.mockResolvedValue(overrides.sinceLastVisit ?? buildSinceLastVisitResponse());
 }
 
 function renderPage() {
@@ -707,7 +724,7 @@ describe("Recent Data Updates", () => {
     expect(within(section).getByText("Data changes detected.")).toBeInTheDocument();
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
-    expect(headings).toEqual(["Current State", "How They Relate", "What Changed", "Recent Data Updates", "Releases"]);
+    expect(headings).toEqual(["Since Your Last Check", "Current State", "How They Relate", "What Changed", "Recent Data Updates", "Releases"]);
     expect(screen.queryByRole("heading", { name: "Latest Data Detected" })).not.toBeInTheDocument();
   });
 
@@ -1134,13 +1151,13 @@ describe("navigation", () => {
     await screen.findByRole("heading", { name: "Current State" });
     expect(screen.getByRole("link", { name: "Open Inflation →" })).toHaveAttribute("href", "/inflation");
     expect(screen.getByRole("link", { name: "Open Labor →" })).toHaveAttribute("href", "/labor");
-    // "View Inflation →"/"View Labor →" now appear three times each --
-    // What Changed, Recent Data Updates (#22B), and How They Relate
-    // (Increment #23C).
+    // "View Inflation →"/"View Labor →" now appear four times each --
+    // Since Your Last Check (Increment #25H), What Changed, Recent Data
+    // Updates (#22B), and How They Relate (Increment #23C).
     const inflationLinks = screen.getAllByRole("link", { name: "View Inflation →" });
     const laborLinks = screen.getAllByRole("link", { name: "View Labor →" });
-    expect(inflationLinks).toHaveLength(3);
-    expect(laborLinks).toHaveLength(3);
+    expect(inflationLinks).toHaveLength(4);
+    expect(laborLinks).toHaveLength(4);
     for (const link of inflationLinks) expect(link).toHaveAttribute("href", "/inflation");
     for (const link of laborLinks) expect(link).toHaveAttribute("href", "/labor");
     expect(screen.queryByRole("link", { name: "See full comparison →" })).not.toBeInTheDocument();

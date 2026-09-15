@@ -8772,3 +8772,138 @@ next increment, gated on this one. Historical-revision-propagation
 detail (§68-71 of the contract); accounts; cross-device sync;
 notifications; Watchlist; a read API beyond this one endpoint's own
 frozen shape; AI summarization; Growth; Compare.
+
+## Increment #25H — Since Last Visit V1 Frontend
+
+Implements the frozen `docs/product/since-last-visit-v1.md` contract's
+own frontend half (#25F), completing the RETURN loop #25A first
+identified as this product's single missing link. A new "Since Your
+Last Check" section — deliberately first on Overview — renders #25G's
+own already-categorized recap verbatim, backed by this frontend's
+first `localStorage` usage of any kind. Frontend-only — zero backend,
+migration, or methodology change.
+
+### The checkpoint write lives in its own effect, not inside the fetch's own `.then()`
+
+`api/useSinceLastVisit.ts` reads the local checkpoint exactly once per
+request (inside the fetch effect, keyed only by an internal reload
+counter — never reactively re-read after a write, which would trigger
+exactly the refetch-then-recap-disappears loop the frozen contract's
+own §13 warns against). The checkpoint write itself lives in a
+*second*, independent effect keyed on the hook's own `state` — firing
+only once React has actually committed the "success" state, never
+merely upon fetch resolution. This is the one implementation detail
+that turns "checkpoint advances only after a successful render"
+(contract §5/§92) from a hoped-for ordering into a structural property,
+and comparing against an already-persisted-value ref before writing
+makes the whole thing idempotent under React Strict Mode's own
+deliberate double-invocation of effects — proven directly by a test
+that mounts the hook under `<StrictMode>` and confirms the persisted
+value is exactly the response's own `through`, never corrupted or
+double-written.
+
+### The one hard rule, proven both structurally and behaviorally
+
+The ONLY value ever written to `localStorage` is the server's own
+`through`, copied verbatim — never `Date.now()`, `new Date()`, or any
+other browser-clock read, anywhere in the checkpoint path. Proven
+structurally (`test/no-since-last-visit-derivation.test.ts`'s own
+comment-stripped source scan for `Date.now()`/`new Date()`/
+`performance.now()`) and behaviorally (a dedicated hook test mocks
+`Date.now()` to return a wrong value and confirms the persisted
+checkpoint is completely unaffected, still exactly `response.through`).
+`lib/sinceLastVisitCheckpoint.ts` treats `localStorage` as untrusted
+input throughout — a missing key, malformed JSON, a wrong
+`schemaVersion`, or `getItem`/`setItem` throwing (private browsing,
+disabled storage, a quota error) all degrade identically to "no
+checkpoint" (read) or "write silently skipped" (write), never a thrown
+error, never a blocked Overview.
+
+### Frontend renders truth, it does not derive truth
+
+`components/overview/SinceLastVisit.tsx` and its own pure copy module
+(`lib/sinceLastVisitCopy.ts`, mirroring `lib/stateDurationCopy.ts`'s
+identical "zero economic content" boundary) render #25G's own
+already-categorized response verbatim — no transition derivation, no
+"remains" inference, no evaluation-period selection, no
+deduplication, no salience recomputation. A dedicated, narrowly-scoped
+guard (`test/no-since-last-visit-derivation.test.ts`) proves this
+structurally: no file compares `previous_value`/`current_value`, sorts
+by `evaluation_period`, constructs a `RecalculationKind` from a
+boolean expression, or ranks items by magnitude/severity.
+
+### A genuine factual correction to #25F, discovered and applied
+
+#25F's own §74 claimed "no time-of-day formatter exists yet" and froze
+a requirement to build a new one. Fresh inspection this increment found
+`lib/detectedChangeFormat.ts`'s own `formatCheckedAt` — built for
+#19C's processing-status display, already handling exactly this need
+(a UTC-offset-aware datetime, safe to parse via `new Date(...)` since
+the value always carries an explicit offset) — already exists and was
+simply missed by #25F's own narrower inspection of `lib/format.ts`
+alone. Reused verbatim rather than building a redundant new formatter:
+a smaller, more correct diff than the frozen contract itself
+anticipated, not a contract violation (the underlying requirement —
+a real, safe time-of-day display — is fully satisfied; only the
+"build new" instruction was superseded by an existing asset that
+already does the job).
+
+### Coverage zero-state reconciliation
+
+#25F's own §37-39 sketch named a fourth product-level "never processed"
+row distinct from `GAP`/`UNKNOWN`; direct inspection of #25G's own
+already-shipped `compute_coverage` (three machine values only) showed
+"zero check runs at all" is already one of `GAP`'s own real underlying
+causes, not a separate signal. `lib/sinceLastVisitCopy.ts`'s own
+`domainZeroStateCopy` resolves this honestly using only the three real
+values plus item presence, reusing §79's own frozen row-C wording
+verbatim for the zero-item `GAP` case — documented explicitly as a
+reasoned interpretation of an already-frozen, already-implemented
+backend contract, not an invented fourth signal.
+
+### Verification
+
+Frontend: `npx vitest run`, run twice: **1,137 passed** both times,
+identical (1,032 baseline at #25G → 1,137 after this increment; +105
+new tests: pure checkpoint-storage tests including simulated
+`getItem`/`setItem` throws, pure copy-template tests covering every
+frozen sentence exactly, an API-client test, a dedicated hook test
+including the Strict Mode and browser-clock guards, a component test
+covering every copy variant and CTA, and the new architecture-guard
+file). One pre-existing whole-tree guard
+(`test/no-overview-mutation.test.ts`'s own "exactly N documented read
+functions" allowlist) needed updating to include `useSinceLastVisit` —
+not a regression, the exact narrow, expected allowlist extension that
+guard's own docstring already anticipated for a genuinely new *existing*
+resource call. `pages/Overview.test.tsx`'s own heading-sequence and CTA-
+count assertions were updated to reflect the new, intentional section
+and its own "View Inflation →"/"View Labor →" CTAs (3 → 4 each) — both
+real, correctly-anticipated consequences of adding this section, not
+incidental breakage. `tsc -b --noEmit` (typecheck), `oxlint` (lint),
+and `vite build` (production build) all pass cleanly. Backend:
+`TEST_DATABASE_URL=... pytest tests/ -q`: **1,463 passed**, unchanged —
+confirmed zero backend files touched.
+
+### New files
+
+`frontend/src/api/sinceLastVisit.types.ts`, `sinceLastVisit.ts`,
+`useSinceLastVisit.ts`, `frontend/src/lib/sinceLastVisitCheckpoint.ts`,
+`sinceLastVisitCopy.ts`, `frontend/src/components/overview/SinceLastVisit.tsx`,
+`frontend/src/test/fixtures/sinceLastVisit.ts`,
+`frontend/src/test/no-since-last-visit-derivation.test.ts`, plus each
+new module's own `*.test.ts(x)` sibling. Modified:
+`frontend/src/pages/Overview.tsx` (new first section),
+`frontend/src/pages/Overview.test.tsx` (mock setup, heading/CTA
+assertions), `frontend/src/test/no-overview-mutation.test.ts` (the
+allowlist extension above). No ADR — the durable architectural
+decisions (server watermark, event spine, coverage model) were already
+recorded by ADR-026 at the #25G stage; this increment's own choices
+(effect ordering, Strict Mode idempotency, storage-failure handling)
+are implementation detail governed by, not extending, that decision.
+
+### Deferred (named explicitly, restated from #25F)
+
+Historical-revision-propagation detail (§68-71/§117 of the contract);
+accounts; cross-device sync; notifications; Watchlist; a generic
+activity/history page; AI summaries; Growth; Compare; multi-tab
+synchronization (§14, explicitly last-write-wins for V1).
