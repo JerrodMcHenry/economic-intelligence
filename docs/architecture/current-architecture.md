@@ -35,6 +35,7 @@ discovery" section below and ADR-015/016/017's status notes for why.
 | Series repository | `app/repositories/series_repository.py` (`SeriesRepository`) | All SQL for series/observations: upserts series metadata and observations within a caller-owned transaction; series lookup; local metadata search (`search_series`); filtered/ordered/paginated observation queries; unpaginated range queries and preceding-context queries. Reused as-is by every consumer added since Increment 005 — no analysis-, pipeline-, or discovery-specific repository methods were ever needed beyond `search_series` itself. `_upsert_observations`' blind-overwrite behavior (backing the plain `/series/{id}/sync`) is unmodified by #18 — release processing owns a separate write path (next-but-one row), never retrofitted here. |
 | Release repository | `app/repositories/release_repository.py` (`ReleaseRepository`) | All SQL for the release calendar: curated active-release lookup, provider-identity lookup, idempotent occurrence upsert (`(economic_release_id, scheduled_date)`, never deletes), filtered/ordered/paginated occurrence queries joined to their release. Never imports `app.clients.fred`/`httpx` (checked structurally) — the layer closest to the database never talks to FRED at all. Gained one new read-only method for Increment #18, `get_occurrence_by_id` — a plain lookup by internal id, adding no write capability and no import of anything series/Inflation-shaped. |
 | Release processing repository (Increments #18, #20D.2, #25C, #25E) | `app/repositories/release_processing_repository.py` (`ReleaseProcessingRepository`) | The one write path for #18/#20D.2 (fully monitor-agnostic — Inflation and Labor share it unmodified): `ReleaseSeriesMapping` reads, `EconomicSeries`/`EconomicObservation` create/read/write (a small, independent reimplementation of `SeriesRepository`'s basic upsert shape — deliberately not calling into it, so the plain `/series/{id}/sync` path's behavior is never touched), and `ReleaseCheckRun`/`ReleaseObservationUpdate`/`ReleaseAnalysisUpdate` persistence. `write_observation` flushes immediately (#20D.2 fix — this project's session factory sets `autoflush=False`; a genuinely NEW observation's write was previously invisible to a later same-transaction "after" evidence read, a latent #18 defect never exercised by any prior Inflation test, all of which only ever revise already-persisted observations). Increment #25C adds one new read query, `list_due_occurrence_ids` — every mapped, eligible, not-yet-settled-today occurrence, bounded to a retry window — settlement is derived entirely from the existing `CheckRunStatus` enum (`NO_CHANGE`/`CHANGED` already mean "every mapped series succeeded," by `_determine_status`'s own construction), needing no new per-series bookkeeping. Increment #25E adds one new write method, `add_recorded_monitor_result` — chosen over a new, separate repository (unlike `MaintenanceRepository` below) because `RecordedMonitorResult` shares the exact transaction, FK, and closest-sibling-table repository placement `ReleaseObservationUpdate`/`ReleaseAnalysisUpdate` already have here; append-only, no update/delete method exists. See [docs/architecture/release-processing-v1.md](./release-processing-v1.md), [docs/product/automated-economic-maintenance-v1.md](../product/automated-economic-maintenance-v1.md), and [docs/product/recorded-state-history-v1.md](../product/recorded-state-history-v1.md). |
+| Since Last Visit read model (Increment #25G) | `app/api/since_last_visit.py`, `app/services/since_last_visit.py` (`SinceLastVisitService`), `app/repositories/since_last_visit_repository.py` (`SinceLastVisitRepository`, a NEW, separate, purely read-only repository — no `add_*`/`write_*`/`create_*` method anywhere on it), `app/domain/since_last_visit.py` (pure categorization, mirrors `app.domain.state_duration`'s own zero-I/O precedent) | `GET /api/v1/since-last-visit` — a deterministic recap of canonical economic activity recorded after a client-supplied checkpoint, through a server-captured watermark. Uses `ReleaseCheckRun` as its own event spine (`completed_at` filtered first, then joined out to `ReleaseObservationUpdate`/`ReleaseAnalysisUpdate`/`RecordedMonitorResult`), never a new generic event ledger. Coverage (`CHECKED`/`GAP`/`UNKNOWN`) is derived from persisted `ReleaseCheckRun` settlement and `MaintenanceSweep` evidence only, never from code existence. See [docs/product/since-last-visit-v1.md](../product/since-last-visit-v1.md) and [ADR-026](../adr/026-since-last-visit-server-watermark-and-event-spine.md). |
 | Release processing read repository (Increment #19B) | `app/repositories/release_processing_read_repository.py` (`ReleaseProcessingReadRepository`) | A NEW, read-only repository — no `add_*`/`write_*`/`create_*` method anywhere on it (checked structurally), never reuses `ReleaseProcessingRepository` (#18's write path). Excludes an occurrence whose release has zero currently-active `ReleaseSeriesMapping` rows at the SQL layer, before any status is ever derived — no occurrence, run, or update row for an unmapped release ever reaches the service. See [docs/architecture/release-processing-read-model-v1.md](./release-processing-read-model-v1.md). |
 | Transformation engine | `app/domain/transformations.py` (`absolute_change`, `percent_change`, `moving_average`) | Pure, deterministic math over one series' observation list — no FastAPI, SQLAlchemy, FRED, environment, or I/O of any kind. Unmodified since Increment 005; reused as-is by the pipeline. |
 | Analysis engine | `app/domain/analysis.py` (`align_series`, `calculate_spread`, `count_usable_pairs`, `pearson_correlation`) | Pure, deterministic math over two series' observation lists — same no-I/O discipline as the transformation engine. Unmodified since Increment 006; reused as-is by the pipeline. |
@@ -1742,3 +1743,32 @@ loosened generally. 51 new backend tests (1,324 → 1,375, run twice,
 identical); zero frontend changes (1,032-passed frontend suite
 unchanged). See ADR-025 and [docs/product/recorded-state-history-v1.md](../product/recorded-state-history-v1.md).
 Full account: docs/ENGINEERING_JOURNAL.md's #25E entry.
+
+**Increment #25G (Since Last Visit V1 Backend Read Model)** implements
+the first RETURN capability this product has ever had, per the frozen
+`docs/product/since-last-visit-v1.md` contract (#25F): a new, read-only
+`GET /api/v1/since-last-visit` endpoint recaps canonical activity
+recorded after a client checkpoint, through a server-captured
+watermark — never AI, never a reconstruction, never an
+economic-significance score. The watermark is captured once, before
+any query executes, making the whole design race-safe by construction
+(proven directly against a real, separately-committing session);
+`ReleaseCheckRun` serves as the event spine, turning a genuinely hard
+cross-table ordering problem into a single-table one with zero new
+schema. A new, pure `app/domain/since_last_visit.py` module (mirroring
+`app.domain.state_duration`'s own zero-I/O precedent) implements the
+frozen unchanged-confirmation algorithm and a single "max
+evaluation_period per (run, monitor)" current-result-selection rule
+that governs both structural-change and unchanged-confirmation
+surfacing — the direct fix for the multi-evaluation-period
+over-surfacing risk #25E's own test suite discovered empirically, now
+proven again end-to-end against a real PAYEMS-propagation fixture.
+Coverage (`CHECKED`/`GAP`/`UNKNOWN`) is derived exclusively from
+persisted `ReleaseCheckRun` settlement and `MaintenanceSweep` evidence,
+never from the mere existence of automation code. Backend-only — no
+migration, no frontend change, no methodology change; #25H (frontend)
+remains a separate, gated, not-yet-built increment. 88 new backend
+tests (1,375 → 1,463, run twice, identical); zero frontend changes
+(1,032-passed frontend suite unchanged). See ADR-026 and
+[docs/product/since-last-visit-v1.md](../product/since-last-visit-v1.md).
+Full account: docs/ENGINEERING_JOURNAL.md's #25G entry.

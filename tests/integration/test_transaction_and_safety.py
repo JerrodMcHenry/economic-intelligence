@@ -196,6 +196,10 @@ class TestAIAndNetworkIndependence:
         # service.
         "test_maintenance_orchestrator.py",
         "test_run_maintenance_cli.py",
+        # Increment #25G: same exact method-boundary mock, to prove the
+        # Since Last Visit read model correctly reflects real
+        # release-processing output -- never a live call.
+        "test_since_last_visit_service.py",
     }
 
     def test_no_integration_test_file_imports_ai(self):

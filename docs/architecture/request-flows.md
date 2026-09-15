@@ -2307,3 +2307,74 @@ backfills a period processed before this increment's own deployment.
 See [docs/product/recorded-state-history-v1.md](../product/recorded-state-history-v1.md)
 and [ADR-025](../adr/025-recorded-state-history-append-only-persistence.md)
 for the full frozen contract.
+
+---
+
+## Flow 42 — Since Last Visit Recap (`GET /api/v1/since-last-visit`, Increment #25G)
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as app.api.since_last_visit
+    participant Svc as SinceLastVisitService
+    participant Repo as SinceLastVisitRepository
+    participant Dom as app.domain.since_last_visit (pure)
+
+    Client->>API: GET /api/v1/since-last-visit?after=<ISO-8601 UTC | omitted>
+    API->>API: parse `after` -- malformed/naive/future -> None, NEVER a 400
+    API->>Svc: get_recap(session, parsed_after)
+    Svc->>Svc: through = datetime.now(UTC)  -- captured ONCE, BEFORE any query
+    Svc->>Dom: resolve_window(parsed_after, through)
+    Dom-->>Svc: (effective_after, first_visit, lookback_clamped)
+    Note over Svc,Dom: effective_after is ALWAYS bounded (90 days, §50) --<br/>even a genuine first visit is never an unbounded historical dump
+
+    Svc->>Repo: relevant_release_ids_by_series(inflation_ids, labor_ids)
+    Svc->>Repo: list_check_runs_in_window(release_ids, effective_after, through)
+    Note over Repo: ReleaseCheckRun.completed_at > after AND <= through --<br/>the event spine; ReleaseObservationUpdate/ReleaseAnalysisUpdate/<br/>RecordedMonitorResult all key off release_check_run_id
+    Svc->>Repo: list_observation_updates_for_runs(run_ids)
+    Svc->>Repo: list_analysis_updates_for_runs(run_ids)
+    Svc->>Repo: list_recorded_results_for_runs(run_ids)
+    Svc->>Repo: earliest_recorded_result_id_by_monitor()
+    Svc->>Repo: settled_release_ids_in_window(...) / any_sweep_started_in_window(...)
+
+    Svc->>Dom: select_structural_changes(analysis_rows, calculated_at_by_run)
+    Note over Dom: Tier-1-shaped rows only; one item per (run, monitor),<br/>the MAX evaluation_period wins (§68-70) -- an older,<br/>propagated-period row from the same run is deferred, never a second item
+    Svc->>Dom: select_recalculations(recorded_rows, ..., earliest_recorded_result_id)
+    Note over Dom: a Tier-A match for (run, monitor) suppresses this entirely;<br/>else FIRST_CALCULATION (system-wide earliest id) or<br/>UNCHANGED_CONFIRMATION (aggregated, with a count)
+    Svc->>Dom: select_source_updates(observation_rows, recomputed_pairs, ...)
+    Note over Dom: fires only for (run, monitor) with ZERO top-level recompute
+    Svc->>Dom: compute_coverage(relevant_ids, settled_ids, any_sweep)
+    Note over Dom: CHECKED (settlement alone, no sweep needed) ><br/>GAP (sweep ran, this release didn't settle) > UNKNOWN (no sweep evidence at all)
+
+    Svc-->>API: SinceLastVisitResponse
+    API-->>Client: 200, { after, through, first_visit, lookback_clamped, inflation, labor }
+```
+
+**Read-only, start to finish**: nothing in this flow calls FRED, writes
+`RecordedMonitorResult`/`ReleaseCheckRun`/`MaintenanceSweep`, triggers
+release processing or maintenance, or persists a checkpoint —
+checkpoint storage is #25H's own client-side responsibility. Proven
+structurally (`tests/test_since_last_visit_architecture.py`) and
+behaviorally (a request's own row counts are asserted unchanged across
+six relevant tables).
+
+**Race safety, precisely**: `through` is captured before the first
+query runs, so any commit landing after that instant necessarily has
+`completed_at > through` and is excluded from the current response —
+but its own `completed_at` will always exceed this response's
+`through`, guaranteeing it is included the next time a client sends
+`after = this response's through`. No event is ever silently,
+permanently lost — proven directly against a real, separately-
+committing session, not merely asserted.
+
+**What this flow explicitly does NOT do**: it never calls
+`app.domain.inflation`/`app.domain.labor`/`app.domain.state_duration`
+directly — every fact rendered is copied from an already-persisted
+row, never recomputed or reconstructed; it never imports or calls
+`app.services.maintenance`/`app.operations.run_maintenance` (coverage
+reads `MaintenanceSweep`'s own persisted rows only); it never derives a
+canonical state transition from a raw `EconomicObservation`; it never
+merges Inflation and Labor into one cross-domain structure or claim.
+See [docs/product/since-last-visit-v1.md](../product/since-last-visit-v1.md)
+and [ADR-026](../adr/026-since-last-visit-server-watermark-and-event-spine.md)
+for the full frozen contract.

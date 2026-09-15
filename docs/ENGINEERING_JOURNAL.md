@@ -8666,3 +8666,109 @@ A read API of any shape (persistence-only for this increment, per
 observation vintages/ALFRED integration (§23); correction/invalidation
 machinery (§31/§93); an automated-vs-manual provenance field (§28/§29);
 Watchlist; accounts; notifications; Growth; Compare; AI.
+
+## Increment #25G — Since Last Visit V1 Backend Read Model
+
+Implements the frozen `docs/product/since-last-visit-v1.md` contract
+(#25F) — the first RETURN capability this product has ever had. A new,
+read-only endpoint (`GET /api/v1/since-last-visit`) answers "what did
+EI record after checkpoint X through server watermark Y" using
+exclusively already-persisted operational evidence — never AI, never a
+reconstruction, never an economic-significance score. Backend-only —
+zero migration, zero frontend change, zero methodology change.
+
+### Server-authoritative watermark, captured before any query runs
+
+The single design detail that makes the whole feature race-safe: the
+service captures `through = datetime.now(timezone.utc)` **once**,
+before any query executes, then filters `ReleaseCheckRun.completed_at
+<= through`. A commit landing between that capture and the response
+finishing is therefore *always* excluded from the current response and
+*always* included in the next one (whose own `after` becomes this
+response's `through`) — proven directly against a real, separately-
+committing session (`TestRaceSafety`), not merely asserted. Even a
+genuine first visit is bounded to the same 90-day default window as
+any other visit (`resolve_window`'s own `effective_after` is never
+`None`) — only the *response's* own `after` field reports `None` on a
+first visit, a presentation fact kept deliberately distinct from the
+real query boundary. A real bug was caught here during test-writing:
+the first implementation let a first-visit's `None` leak into the
+repository as a genuinely unbounded lower edge — caught immediately by
+an end-to-end integration test, fixed before verification, not shipped.
+
+### `ReleaseCheckRun` as the event spine — the cross-table ordering problem, solved once
+
+`ReleaseObservationUpdate`/`ReleaseAnalysisUpdate`/`RecordedMonitorResult`
+all carry `release_check_run_id` — filtering `ReleaseCheckRun` by
+`completed_at` first, then joining out to exactly the selected runs'
+children, turns a genuinely hard cross-table ordering problem into a
+single-table one, with zero new schema and zero generic event ledger
+(explicitly evaluated and rejected, per the frozen contract).
+
+### Unchanged-confirmation — the central new capability, and the multi-period rule it shares with structural change
+
+`app/domain/since_last_visit.py` (pure, no SQLAlchemy, no I/O — mirrors
+`app/domain/state_duration.py`'s own precedent) implements the frozen
+three-branch algorithm: a `RecordedMonitorResult` with no corresponding
+Tier-1 `ReleaseAnalysisUpdate` for the same run is either the monitor's
+system-wide first-ever recorded row (`FIRST_CALCULATION`, never
+"remains") or a genuine re-verification (`UNCHANGED_CONFIRMATION`,
+aggregated to one line with a count). One unified "max evaluation_period
+per (run, monitor)" rule governs both Tier A (structural change) and
+Tier B (unchanged confirmation) selection — the direct fix for the
+exact multi-evaluation-period over-surfacing risk #25E's own test suite
+discovered empirically. A real end-to-end integration test reproduced
+this precisely: a PAYEMS revision propagating to `{05, 08, 11}` via the
+frozen `{0,3,6}`-month rule correctly surfaces only the run's own
+latest-touched period (2009-11, itself genuinely `INSUFFICIENT_DATA`
+against this fixture's trailing data) — not the originally-revised
+date, and never three separate items.
+
+### Coverage — a third, honest evidence-based state, never inferred from code
+
+`CHECKED`/`GAP`/`UNKNOWN`, derived strictly from persisted
+`ReleaseCheckRun` settlement and `MaintenanceSweep` rows — never from
+the mere existence of `app.services.maintenance`. `CHECKED` never
+requires sweep evidence (manual-only processing is honestly `CHECKED`);
+the `GAP`/`UNKNOWN` split is decided only when settlement is
+incomplete, using sweep evidence exclusively.
+
+### Verification
+
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run twice: **1,463
+passed** both times, 0 skipped, 0 failed (1,375 baseline at #25E → 1,463
+after this increment; +88 new tests: 36 pure domain unit tests
+covering every algorithm branch directly, 19 repository tests against
+real PostgreSQL, 6 end-to-end service tests including the real-database
+race-condition proof, 10 HTTP-level API tests, 17 architecture guards).
+One pre-existing whole-tree guard (`tests/integration/test_transaction_and_safety.py`'s
+own FRED/network-import allowlist) needed updating to include the new
+integration test file that legitimately mocks FRED at the same method
+boundary every sibling release-processing test already uses — not a
+regression, the same narrow, expected allowlist extension #25C/#25E
+already established. Frontend: `npx vitest run`: **1,032 passed**,
+unchanged — confirmed zero frontend files touched. No migration —
+every table this feature reads already existed.
+
+### New files
+
+`app/domain/since_last_visit.py`, `app/models/since_last_visit.py`,
+`app/repositories/since_last_visit_repository.py`,
+`app/services/since_last_visit.py`, `app/api/since_last_visit.py`,
+`docs/adr/026-since-last-visit-server-watermark-and-event-spine.md`,
+`tests/test_since_last_visit_domain.py`,
+`tests/integration/test_since_last_visit_repository.py`,
+`tests/integration/test_since_last_visit_service.py`,
+`tests/api/test_since_last_visit_api.py`,
+`tests/test_since_last_visit_architecture.py`. Modified: `app/main.py`
+(router registration), `tests/integration/test_transaction_and_safety.py`
+(the allowlist extension above).
+
+### Deferred (named explicitly, restated from #25F)
+
+#25H — Since Last Visit V1 Frontend (checkpoint storage, fetch,
+render, the new time-of-day formatter, Overview wiring) — the natural
+next increment, gated on this one. Historical-revision-propagation
+detail (§68-71 of the contract); accounts; cross-device sync;
+notifications; Watchlist; a read API beyond this one endpoint's own
+frozen shape; AI summarization; Growth; Compare.
