@@ -26,6 +26,7 @@ import {
   MOMENTUM,
   PCE,
   SIX_MONTH_ANNUALIZED,
+  STATE_DURATION_DISCLOSURE,
   TARGET_DEVIATION,
   THREE_MONTH_ANNUALIZED,
   TWELVE_MONTH,
@@ -47,12 +48,13 @@ const ALL_CONCEPT_EXPLANATIONS: ReadonlyArray<[string, Explanation]> = [
   ["MOMENTUM", MOMENTUM],
   ["CONFIRMATION", CONFIRMATION],
   ["LATEST_REVISED_DATA", LATEST_REVISED_DATA],
+  ["STATE_DURATION_DISCLOSURE", STATE_DURATION_DISCLOSURE],
 ];
 
 describe("inflation explanation registry: well-formedness", () => {
-  it("covers all 19 required inflation concepts (14 standalone + 5 states)", () => {
+  it("covers all 20 required inflation concepts (15 standalone + 5 states)", () => {
     const states: InflationState[] = ["COOLING", "HEATING", "STABLE", "MIXED", "INSUFFICIENT_DATA"];
-    expect(ALL_CONCEPT_EXPLANATIONS.length + states.length).toBe(19);
+    expect(ALL_CONCEPT_EXPLANATIONS.length + states.length).toBe(20);
   });
 
   it.each(ALL_CONCEPT_EXPLANATIONS)("%s has a stable id, a title, and a non-circular definition", (_name, explanation) => {
@@ -173,5 +175,23 @@ describe("latest revised data (exact-string product invariant)", () => {
   it("never implies vintage/as-known-at-the-time capability", () => {
     const combined = `${LATEST_REVISED_DATA.definition} ${LATEST_REVISED_DATA.whyItMatters ?? ""}`;
     expect(combined).not.toMatch(/as it was known|point-in-time|as-of|vintage/i);
+  });
+});
+
+describe("state duration disclosure (exact-string product invariant, Increment #24D)", () => {
+  it("preserves the frozen state-duration-v1.md §38 sentence byte-for-byte", () => {
+    expect(STATE_DURATION_DISCLOSURE.definition).toBe(
+      "This duration is calculated today, using the latest revised data and the current methodology, applied consistently across the period shown. It reflects what today's data implies, not what Economic Intelligence reported in real time as each month occurred.",
+    );
+  });
+
+  it("preserves both truths: latest-revised/current-methodology basis, and not what EI reported historically", () => {
+    expect(STATE_DURATION_DISCLOSURE.definition).toMatch(/latest revised data/i);
+    expect(STATE_DURATION_DISCLOSURE.definition).toMatch(/current methodology/i);
+    expect(STATE_DURATION_DISCLOSURE.definition).toMatch(/not what economic intelligence reported in real time/i);
+  });
+
+  it("never claims recorded or as-known-at-time history", () => {
+    expect(STATE_DURATION_DISCLOSURE.definition).not.toMatch(/as-known-at-time|as it was known|point-in-time|vintage/i);
   });
 });

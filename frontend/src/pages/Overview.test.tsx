@@ -395,6 +395,63 @@ describe("How They Relate (Increment #23C)", () => {
   });
 });
 
+describe("State Duration V1 exclusion (Increment #24D, frozen contract §41)", () => {
+  it("never imports the state-duration API clients or presentation modules at the source level", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { dirname, join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const overviewPath = join(dirname(fileURLToPath(import.meta.url)), "Overview.tsx");
+    const overviewSource = readFileSync(overviewPath, "utf-8");
+    for (const forbidden of ["getInflationStateDuration", "getLaborStateDuration", "StateDurationLine", "stateDurationCopy"]) {
+      expect(overviewSource).not.toContain(forbidden);
+    }
+  });
+
+  it("renders with the two state-duration API clients never invoked", async () => {
+    resolveAll();
+    renderPage();
+    await screen.findByRole("heading", { name: "How They Relate" });
+
+    // These are the same api/inflation.ts and api/labor.ts modules
+    // Overview already mocks above -- if Overview ever came to import
+    // getInflationStateDuration/getLaborStateDuration, the mock
+    // factories for those modules (which do not define those exports)
+    // would make them `undefined`, and importing them here would throw
+    // immediately, failing this test loudly rather than silently.
+    const inflationModule = await import("../api/inflation");
+    const laborModule = await import("../api/labor");
+    expect("getInflationStateDuration" in inflationModule).toBe(false);
+    expect("getLaborStateDuration" in laborModule).toBe(false);
+  });
+
+  it("never renders any State Duration copy string anywhere on the page", async () => {
+    resolveAll();
+    renderPage();
+    await screen.findByRole("heading", { name: "How They Relate" });
+
+    const pageText = document.body.textContent ?? "";
+    for (const forbidden of [
+      /latest-revised reconstruction/i,
+      /consecutive months?/i,
+      /historical state duration is unavailable/i,
+      /earliest confirmed/i,
+    ]) {
+      expect(pageText).not.toMatch(forbidden);
+    }
+  });
+
+  it("How They Relate remains exactly as #23C established, unaffected by State Duration's own existence", async () => {
+    resolveAll({
+      monitor: buildMonitor({ underlying_momentum: buildMomentum({ state: "COOLING", calculation_period: "2026-07-01" }) }),
+      laborMonitor: buildLaborMonitor({ state: "STRENGTHENING", evaluation_period: "2026-07-01" }),
+    });
+    renderPage();
+
+    const section = await findSection("How They Relate");
+    expect(section.textContent).toMatch(/As of July 2026, Inflation is Cooling while Labor is Strengthening\./);
+  });
+});
+
 describe("What Changed", () => {
   it("renders only actual backend ChangeEvents, never an invented 'State remains X' narrative", async () => {
     // State is MIXED, but the flat `changes` list contains ONLY metric

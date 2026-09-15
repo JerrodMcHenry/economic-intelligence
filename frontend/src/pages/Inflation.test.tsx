@@ -10,7 +10,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api/errors";
-import { getInflationMonitor, getInflationWhatChanged } from "../api/inflation";
+import { getInflationMonitor, getInflationStateDuration, getInflationWhatChanged } from "../api/inflation";
 import {
   buildChangeEvent,
   buildConfirmation,
@@ -21,19 +21,28 @@ import {
   buildTarget,
   buildWhatChanged,
 } from "../test/fixtures/inflation";
+import { buildStateDurationAvailable, buildStateDurationCurrentInsufficient } from "../test/fixtures/stateDuration";
 import { InflationPage } from "./Inflation";
 
 vi.mock("../api/inflation", () => ({
   getInflationMonitor: vi.fn(),
   getInflationWhatChanged: vi.fn(),
+  getInflationStateDuration: vi.fn(),
 }));
 
 const mockedGetMonitor = vi.mocked(getInflationMonitor);
 const mockedGetWhatChanged = vi.mocked(getInflationWhatChanged);
+const mockedGetStateDuration = vi.mocked(getInflationStateDuration);
 
 beforeEach(() => {
   mockedGetMonitor.mockReset();
   mockedGetWhatChanged.mockReset();
+  mockedGetStateDuration.mockReset();
+  // Every test gets a resolved, non-hanging default unless it
+  // overrides this itself -- State Duration is scoped to its own
+  // dedicated describe block below; unrelated tests must never hang
+  // or crash on this third, independent resource.
+  mockedGetStateDuration.mockResolvedValue(buildStateDurationCurrentInsufficient());
 });
 
 function renderPage() {
@@ -77,6 +86,155 @@ describe("primary underlying momentum state", () => {
       expect(within(section).getByText(expectedLabel)).toBeInTheDocument();
     },
   );
+});
+
+describe("State Duration V1 (Increment #24D)", () => {
+  async function heroSection(): Promise<HTMLElement> {
+    const heading = await screen.findByRole("heading", { name: "Underlying momentum" });
+    return heading.closest("section") as HTMLElement;
+  }
+
+  it("shows a loading skeleton for state duration independently of the monitor resource", async () => {
+    resolveBoth();
+    mockedGetStateDuration.mockReturnValue(new Promise(() => {}));
+    renderPage();
+
+    const section = await heroSection();
+    expect(within(section).getAllByRole("status").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders the exact frozen EXACT copy, using duration_months/earliest_confirmed_period/state exactly as supplied", async () => {
+    resolveBoth();
+    mockedGetStateDuration.mockResolvedValue(
+      buildStateDurationAvailable({ boundary_type: "EXACT", state: "COOLING", duration_months: 3, earliest_confirmed_period: "2026-04-01" }),
+    );
+    renderPage();
+
+    expect(await screen.findByText("Latest-revised reconstruction: Cooling for 3 consecutive months, since April 2026.")).toBeInTheDocument();
+  });
+
+  it("renders the exact frozen DATA_BOUNDED lower-bound copy", async () => {
+    resolveBoth();
+    mockedGetStateDuration.mockResolvedValue(
+      buildStateDurationAvailable({ boundary_type: "DATA_BOUNDED", state: "COOLING", duration_months: 3 }),
+    );
+    renderPage();
+
+    expect(await screen.findByText("Latest-revised reconstruction: Cooling for at least 3 consecutive months.")).toBeInTheDocument();
+  });
+
+  it("renders the exact frozen LOOKBACK_BOUNDED lower-bound copy", async () => {
+    resolveBoth();
+    mockedGetStateDuration.mockResolvedValue(
+      buildStateDurationAvailable({ boundary_type: "LOOKBACK_BOUNDED", state: "COOLING", duration_months: 60 }),
+    );
+    renderPage();
+
+    expect(await screen.findByText("Latest-revised reconstruction: Cooling for at least 60 consecutive months.")).toBeInTheDocument();
+  });
+
+  it("renders the exact frozen CURRENT_INSUFFICIENT copy, never a fabricated duration", async () => {
+    resolveBoth();
+    mockedGetStateDuration.mockResolvedValue(buildStateDurationCurrentInsufficient());
+    renderPage();
+
+    expect(
+      await screen.findByText("Historical state duration is unavailable because the current state has insufficient data."),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the existing ErrorMessage/retry pattern on infrastructure failure -- never the CURRENT_INSUFFICIENT copy", async () => {
+    resolveBoth();
+    mockedGetStateDuration.mockRejectedValue(new ApiError("http", "Request failed with status 503.", 503));
+    renderPage();
+
+    expect(await screen.findByText("Historical state duration could not be loaded.")).toBeInTheDocument();
+    expect(screen.queryByText(/insufficient data/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/503/)).not.toBeInTheDocument();
+  });
+
+  it("a state-duration API failure never breaks the primary momentum state, What Changed, or WhyThisState", async () => {
+    resolveBoth();
+    mockedGetStateDuration.mockRejectedValue(new ApiError("network", "Could not reach the server."));
+    renderPage();
+
+    await screen.findByText("Historical state duration could not be loaded.");
+    const section = await heroSection();
+    expect(within(section).getByText("Stable")).toBeInTheDocument();
+    expect(within(section).getByText("Why Stable?")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "What changed" })).toBeInTheDocument();
+  });
+
+  it("shows previous_state/previous_period only for EXACT, and never fabricates one for DATA_BOUNDED/LOOKBACK_BOUNDED", async () => {
+    resolveBoth();
+    mockedGetStateDuration.mockResolvedValue(
+      buildStateDurationAvailable({ boundary_type: "EXACT", previous_state: "STABLE", previous_period: "2026-04-01" }),
+    );
+    renderPage();
+
+    expect(await screen.findByText("Previously Stable, as of April 2026.")).toBeInTheDocument();
+  });
+
+  it("never shows a previous-state note for DATA_BOUNDED", async () => {
+    resolveBoth();
+    mockedGetStateDuration.mockResolvedValue(
+      buildStateDurationAvailable({ boundary_type: "DATA_BOUNDED", previous_state: null, previous_period: null }),
+    );
+    renderPage();
+
+    await screen.findByText(/Latest-revised reconstruction/);
+    expect(screen.queryByText(/^Previously/)).not.toBeInTheDocument();
+  });
+
+  it("renders directly inside the Underlying momentum Hero section, before the Why disclosure -- not a new page section", async () => {
+    resolveBoth();
+    mockedGetStateDuration.mockResolvedValue(buildStateDurationAvailable({ boundary_type: "EXACT" }));
+    renderPage();
+
+    const section = await heroSection();
+    const durationText = within(section).getByText(/Latest-revised reconstruction/);
+    const whyToggle = within(section).getByText("Why Stable?");
+    // Both live in the SAME Hero section, and the duration line precedes
+    // the Why disclosure in document order (DOM position comparison).
+    expect(durationText.compareDocumentPosition(whyToggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /history/i })).not.toBeInTheDocument();
+  });
+
+  it("never renders a chart element", async () => {
+    resolveBoth();
+    mockedGetStateDuration.mockResolvedValue(buildStateDurationAvailable({ boundary_type: "EXACT" }));
+    renderPage();
+
+    await screen.findByText(/Latest-revised reconstruction/);
+    expect(document.querySelector("canvas, svg[class*='chart'], [class*='recharts']")).not.toBeInTheDocument();
+  });
+
+  it("leaves the canonical current state and period completely unchanged", async () => {
+    resolveBoth({ monitor: buildMonitor({ underlying_momentum: buildMomentum({ state: "HEATING", calculation_period: "2026-08-01" }) }) });
+    mockedGetStateDuration.mockResolvedValue(buildStateDurationAvailable({ boundary_type: "EXACT", state: "HEATING" }));
+    renderPage();
+
+    const section = await heroSection();
+    expect(within(section).getByText("Heating", { selector: "span" })).toBeInTheDocument();
+    expect(within(section).getByText(/Core PCE · August 2026/)).toBeInTheDocument();
+  });
+
+  it("shows the new disclosure sentence alongside the existing latest-revised sentence, never replacing it", async () => {
+    resolveBoth();
+    renderPage();
+
+    await screen.findByText("Latest revised data");
+    expect(
+      screen.getByText(
+        "Historical calculations use the latest revised observations available to Economic Intelligence. They may differ from values originally reported at the time.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This duration is calculated today, using the latest revised data and the current methodology, applied consistently across the period shown. It reflects what today's data implies, not what Economic Intelligence reported in real time as each month occurred.",
+      ),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("Core PCE momentum metrics", () => {

@@ -10,7 +10,7 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
-import { getEmploymentSituationProcessingStatus, getLaborMonitor, getLaborWhatChanged } from "../api/labor";
+import { getEmploymentSituationProcessingStatus, getLaborMonitor, getLaborStateDuration, getLaborWhatChanged } from "../api/labor";
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
 import {
   buildEmploymentResult,
@@ -21,12 +21,14 @@ import {
 } from "../test/fixtures/labor";
 import { buildLatestCheck, buildReleaseProcessingStatusItem, buildReleaseProcessingStatusResponse } from "../test/fixtures/processingStatus";
 import { buildReleaseListResponse, buildReleaseOccurrenceItem } from "../test/fixtures/releases";
+import { buildStateDurationAvailable, buildStateDurationCurrentInsufficient } from "../test/fixtures/stateDuration";
 import { LaborPage } from "./Labor";
 
 vi.mock("../api/labor", () => ({
   getLaborMonitor: vi.fn(),
   getLaborWhatChanged: vi.fn(),
   getEmploymentSituationProcessingStatus: vi.fn(),
+  getLaborStateDuration: vi.fn(),
 }));
 vi.mock("../api/releases", () => ({
   fetchUpcomingReleases: vi.fn(),
@@ -38,6 +40,7 @@ const mockedGetWhatChanged = vi.mocked(getLaborWhatChanged);
 const mockedGetProcessingStatus = vi.mocked(getEmploymentSituationProcessingStatus);
 const mockedFetchUpcoming = vi.mocked(fetchUpcomingReleases);
 const mockedFetchRecent = vi.mocked(fetchRecentReleases);
+const mockedGetStateDuration = vi.mocked(getLaborStateDuration);
 
 beforeEach(() => {
   mockedGetMonitor.mockReset();
@@ -45,6 +48,10 @@ beforeEach(() => {
   mockedGetProcessingStatus.mockReset();
   mockedFetchUpcoming.mockReset();
   mockedFetchRecent.mockReset();
+  mockedGetStateDuration.mockReset();
+  // Resolved, non-hanging default for every test unless overridden --
+  // State Duration is scoped to its own dedicated describe block below.
+  mockedGetStateDuration.mockResolvedValue(buildStateDurationCurrentInsufficient({ methodology_id: "labor_v1.0" }));
 });
 
 function resolveAll(overrides: {
@@ -184,6 +191,144 @@ describe("Current State", () => {
 
     const section = await findSection("Current state");
     expect(within(section).getByText("Strengthening", { selector: "span" })).toBeInTheDocument();
+  });
+});
+
+describe("State Duration V1 (Increment #24D)", () => {
+  it("shows a loading skeleton for state duration independently of the monitor resource", async () => {
+    resolveAll();
+    mockedGetStateDuration.mockReturnValue(new Promise(() => {}));
+    renderPage();
+
+    const section = await findSection("Current state");
+    expect(within(section).getAllByRole("status").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders the exact frozen EXACT copy, using duration_months/earliest_confirmed_period/state exactly as supplied", async () => {
+    resolveAll();
+    mockedGetStateDuration.mockResolvedValue(
+      buildStateDurationAvailable({
+        state: "STRENGTHENING",
+        boundary_type: "EXACT",
+        duration_months: 4,
+        earliest_confirmed_period: "2026-03-01",
+        methodology_id: "labor_v1.0",
+      }),
+    );
+    renderPage();
+
+    expect(
+      await screen.findByText("Latest-revised reconstruction: Strengthening for 4 consecutive months, since March 2026."),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the exact frozen DATA_BOUNDED lower-bound copy", async () => {
+    resolveAll();
+    mockedGetStateDuration.mockResolvedValue(
+      buildStateDurationAvailable({ state: "COOLING", boundary_type: "DATA_BOUNDED", duration_months: 3, methodology_id: "labor_v1.0" }),
+    );
+    renderPage();
+
+    expect(await screen.findByText("Latest-revised reconstruction: Cooling for at least 3 consecutive months.")).toBeInTheDocument();
+  });
+
+  it("renders the exact frozen LOOKBACK_BOUNDED lower-bound copy", async () => {
+    resolveAll();
+    mockedGetStateDuration.mockResolvedValue(
+      buildStateDurationAvailable({ state: "COOLING", boundary_type: "LOOKBACK_BOUNDED", duration_months: 60, methodology_id: "labor_v1.0" }),
+    );
+    renderPage();
+
+    expect(await screen.findByText("Latest-revised reconstruction: Cooling for at least 60 consecutive months.")).toBeInTheDocument();
+  });
+
+  it("renders the exact frozen CURRENT_INSUFFICIENT copy, never a fabricated duration", async () => {
+    resolveAll();
+    mockedGetStateDuration.mockResolvedValue(buildStateDurationCurrentInsufficient({ methodology_id: "labor_v1.0" }));
+    renderPage();
+
+    expect(
+      await screen.findByText("Historical state duration is unavailable because the current state has insufficient data."),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the existing ErrorMessage/retry pattern on infrastructure failure -- never the CURRENT_INSUFFICIENT copy", async () => {
+    resolveAll();
+    mockedGetStateDuration.mockRejectedValue(new Error("network"));
+    renderPage();
+
+    expect(await screen.findByText("Historical state duration could not be loaded.")).toBeInTheDocument();
+    expect(screen.queryByText(/insufficient data/i)).not.toBeInTheDocument();
+  });
+
+  it("a state-duration API failure never breaks the canonical Labor state or WhyLaborState", async () => {
+    resolveAll({ monitor: buildLaborMonitor({ state: "STRENGTHENING" }) });
+    mockedGetStateDuration.mockRejectedValue(new Error("network"));
+    renderPage();
+
+    await screen.findByText("Historical state duration could not be loaded.");
+    const section = await findSection("Current state");
+    expect(within(section).getByText("Strengthening", { selector: "span" })).toBeInTheDocument();
+    expect(within(section).getByText("Why Strengthening?")).toBeInTheDocument();
+  });
+
+  it("shows previous_state/previous_period only for EXACT, never fabricated for DATA_BOUNDED", async () => {
+    resolveAll();
+    mockedGetStateDuration.mockResolvedValue(
+      buildStateDurationAvailable({
+        boundary_type: "EXACT",
+        previous_state: "STABLE",
+        previous_period: "2026-02-01",
+        methodology_id: "labor_v1.0",
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText("Previously Stable, as of February 2026.")).toBeInTheDocument();
+  });
+
+  it("never shows a previous-state note for DATA_BOUNDED", async () => {
+    resolveAll();
+    mockedGetStateDuration.mockResolvedValue(
+      buildStateDurationAvailable({ boundary_type: "DATA_BOUNDED", previous_state: null, previous_period: null, methodology_id: "labor_v1.0" }),
+    );
+    renderPage();
+
+    await screen.findByText(/Latest-revised reconstruction/);
+    expect(screen.queryByText(/^Previously/)).not.toBeInTheDocument();
+  });
+
+  it("renders directly inside the Current State Hero section, before WhyLaborState -- not a new page section", async () => {
+    resolveAll();
+    mockedGetStateDuration.mockResolvedValue(buildStateDurationAvailable({ boundary_type: "EXACT", methodology_id: "labor_v1.0" }));
+    renderPage();
+
+    const section = await findSection("Current state");
+    const durationText = within(section).getByText(/Latest-revised reconstruction/);
+    const whyToggle = within(section).getByText("Why Strengthening?");
+    expect(durationText.compareDocumentPosition(whyToggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /history/i })).not.toBeInTheDocument();
+  });
+
+  it("preserves the existing #23C Relate composition sentence inside WhyLaborState, unaffected by State Duration", async () => {
+    resolveAll();
+    mockedGetStateDuration.mockResolvedValue(buildStateDurationAvailable({ boundary_type: "EXACT", methodology_id: "labor_v1.0" }));
+    renderPage();
+
+    const section = await findSection("Current state");
+    const why = within(section).getByText("Why Strengthening?");
+    why.click();
+    expect(await within(section).findByText(/Together, Economic Intelligence classifies Labor/)).toBeInTheDocument();
+  });
+
+  it("leaves the canonical current state and evaluation period completely unchanged", async () => {
+    resolveAll({ monitor: buildLaborMonitor({ state: "COOLING", evaluation_period: "2026-09-01" }) });
+    mockedGetStateDuration.mockResolvedValue(buildStateDurationAvailable({ state: "COOLING", boundary_type: "EXACT", methodology_id: "labor_v1.0" }));
+    renderPage();
+
+    const section = await findSection("Current state");
+    expect(within(section).getByText("Cooling", { selector: "span" })).toBeInTheDocument();
+    expect(within(section).getByText(/Labor · September 2026/)).toBeInTheDocument();
   });
 });
 

@@ -1195,6 +1195,18 @@ for the full section-by-section breakdown, and
 any of this from silently becoming a second implementation of
 `inflation_v1.0` / `inflation_what_changed_v1.0`).
 
+**Extended by Increment #24D (State Duration V1 UI):** a THIRD,
+equally independent resource, `useApiResource(getInflationStateDuration)`
+(`GET /api/v1/monitors/inflation/state-duration`, see Flow 38), is
+mounted in the same render — its own `loading`/`success`/`error` state
+never blocks or is blocked by the other two. `InflationHero` renders
+`StateDurationLine` directly from this third resource's own state,
+between the existing period line and `WhyThisState`; a `status:
+"CURRENT_INSUFFICIENT"` or any `boundary_type` is a normal `{status:
+"success"}` render (frozen §33's HTTP semantics preserved through to
+the frontend), and only a genuine `ApiError` renders `ErrorMessage` in
+its place. Retrying this resource never touches the other two.
+
 ## Flow 28 — Release Calendar Read (`GET /api/v1/releases`, Increment #17A)
 
 Database-only, exactly like `.../observations`/`.../transform` — never
@@ -1672,6 +1684,14 @@ calls a sync/mutation endpoint of any kind — the Overview page is
 exactly as read-only as `/inflation`, `/labor`, and `/releases` already
 are.
 
+**Increment #24D (State Duration V1 UI) confirmed excluded, not merely
+absent:** frozen contract §41 is a hard requirement, restated from
+#24A. `pages/Overview.tsx` calls neither `getInflationStateDuration`
+nor `getLaborStateDuration` (this flow's call graph gains no eighth
+resource) and renders no State Duration copy anywhere — proven by a
+dedicated source-level import check and a rendered-text check in
+`pages/Overview.test.tsx`, not merely by omission.
+
 ## Flow 34 — Release Processing Status Read (`GET /api/v1/releases/processing-status`, Increment #19B)
 
 Database-only, exactly like Flow 28 — never calls FRED, never calls AI.
@@ -2001,3 +2021,146 @@ full section-by-section breakdown, and
 `frontend/src/test/no-economic-logic.test.ts`'s frozen-deadband guards
 for the check preventing any of this from silently becoming a second
 implementation of `labor_v1.0`).
+
+**Extended by Increment #24D (State Duration V1 UI):** a SIXTH,
+equally independent resource, `useApiResource(getLaborStateDuration)`
+(`GET /api/v1/monitors/labor/state-duration`, see Flow 39), is mounted
+in the same render alongside the existing five. `LaborHero` renders
+`StateDurationLine` directly from this resource's own state, between
+the existing period line and `WhyLaborState` -- the frozen 7-section
+hierarchy above is otherwise completely unchanged; State Duration is
+not an eighth section. Mirrors `/inflation`'s own identical extension
+(Flow 27) exactly, including the infrastructure-vs-economic-data HTTP
+distinction preserved through to the frontend.
+
+## Flow 38 — Inflation State Duration (`docs/product/state-duration-v1.md`, Increment #24C)
+
+`GET /api/v1/monitors/inflation/state-duration` reads only from
+PostgreSQL, for exactly one canonical series (`PCEPILFE`). Returns a
+**latest-revised reconstruction** of how long Inflation's current
+`underlying_momentum.state` has held — never recorded history, never a
+reconstruction of what was knowable at the time (frozen contract §1).
+`FREDClient` never appears anywhere in this flow, and no AI service is
+imported or called.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/inflation.py)
+    participant S as InflationMonitorService
+    participant SS as session_scope()
+    participant Repo as SeriesRepository
+    participant DB as PostgreSQL
+    participant D as app.domain.inflation (pure)
+    participant H as app.domain.state_duration (pure)
+
+    C->>R: GET /api/v1/monitors/inflation/state-duration
+    R->>R: database_url present?
+    R->>SS: enter session_scope()
+    R->>S: get_state_duration_result(session)
+    S->>Repo: get_series_by_series_id(PCEPILFE)
+    Repo->>DB: SELECT economic_series WHERE series_id = ?
+    S->>Repo: get_observations_in_range(economic_series_id, None, None)
+    Repo->>DB: SELECT * FROM economic_observations WHERE economic_series_id = ? ORDER BY observation_date
+    DB-->>Repo: all rows
+    Repo-->>S: list[Observation]  (one query -- loaded once, per §30)
+    S->>D: compute_series_momentum(observations, PCEPILFE)
+    D-->>S: current state + calculation_period (t)
+    alt current state is INSUFFICIENT_DATA or t is null
+        S-->>R: StateDurationCurrentInsufficient
+        R-->>C: 200 JSON (status: "CURRENT_INSUFFICIENT", methodology_id, data_basis)
+    else current state is real
+        loop months_back = 0 .. 59
+            S->>D: compute_series_momentum_at(observations, PCEPILFE, month_before(t, months_back))
+            Note over D: pure, unmodified -- the SAME primitive<br/>inflation_what_changed_v1.0 already uses; zero new formula
+            D-->>S: SeriesMomentumResult at that period
+        end
+        S->>H: evaluate_state_duration(sequence, lookback_bound_months=60)
+        Note over H: pure, monitor-agnostic -- equality/sentinel<br/>checks only, no economic knowledge
+        H-->>S: duration_months, boundary_type, earliest_confirmed_period,<br/>previous_state, previous_period
+        S-->>R: StateDurationAvailable
+        R-->>C: 200 JSON (status: "AVAILABLE", state, evaluation_period,<br/>duration_months, earliest_confirmed_period, boundary_type,<br/>previous_state, previous_period, methodology_id, data_basis, history_type)
+    end
+    R->>SS: exit session_scope() normally
+    SS->>DB: COMMIT (no-op for a read, but the same owned boundary as every other DB access)
+```
+
+Duration is computed **only** from `underlying_momentum.state` —
+Confirmation's, Target's, and Headline's own availability never affect
+this result, and this flow never fetches `CPILFESL`/`PCEPI`/`CPIAUCSL`
+at all (frozen contract §24). `boundary_type` is always exactly one of
+`EXACT` (a real, differing prior state was found), `DATA_BOUNDED` (a
+historical `INSUFFICIENT_DATA` was encountered — deliberately unified
+with "ran off the edge of the persisted dataset," since both produce
+the identical return value from the same unmodified domain functions),
+or `LOOKBACK_BOUNDED` (60 consecutive matching months, the bound
+reached without a differing state or a gap). `previous_state`/
+`previous_period` are populated only for `EXACT`.
+
+### Flow 38 Failure Scenarios
+
+| Scenario | Where it's caught | HTTP status |
+|---|---|---|
+| `DATABASE_URL` not configured | Checked in the route before a session is opened | `503` |
+| Database unreachable | `sqlalchemy.exc.OperationalError` | `503` |
+| Any other database-layer failure | `sqlalchemy.exc.SQLAlchemyError` (base class) | `500` |
+| `PCEPILFE` not persisted at all, or insufficient trailing history at the current period | *(no exception — `status: "CURRENT_INSUFFICIENT"`)* | `200` |
+| A historical required calendar-month endpoint is missing within the 60-month window | *(no exception — `boundary_type: "DATA_BOUNDED"`, the walk stops there, never bridged)* | `200` |
+| 60 consecutive matching months with no gap and no differing state | *(no exception — `boundary_type: "LOOKBACK_BOUNDED"`)* | `200` |
+
+## Flow 39 — Labor State Duration (`docs/product/state-duration-v1.md`, Increment #24C)
+
+`GET /api/v1/monitors/labor/state-duration` mirrors Flow 38 exactly,
+for PAYEMS/UNRATE and `LaborMonitorResult.state`/`evaluation_period`
+instead of Core PCE:
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as Route (app/api/labor.py)
+    participant S as LaborMonitorService
+    participant SS as session_scope()
+    participant Repo as SeriesRepository
+    participant DB as PostgreSQL
+    participant D as app.domain.labor (pure)
+    participant H as app.domain.state_duration (pure)
+
+    C->>R: GET /api/v1/monitors/labor/state-duration
+    R->>R: database_url present?
+    R->>SS: enter session_scope()
+    R->>S: get_state_duration_result(session)
+    loop for each of PAYEMS, UNRATE
+        S->>Repo: get_series_by_series_id(series_id)
+        Repo->>DB: SELECT economic_series WHERE series_id = ?
+        S->>Repo: get_observations_in_range(economic_series_id, None, None)
+        Repo->>DB: SELECT * FROM economic_observations WHERE economic_series_id = ? ORDER BY observation_date
+        DB-->>Repo: all rows
+        Repo-->>S: list[Observation]  (one query per series -- loaded once, per §30)
+    end
+    S->>D: compute_labor_monitor_result(payems, unrate, deadbands)
+    D-->>S: current state + evaluation_period (t)
+    alt current state is INSUFFICIENT_DATA or t is null
+        S-->>R: StateDurationCurrentInsufficient
+        R-->>C: 200 JSON (status: "CURRENT_INSUFFICIENT", methodology_id, data_basis)
+    else current state is real
+        loop months_back = 0 .. 59
+            S->>D: compute_labor_monitor_result_at(payems, unrate, month_before(t, months_back), deadbands)
+            Note over D: pure, unmodified -- the SAME primitive<br/>labor_what_changed_v1.0 already uses; zero new formula
+            D-->>S: LaborMonitorResult at that period
+        end
+        S->>H: evaluate_state_duration(sequence, lookback_bound_months=60)
+        H-->>S: duration_months, boundary_type, earliest_confirmed_period,<br/>previous_state, previous_period
+        S-->>R: StateDurationAvailable
+        R-->>C: 200 JSON (status: "AVAILABLE", state, evaluation_period,<br/>duration_months, earliest_confirmed_period, boundary_type,<br/>previous_state, previous_period, methodology_id, data_basis, history_type)
+    end
+    R->>SS: exit session_scope() normally
+    SS->>DB: COMMIT (no-op for a read, but the same owned boundary as every other DB access)
+```
+
+The real `2025-10` UNRATE gap (this project's own established worked
+example, `tests/test_domain_labor_release_processing.py`) is the
+canonical `DATA_BOUNDED` regression case for this flow, per frozen
+contract §25/§47: a walk-back whose window includes that date stops
+there, never bridging across it. `#24C` scope is backend-only — no
+frontend consumer of either Flow 38 or Flow 39 exists yet; that is
+`#24D`'s own gated scope (frozen contract §53).

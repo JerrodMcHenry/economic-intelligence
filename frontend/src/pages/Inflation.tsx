@@ -1,4 +1,4 @@
-import { getInflationMonitor, getInflationWhatChanged } from "../api/inflation";
+import { getInflationMonitor, getInflationStateDuration, getInflationWhatChanged } from "../api/inflation";
 import { useApiResource } from "../api/useApiResource";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
@@ -16,15 +16,21 @@ const CHANGES_ERROR_MESSAGE = "What changed could not be loaded.";
 
 /**
  * The real Inflation Monitor product page. Loads
- * `GET /api/v1/monitors/inflation` and `GET /api/v1/monitors/inflation/changes`
+ * `GET /api/v1/monitors/inflation`, `GET /api/v1/monitors/inflation/changes`,
+ * and (Increment #24D) `GET /api/v1/monitors/inflation/state-duration`
  * completely independently (see useApiResource) -- one failing never
- * blanks or fabricates the other. Every economic value, state, and
- * relationship rendered below is exactly what those two endpoints
+ * blanks or fabricates the others. Every economic value, state, and
+ * relationship rendered below is exactly what those endpoints
  * returned; this page composes and formats, it does not calculate.
+ * `stateDuration` is fetched here (the page), not inside
+ * `InflationHero`, matching this page's own established "page owns
+ * every resource, components stay dumb" convention -- one clear owner
+ * per resource, never re-fetched inside the Hero or its disclosure.
  */
 export function InflationPage() {
   const monitor = useApiResource(getInflationMonitor);
   const whatChanged = useApiResource(getInflationWhatChanged);
+  const stateDuration = useApiResource(getInflationStateDuration);
 
   return (
     <div className="max-w-3xl">
@@ -42,7 +48,9 @@ export function InflationPage() {
         {/* 2. Primary underlying momentum state */}
         {monitor.status === "loading" && <LoadingSkeleton label="Loading underlying momentum" heightClassName="h-32" />}
         {monitor.status === "error" && <ErrorMessage message={MONITOR_ERROR_MESSAGE} onRetry={monitor.reload} />}
-        {monitor.status === "success" && <InflationHero momentum={monitor.data.underlying_momentum} />}
+        {monitor.status === "success" && (
+          <InflationHero momentum={monitor.data.underlying_momentum} stateDuration={stateDuration} />
+        )}
 
         {/* 3. What changed */}
         {whatChanged.status === "loading" && <LoadingSkeleton label="Loading what changed" heightClassName="h-48" />}

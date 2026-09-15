@@ -1,4 +1,4 @@
-import { getEmploymentSituationProcessingStatus, getLaborMonitor, getLaborWhatChanged } from "../api/labor";
+import { getEmploymentSituationProcessingStatus, getLaborMonitor, getLaborStateDuration, getLaborWhatChanged } from "../api/labor";
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
 import { useApiResource } from "../api/useApiResource";
 import { ErrorMessage } from "../components/ErrorMessage";
@@ -21,22 +21,29 @@ const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
 /**
  * The Labor Market Monitor product page (Increment #20E.2). Loads
  * `GET /api/v1/monitors/labor`, `GET /api/v1/monitors/labor/changes`,
+ * `GET /api/v1/monitors/labor/state-duration` (Increment #24D),
  * Upcoming/Recent releases, and Employment Situation's own scoped
- * processing-status evidence -- five completely independent resources
+ * processing-status evidence -- six completely independent resources
  * (see useApiResource), each with its own loading/error UI; one
  * failing never blanks, blocks, or fabricates any other section, the
- * same discipline /inflation and / already establish.
+ * same discipline /inflation and / already establish. `stateDuration`
+ * is fetched here (the page), not inside `LaborHero`, matching this
+ * page's own established "page owns every resource, components stay
+ * dumb" convention -- one clear owner per resource.
  *
  * Frozen 7-section hierarchy (docs/architecture/labor-ui-v1.md §7):
  * Current State -> Employment -> Unemployment -> What Changed ->
  * Latest Data Detected -> Relevant Release -> Evidence & methodology.
- * Every economic value, state, and relationship rendered below is
- * exactly what those endpoints returned; this page composes and
- * formats, it does not calculate.
+ * State Duration V1 is a new line inside the existing Current State
+ * (Hero) section, not an eighth section (frozen contract
+ * docs/product/state-duration-v1.md §40). Every economic value, state,
+ * and relationship rendered below is exactly what those endpoints
+ * returned; this page composes and formats, it does not calculate.
  */
 export function LaborPage() {
   const monitor = useApiResource(getLaborMonitor);
   const whatChanged = useApiResource(getLaborWhatChanged);
+  const stateDuration = useApiResource(getLaborStateDuration);
   const processingStatus = useApiResource(getEmploymentSituationProcessingStatus);
   const upcoming = useApiResource(fetchUpcomingReleases);
   const recent = useApiResource(fetchRecentReleases);
@@ -57,7 +64,7 @@ export function LaborPage() {
         {/* 1. Current State */}
         {monitor.status === "loading" && <LoadingSkeleton label="Loading current state" heightClassName="h-32" />}
         {monitor.status === "error" && <ErrorMessage message={MONITOR_ERROR_MESSAGE} onRetry={monitor.reload} />}
-        {monitor.status === "success" && <LaborHero result={monitor.data} />}
+        {monitor.status === "success" && <LaborHero result={monitor.data} stateDuration={stateDuration} />}
 
         {/* 2-3. Employment, Unemployment -- both sub-views of the monitor resource */}
         {monitor.status === "success" && (

@@ -10,6 +10,7 @@ import type { LaborMonitorResult, LaborWhatChangedResult } from "./labor.types";
 import { fetchReleaseProcessingStatus } from "./processingStatus";
 import type { ReleaseProcessingStatusResponse } from "./processingStatus.types";
 import { fetchRecentReleases, fetchUpcomingReleases } from "./releases";
+import type { StateDurationResult } from "./stateDuration.types";
 
 export function getLaborMonitor(): Promise<LaborMonitorResult> {
   return apiGet<LaborMonitorResult>("/api/v1/monitors/labor");
@@ -17,6 +18,16 @@ export function getLaborMonitor(): Promise<LaborMonitorResult> {
 
 export function getLaborWhatChanged(): Promise<LaborWhatChangedResult> {
   return apiGet<LaborWhatChangedResult>("/api/v1/monitors/labor/changes");
+}
+
+/**
+ * State Duration V1 (Increment #24C/#24D, frozen contract
+ * docs/product/state-duration-v1.md §31): a latest-revised
+ * reconstruction of how long Labor's own canonical `state` has held --
+ * never recorded history.
+ */
+export function getLaborStateDuration(): Promise<StateDurationResult> {
+  return apiGet<StateDurationResult>("/api/v1/monitors/labor/state-duration");
 }
 
 // Employment Situation's stable FRED identity -- see

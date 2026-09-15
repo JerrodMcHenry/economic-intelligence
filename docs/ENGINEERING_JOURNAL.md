@@ -8156,3 +8156,260 @@ cross-domain labels, historical relationships, lead-lag, causal
 inference, investment implications, AI narration, a new economic
 domain, state-history persistence, a `/relate` route, any new
 top-level nav item.
+
+## Increment #24C — State Duration V1 Backend Implementation
+
+Implements the frozen `docs/product/state-duration-v1.md` contract's
+backend half (§52). Backend-only: zero frontend files touched, zero
+migrations, zero new tables, zero FRED/provider calls, zero AI, zero
+methodology change — every economic calculation this increment
+performs (`compute_series_momentum_at`, `compute_labor_monitor_result_at`)
+already shipped, unmodified, before this increment began.
+
+### The core rule this entire increment exists to protect
+
+State Duration V1 computes **latest-revised reconstruction only** —
+never recorded history, never a reconstruction of what was knowable at
+the time. Every field name (`earliest_confirmed_period`, never
+`start_period`; `history_type: "latest_revised_reconstruction"`, a
+fixed trust-boundary literal) and every response shape decision below
+exists partly to make that distinction structurally hard to lose in a
+future increment, not merely to document it in prose.
+
+### One narrow, genuinely domain-agnostic pure helper — the sole exception to "no shared abstraction" in this session
+
+`app/domain/state_duration.py` is new: one pure function
+(`evaluate_state_duration`) that walks an already-built, already-
+reconstructed, most-recent-first sequence of `(period, state)` points
+and returns `duration_months`/`boundary_type`/`earliest_confirmed_period`/
+`previous_state`/`previous_period` — zero economic content, verified
+structurally (`tests/test_domain_state_duration.py`'s own source-scan
+guard proves the module's source text never mentions a real economic
+state literal). Justified narrowly and differently from every other
+"no premature generic framework" decision this project has made: the
+walk-back's own *economic* computation (calling each domain's `_at`
+function repeatedly) stays domain-specific, inside each monitor's own
+service; only the pure counting/equality logic downstream of that is
+shared, the same category of sharing `app.domain.analysis`'s own
+`align_series`/`pearson_correlation` already established as acceptable
+precedent. A dedicated AST-level guard
+(`tests/test_domain_architectural_independence.py`) proves this module
+imports no other domain module and — stricter than every other domain
+module's own guard — no `app.models` module at all.
+
+### Two independent service methods, not a shared "historical monitor service"
+
+`InflationMonitorService.get_state_duration_result`/
+`LaborMonitorService.get_state_duration_result` (`app/services/
+inflation.py`/`labor.py`) each load their own required series once
+(load-once strategy, §30 — the existing, unbounded
+`get_observations_in_range` call already used by each service's own
+`_load` helper, reused rather than duplicated), determine the current
+canonical state/anchor period via the existing plain `_at`-free
+functions, and — only if that state is real and non-
+`INSUFFICIENT_DATA` — build a sequence of up to 60 reconstructed points
+by calling `compute_series_momentum_at`/`compute_labor_monitor_result_at`
+repeatedly at `month_before(anchor, 0..59)`, then hand that sequence to
+the one shared pure helper. Each service defines its own
+`_STATE_DURATION_LOOKBACK_BOUND_MONTHS = 60` constant independently
+(§11/§7's own "no shared calendar/policy utility" discipline, restated
+here for a policy constant rather than a calendar function) — same
+number, two definitions, matching `month_before`'s own established
+per-domain duplication.
+
+### Response contract — a genuine two-shape union, not a flat model with nulled fields
+
+`app/models/state_duration.py`'s `StateDurationResult` is a real
+Pydantic discriminated union (`status: "AVAILABLE" | "CURRENT_INSUFFICIENT"`)
+— deliberately different from this project's usual "single model,
+availability flag" convention, because the frozen contract specifies
+`CURRENT_INSUFFICIENT` as carrying no duration/period/boundary fields
+at all, not merely nulled ones. `boundary_type` is the frozen
+three-value `Literal["EXACT", "DATA_BOUNDED", "LOOKBACK_BOUNDED"]`,
+never a boolean (guarded explicitly in
+`tests/test_state_duration_architecture.py`).
+
+### Two new, narrowly-named routes
+
+`GET /api/v1/monitors/inflation/state-duration` and
+`GET /api/v1/monitors/labor/state-duration` — added to the existing
+`app/api/inflation.py`/`labor.py` router files (the same file each
+monitor's own `/changes` route already lives in), not a new shared
+"state-duration" router spanning both monitors. Deliberately not
+`/history` (§31) — this endpoint returns exactly one fact today,
+leaving room for a genuinely broader history endpoint later without
+redefining this one. HTTP semantics mirror every existing monitor
+route exactly: infrastructure failure → 503/500; every economic-data
+outcome (`CURRENT_INSUFFICIENT`/`DATA_BOUNDED`/`LOOKBACK_BOUNDED`
+included) → 200.
+
+### Hand-derived test fixtures, not just calling the code under test
+
+Every service-level and API-level EXACT/DATA_BOUNDED/LOOKBACK_BOUNDED
+fixture (`tests/integration/test_inflation_state_duration_service.py`,
+`tests/integration/test_labor_state_duration_service.py`,
+`tests/api/test_*_state_duration_api.py`) is hand-derived against the
+frozen classification formulas before being run — e.g. Inflation's
+flat-baseline-plus-one-month-spike construction
+(`r_3m ≈ 185.6`, `r_6m ≈ 69.0`, `r_12m = 30.0` at the spike month,
+both far outside `[r_12m − 0.10, r_12m + 0.10]` → HEATING, vs. `STABLE`
+one month earlier) and Labor's real `2025-10` UNRATE gap (the
+project's own canonical worked example, `tests/test_domain_labor_release_processing.py`,
+reused per §25/§47 as the required `DATA_BOUNDED` test case) — every
+one of these passed on first execution against the hand-derived
+expected value, not adjusted to match observed output.
+
+### Verification
+
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run twice: **1,256
+passed** both times, 0 skipped, 0 failed (1,173 baseline at #23C →
+1,256 after this increment; +83 new tests: 23 pure-helper/architecture,
+12 Inflation service, 14 Labor service, 31 API, 3 updated pre-existing
+guards for the new route/import). Frontend: `npx vitest run`:
+**895 passed**, unchanged from the #23C baseline — confirmed zero
+frontend files touched (`git status --porcelain -- frontend/` empty).
+Production-diff audit: 4 modified backend files (`app/api/inflation.py`,
+`app/api/labor.py`, `app/services/inflation.py`, `app/services/labor.py`),
+2 new backend files (`app/domain/state_duration.py`,
+`app/models/state_duration.py`), zero changes under `app/db/` or
+`alembic/`. No lint/typecheck tooling is configured for this backend
+(none present in `pyproject.toml`/`.venv`), matching every prior
+backend increment this session.
+
+### New files
+
+`app/domain/state_duration.py`, `app/models/state_duration.py`,
+`tests/test_domain_state_duration.py`,
+`tests/test_state_duration_architecture.py`,
+`tests/integration/test_inflation_state_duration_service.py`,
+`tests/integration/test_labor_state_duration_service.py`,
+`tests/api/test_inflation_state_duration_api.py`,
+`tests/api/test_labor_state_duration_api.py`.
+
+### Deferred (named explicitly, restated unchanged from #24A/#24B)
+
+Recorded state-history persistence, a full `/history` endpoint, a
+rendered state timeline, a rendered transition timeline, metric
+charts, percentiles, qualitative "high"/"low"/"unusual" labels,
+ALFRED/vintage-data integration, as-known-at-time reconstruction,
+since-last-visit, notifications, Compare (any form), Growth,
+AI-generated historical summaries, regime labels,
+market-outcome/backtesting analysis. The frontend consumer of these
+two new endpoints (§53) is #24D's own scope, gated on this increment.
+
+## Increment #24D — State Duration V1 Frontend Implementation
+
+Implements the frontend half of the frozen `docs/product/state-duration-v1.md`
+contract (§53), gated on #24C's own completed backend. Frontend-only:
+zero backend files touched (confirmed by an unchanged 1,256-passed
+backend regression run and an empty `git status --porcelain -- app/`).
+State Duration now renders as one new line inside each monitor page's
+existing Hero section — never a new page section, never on Overview.
+
+### One shared type/copy/component layer, mirroring the backend's own shared file
+
+`api/stateDuration.types.ts` mirrors `app/models/state_duration.py`
+field-for-field — a genuine two-shape union (`AVAILABLE`/
+`CURRENT_INSUFFICIENT`), never flattened with nulled fields, reused by
+BOTH `getInflationStateDuration` (added to `api/inflation.ts`) and
+`getLaborStateDuration` (added to `api/labor.ts`), mirroring how the
+backend's own `StateDurationResult` is one shared Pydantic union
+returned by both routes rather than two near-duplicate per-monitor
+types. `lib/stateDurationCopy.ts` is the one new, genuinely shared pure
+function this increment adds on the frontend side — the same narrow
+exception category #24C's own `evaluate_state_duration` already
+established: it renders the exact frozen §37 templates
+(EXACT/DATA_BOUNDED/LOOKBACK_BOUNDED/CURRENT_INSUFFICIENT, each an
+independent branch of an exhaustive `switch`, never a shared
+fallthrough per §42) from fields already on the response, with
+pre-resolved label strings supplied by the caller — it never imports
+`inflationStateLabel`/`laborStateLabel` itself and has zero series/
+monitor knowledge. `components/StateDurationLine.tsx` is the one new
+shared presentation component (loading skeleton / `ErrorMessage` /
+rendered copy), reused identically by `InflationHero`/`LaborHero` via a
+small per-monitor label-resolution wrapper at each call site (a safe,
+precedented cast, since each endpoint only ever returns its own
+monitor's real state values at runtime).
+
+### Placement — inside the existing Hero, never a new section
+
+`InflationHero.tsx`/`LaborHero.tsx` each gained one new prop
+(`stateDuration`, an `ApiResourceState<StateDurationResult>`) and one
+new line, placed directly after the existing period text and before
+`WhyThisState`/`WhyLaborState` (frozen §39/§40) — fetched by the PAGE
+(`InflationPage`/`LaborPage`), not inside the Hero itself, matching
+this project's own established "page owns every resource, components
+stay dumb" convention and giving the resource exactly one clear owner
+(never re-fetched inside a disclosure). `WhyLaborState`'s existing
+#23C Relate composition sentence is untouched and unaffected.
+
+### Disclosure — additive, never replacing the existing sentence
+
+The frozen §38 sentence lives in a new `STATE_DURATION_DISCLOSURE`
+constant (`content/explanations/inflation.ts`, monitor-agnostic content
+despite the file's name — the same file `LATEST_REVISED_DATA` already
+lives in for the identical reason: `DataBasisNote.tsx` renders both,
+shared by both pages) and is rendered as a THIRD paragraph inside the
+existing "Latest revised data" disclosure, alongside (never replacing)
+the two existing sentences.
+
+### `previous_state`/`previous_period` — a deliberate, minimal, non-frozen placement decision
+
+The frozen contract's own §37 copy templates never mention
+`previous_state` in the primary sentence (`§37A`'s own worked example
+omits it entirely), and no section of the frozen document specifies an
+exact UI location/format for it beyond §44's general "adds real
+verification value" claim. Rather than paraphrase the frozen primary
+template to fit it in (explicitly forbidden), this increment renders
+it as a separate, secondary, plainly factual line beneath the primary
+sentence ("Previously {label}, as of {period}.") — EXACT-only, never
+fabricated for `DATA_BOUNDED`/`LOOKBACK_BOUNDED`, never a timeline,
+never an arrow. Noted here explicitly as a genuine implementation
+judgment call within #24D's own discretion, not a frozen-contract
+requirement reproduced verbatim.
+
+### Hand-derived test fixtures, continuing #24C's own discipline
+
+Every EXACT/DATA_BOUNDED/LOOKBACK_BOUNDED test fixture asserts the
+exact frozen §37 sentence byte-for-byte (e.g. "Latest-revised
+reconstruction: Cooling for 3 consecutive months, since April 2026."),
+computed by hand against the frozen templates before being run, not
+adjusted to match observed output — every one of them passed on first
+execution.
+
+### Verification
+
+Frontend: `npx vitest run`, run twice consecutively: **1,032 passed**
+both times, 0 skipped, 0 failed (895 baseline at #23C → 1,032 after
+this increment; +137 new tests). One transient failure was observed in
+an earlier full-suite run (a pre-existing, unrelated "What Changed"
+empty-state test, `pages/Overview.test.tsx`) — investigated: 3/3
+isolated re-runs of that file passed, and 5 of 6 total full-suite runs
+this session passed cleanly with the identical test; the failing
+assertion touches code this increment never modified. Concluded a
+pre-existing, load-related timing flake under parallel `vmThreads`
+execution, not a regression introduced by #24D — not silently
+dismissed, verified. `npm run typecheck`: clean. `npm run lint`
+(oxlint): clean. `npm run build`: succeeds. Backend:
+`TEST_DATABASE_URL=... pytest tests/ -q`: **1,256 passed**, unchanged
+— confirmed zero backend files touched.
+
+### New files
+
+`frontend/src/api/stateDuration.types.ts`,
+`frontend/src/lib/stateDurationCopy.ts`/`.test.ts`,
+`frontend/src/components/StateDurationLine.tsx`,
+`frontend/src/test/fixtures/stateDuration.ts`,
+`frontend/src/test/no-state-duration-reconstruction.test.ts` (79 guard
+assertions, narrowly scoped to the three computing/rendering files).
+
+### Deferred (named explicitly, restated unchanged from #24A/#24B/#24C)
+
+Recorded state-history persistence, a full `/history` endpoint, a
+rendered state timeline, a rendered transition timeline, metric
+charts, percentiles, qualitative "high"/"low"/"unusual" labels,
+ALFRED/vintage-data integration, as-known-at-time reconstruction,
+since-last-visit, notifications, Compare (any form), Growth,
+AI-generated historical summaries, regime labels,
+market-outcome/backtesting analysis, Overview historical context, a
+new top-level nav item.

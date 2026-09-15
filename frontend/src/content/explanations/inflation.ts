@@ -145,6 +145,26 @@ export const LATEST_REVISED_DATA: Explanation = {
     "Government economic data is often revised in the weeks and months after it's first published, as more complete survey responses come in. A figure shown here reflects the best currently available data for that period -- not a snapshot of what was known on the day it was first reported.",
 };
 
+/**
+ * State Duration V1's own additional disclosure sentence (Increment
+ * #24D, frozen verbatim in docs/product/state-duration-v1.md §38) --
+ * NOT a modification of `LATEST_REVISED_DATA` above, a genuinely new,
+ * additional sentence shown alongside it (see `DataBasisNote.tsx`).
+ * `LATEST_REVISED_DATA` covers the revision-vintage half of the claim;
+ * this sentence adds the one distinction that claim doesn't cover --
+ * reconstruction today vs. what was reported in real time (§1).
+ * Monitor-agnostic: shared, unchanged, by both /inflation and /labor
+ * (the same DataBasisNote component renders on both pages), so it
+ * lives alongside LATEST_REVISED_DATA here rather than being
+ * duplicated per-monitor.
+ */
+export const STATE_DURATION_DISCLOSURE: Explanation = {
+  id: "state-duration.disclosure",
+  title: "How duration is calculated",
+  definition:
+    "This duration is calculated today, using the latest revised data and the current methodology, applied consistently across the period shown. It reflects what today's data implies, not what Economic Intelligence reported in real time as each month occurred.",
+};
+
 const INFLATION_STATE_EXPLANATIONS: Record<InflationState, Explanation> = {
   COOLING: {
     id: "inflation.state-cooling",
