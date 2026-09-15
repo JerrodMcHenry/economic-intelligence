@@ -8413,3 +8413,131 @@ since-last-visit, notifications, Compare (any form), Growth,
 AI-generated historical summaries, regime labels,
 market-outcome/backtesting analysis, Overview historical context, a
 new top-level nav item.
+
+## Increment #25C — Automated Economic Maintenance Implementation
+
+Implements the frozen `docs/product/automated-economic-maintenance-v1.md`
+contract (itself downstream of #25A's own product/retention audit and
+#25B's own operational-design contract freeze): release processing can
+now run without a human invoking the CLI by hand, on an external
+scheduler's own cadence, while the existing manual path remains fully
+available and equally safe. Backend/operational-only — zero frontend
+changes, zero economic-methodology changes, zero new API surface.
+
+### Scheduler/orchestrator separation, reusing the existing service unmodified
+
+`app/services/maintenance.py` (`MaintenanceOrchestrator.run_sweep`) is
+the new orchestration layer: discover due occurrences (a new,
+narrowly-scoped read query, `ReleaseProcessingRepository.list_due_occurrence_ids`),
+process each individually via the EXISTING, completely unmodified
+`ReleaseProcessingService.process_occurrence`, and record sweep-level
+operational health separately. It runs exactly one bounded sweep per
+call and terminates — it never loops, sleeps, or schedules itself; an
+external scheduler (any of: a developer's own local cron, a future
+platform's scheduled-task feature) is responsible for invoking the new
+CLI entry point (`python -m app.operations.run_maintenance`)
+periodically. See ADR-024 for the durable boundary decision this
+increment commits to (no in-process scheduler, no public HTTP trigger
+for processing).
+
+### Due-work discovery — settlement derived from the existing status enum, no new bookkeeping
+
+The single most load-bearing finding carried over from #25B, confirmed
+directly in code: `CheckRunStatus` is `NO_CHANGE`/`CHANGED` **only**
+when every currently-active mapped series in that run succeeded (see
+`_determine_status`, unmodified) — so "has a settled run today" is
+provable from the existing, already-persisted status alone, with zero
+new per-series bookkeeping. `list_due_occurrence_ids` therefore needs
+exactly one condition beyond eligibility/bounding: no settled
+(`NO_CHANGE`/`CHANGED`) `ReleaseCheckRun` with `completed_at` inside
+today's UTC day (computed explicitly in Python, never via a
+database-side `func.date()`, which would silently depend on the
+connection's own session timezone rather than this project's
+established UTC convention). This single condition naturally
+implements both halves of the frozen contract's own conservative
+settlement rule at once: an unsettled occurrence is due every sweep
+until it settles or its retry window (default 7 days, operator-tunable
+via `--retry-window-days`, never empirically pretended-precise) is
+exhausted; a settled occurrence remains due exactly once more per
+calendar day, for a genuinely late-arriving revision, never
+permanently excluded and never unboundedly re-checked. A real bug was
+caught and fixed during test-writing, not shipped: `process_occurrence`'s
+own `completed_at` is always the real wall clock, never derived from
+the caller's `as_of_date` — a test asserting same-day settlement must
+therefore use today's real UTC date as its own `AS_OF`, exactly as
+production always does, never a fixed historical date.
+
+### Concurrency safety — a transaction-scoped PostgreSQL advisory lock, shared by both paths
+
+`try_acquire_and_process_occurrence` (`app/services/release_processing.py`,
+added alongside the unmodified `ReleaseProcessingService` class, never
+inside it) acquires `pg_try_advisory_xact_lock(namespace, occurrence_id)`
+before calling `process_occurrence` — zero schema change, automatically
+released on commit or rollback including an unhandled crash, no
+explicit unlock call that could ever leak. **Both** the automated
+orchestrator and the existing manual CLI (`app/operations/process_release.py`,
+updated to call this same wrapper instead of the bare service method)
+now go through this one shared entry point, so the two paths can never
+diverge in locking behavior — proven directly by an integration test
+holding the lock via one real session while a second, independent
+session attempts to process the same occurrence and is correctly
+refused (`None`, never a race).
+
+### Sweep record — worker health, never conflated with economic freshness
+
+A new, small table (`maintenance_sweeps`, one migration) records
+per-sweep operational health — `started_at`/`finished_at`/`status`/
+`due_count`/`processed_count`/`failed_count` — deliberately never the
+same table or concept as `ReleaseCheckRun` (per-occurrence, economic-
+check-shaped). `finished_at`/`status`/the count columns are all
+nullable and written together, once, at completion: a row with
+`finished_at IS NULL` is the honest, intentional signal a crashed or
+still-running sweep produces, proven directly by a test that simulates
+a crash mid-sweep (due-work discovery itself raises) and confirms the
+started row survives unfinished while a subsequent, ordinary sweep
+recovers cleanly with zero special-cased recovery logic — inheriting
+release processing's own pre-existing, already-strong crash-safety
+guarantee (one transaction per occurrence) for free, since the
+orchestrator was built never to batch occurrences into one shared
+transaction.
+
+### Verification
+
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run twice: **1,324
+passed** both times, 0 skipped, 0 failed (1,256 baseline at #24C →
+1,324 after this increment; +68 new tests: due-work discovery, sweep
+record, orchestrator integration — no-due-work/one/multiple
+occurrences/provider and database failure/locking and concurrency/
+manual+automatic coexistence/crash recovery/clock injection — CLI
+integration, and architecture guards). One pre-existing whole-tree
+guard (`tests/integration/test_transaction_and_safety.py`'s own
+FRED/network-import allowlist) needed updating to include the two new
+integration test files that legitimately mock FRED at the same method
+boundary every sibling release-processing test already uses — not a
+regression, an expected, narrow allowlist extension, exactly mirroring
+that guard's own existing precedent. Frontend: `npx vitest run`:
+**1,032 passed**, unchanged — confirmed zero frontend files touched
+(`git status --porcelain -- frontend/` empty). Migration verified with
+a real upgrade/downgrade/upgrade round-trip against the isolated test
+database before any application code was written against it.
+
+### New files
+
+`app/services/maintenance.py`, `app/repositories/maintenance_repository.py`,
+`app/operations/run_maintenance.py`,
+`alembic/versions/f12b7ec0d626_create_maintenance_sweeps.py`,
+`docs/adr/024-automated-maintenance-scheduler-orchestrator-separation.md`,
+`tests/integration/test_maintenance_orchestrator.py`,
+`tests/integration/test_maintenance_repository.py`,
+`tests/integration/test_run_maintenance_cli.py`,
+`tests/test_maintenance_architecture.py`.
+
+### Deferred (named explicitly, restated from #25B)
+
+Recorded canonical-state/monitor-snapshot persistence (sequenced
+deliberately after this increment, per #25B §35/§42/§43, so the
+resulting asset is comprehensive rather than gap-prone), Since Last
+Visit (frontend, #25D's own scope, now unblocked for a genuinely
+honest freshness story), Watchlist, notifications, accounts,
+multi-device sync, alerting infrastructure, a generic job-queue
+framework, Growth, Compare, AI.

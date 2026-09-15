@@ -225,6 +225,35 @@ class TestSafeOutput:
         assert "File \"" not in combined
 
 
+class TestLockContention:
+    """Increment #25C: the manual CLI now shares the same PostgreSQL
+    advisory lock the automated orchestrator uses (frozen contract
+    §59) -- proven here by holding the lock via a second, independent
+    session before invoking `main()`."""
+
+    def test_occurrence_already_locked_by_another_process_exits_non_zero_with_a_safe_message(self, configured_settings, capsys):
+        import sqlalchemy as sa
+
+        from app.db.session import session_scope
+        from app.services.release_processing import _OCCURRENCE_LOCK_NAMESPACE
+
+        release_id, occurrence_id = _seed_release_mapping_and_occurrence()
+        try:
+            with session_scope() as holder_session:
+                acquired = holder_session.execute(
+                    sa.select(sa.func.pg_try_advisory_xact_lock(_OCCURRENCE_LOCK_NAMESPACE, occurrence_id))
+                ).scalar_one()
+                assert acquired is True
+
+                exit_code = main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
+        finally:
+            _cleanup(release_id)
+
+        assert exit_code == 1
+        err = capsys.readouterr().err
+        assert "already being processed" in err
+
+
 class TestExplicitAsOfDate:
     def test_explicit_as_of_date_is_honored_for_eligibility(self, configured_settings, capsys):
         """A same-day-scheduled occurrence, checked with an EARLIER

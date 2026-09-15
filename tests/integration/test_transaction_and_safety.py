@@ -187,6 +187,15 @@ class TestAIAndNetworkIndependence:
         "test_release_calendar_service.py",
         "test_release_processing_service.py",
         "test_process_release_cli.py",
+        # Increment #25C: these mock FREDClient at the exact same
+        # method boundary (get_observations/get_series_info) as
+        # test_release_processing_service.py/test_process_release_cli.py
+        # already do -- never a live call -- to prove the automated
+        # maintenance orchestrator and its own CLI entry point compose
+        # correctly with the existing, unmodified release-processing
+        # service.
+        "test_maintenance_orchestrator.py",
+        "test_run_maintenance_cli.py",
     }
 
     def test_no_integration_test_file_imports_ai(self):

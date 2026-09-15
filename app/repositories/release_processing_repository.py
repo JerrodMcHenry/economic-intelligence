@@ -27,7 +27,7 @@ inside it; this method only performs the mechanical write once that
 decision has already been made elsewhere.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -38,9 +38,23 @@ from app.db.models import (
     ReleaseAnalysisUpdate,
     ReleaseCheckRun,
     ReleaseObservationUpdate,
+    ReleaseOccurrence,
     ReleaseSeriesMapping,
 )
 from app.models.release_processing import AnalysisChangeRecord, CheckRunStatus, ObservationChangeRecord
+
+# The two CheckRunStatus values that mean "every currently-active
+# mapped series in that run was successfully queried" (see
+# `app.services.release_processing._determine_status`, unmodified) --
+# the exact, sufficient condition for
+# docs/product/automated-economic-maintenance-v1.md §10's own frozen
+# settlement rule. `PARTIAL_FAILURE`/`FAILED_PROVIDER` are deliberately
+# excluded: by `_determine_status`'s own construction, either one means
+# at least one mapped series' fetch itself failed, so a run carrying
+# either status can never count as a settled check -- no separate
+# per-series bookkeeping is needed to re-derive this; the existing,
+# already-persisted overall status already encodes it.
+_SETTLED_CHECK_RUN_STATUSES: tuple[CheckRunStatus, ...] = ("NO_CHANGE", "CHANGED")
 
 
 class ReleaseProcessingRepository:
@@ -211,5 +225,87 @@ class ReleaseProcessingRepository:
             select(ReleaseAnalysisUpdate)
             .where(ReleaseAnalysisUpdate.release_check_run_id == release_check_run_id)
             .order_by(ReleaseAnalysisUpdate.id.asc())
+        ).scalars()
+        return list(rows)
+
+    # -----------------------------------------------------------------
+    # Due-work discovery (Increment #25C, frozen contract
+    # docs/product/automated-economic-maintenance-v1.md §8/§10/§14/§50)
+    # -----------------------------------------------------------------
+
+    def list_due_occurrence_ids(self, as_of_date: date, retry_window_days: int) -> list[int]:
+        """Every mapped release occurrence due for a check right now.
+
+        Frozen conceptual rules (contract §8): `scheduled_date <=
+        as_of_date` (eligible -- mirrors `OccurrenceNotEligibleError`'s
+        own boundary exactly, never invented here); `scheduled_date >=
+        as_of_date - retry_window_days` (bounded backfill, §50, and
+        retry exhaustion, §14 -- automation never revisits ancient
+        history, and an occurrence that has never settled within this
+        window simply stops being surfaced, rather than being retried
+        forever); at least one active `ReleaseSeriesMapping` (an
+        unmapped occurrence has nothing for release processing to
+        check at all); and not already "settled today" (§10) -- no
+        `ReleaseCheckRun` with a settled status (see
+        `_SETTLED_CHECK_RUN_STATUSES`) whose `completed_at` falls on
+        `as_of_date` (UTC, computed explicitly in Python -- never
+        `func.date()` on the database side, which would silently
+        depend on the connection's own session timezone setting rather
+        than this project's own established UTC convention, §16/§57).
+
+        This single "settled today" condition deliberately covers BOTH
+        halves of §10's own conservative rule at once, with no
+        separate settled/unsettled branch: an occurrence with no
+        settled run at all is due every sweep until it settles or its
+        retry window expires; an occurrence that already settled
+        earlier TODAY is excluded for the rest of today (routine
+        re-checking stops); an occurrence settled on an EARLIER day,
+        still within its retry window, is due again exactly once
+        today -- the frozen contract's own "small, bounded number of
+        additional checks" for a genuinely late-arriving revision,
+        implemented as "at most once per day," never unbounded. A run
+        whose status is `PARTIAL_FAILURE`/`FAILED_PROVIDER` today does
+        NOT count as settling today, so a failed occurrence remains
+        due for same-day retry (§14) -- bounded, in practice, only by
+        how often the external scheduler itself sweeps (§15), which is
+        this project's own already-frozen, deliberate backoff
+        mechanism, not a separate throttle this query needs to invent.
+
+        Deterministic order: earliest `scheduled_date` first, then
+        `id` -- the oldest outstanding work is always processed first,
+        never database-engine-dependent natural order.
+        """
+        day_start = datetime(as_of_date.year, as_of_date.month, as_of_date.day, tzinfo=timezone.utc)
+        day_end = day_start + timedelta(days=1)
+        window_start = as_of_date - timedelta(days=retry_window_days)
+
+        settled_today = (
+            select(ReleaseCheckRun.id)
+            .where(
+                ReleaseCheckRun.release_occurrence_id == ReleaseOccurrence.id,
+                ReleaseCheckRun.status.in_(_SETTLED_CHECK_RUN_STATUSES),
+                ReleaseCheckRun.completed_at >= day_start,
+                ReleaseCheckRun.completed_at < day_end,
+            )
+            .exists()
+        )
+        has_active_mapping = (
+            select(ReleaseSeriesMapping.id)
+            .where(
+                ReleaseSeriesMapping.economic_release_id == ReleaseOccurrence.economic_release_id,
+                ReleaseSeriesMapping.active.is_(True),
+            )
+            .exists()
+        )
+
+        rows = self._session.execute(
+            select(ReleaseOccurrence.id)
+            .where(
+                ReleaseOccurrence.scheduled_date <= as_of_date,
+                ReleaseOccurrence.scheduled_date >= window_start,
+                has_active_mapping,
+                ~settled_today,
+            )
+            .order_by(ReleaseOccurrence.scheduled_date.asc(), ReleaseOccurrence.id.asc())
         ).scalars()
         return list(rows)

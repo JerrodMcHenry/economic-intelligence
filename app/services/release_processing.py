@@ -32,6 +32,7 @@ The live Inflation Monitor remains stateless and canonical throughout
 
 from datetime import date, datetime, timezone
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.clients.fred import FREDClient, FREDError
@@ -571,3 +572,56 @@ def _diff_labor_at(period: date, before_result: LaborMonitorResult, after_result
         )
         for event in [*labor_state_changes, *employment_changes.changes, *unemployment_changes.changes]
     ]
+
+
+# -----------------------------------------------------------------
+# Occurrence-level locking (Increment #25C, frozen contract
+# docs/product/automated-economic-maintenance-v1.md §18/§19/§59) --
+# the ONE shared entry point both the manual CLI
+# (app.operations.process_release) and the automated orchestrator
+# (app.services.maintenance.MaintenanceOrchestrator) call, so the two
+# paths can never diverge in locking behavior ("Do not maintain one
+# safe automatic path and one unsafe manual bypass").
+# -----------------------------------------------------------------
+
+# A fixed, documented namespace for the first key of PostgreSQL's
+# two-integer advisory-lock keyspace, chosen once and never reused for
+# any other lock purpose in this project -- a future, unrelated
+# advisory lock (if one is ever added) cannot collide with this one by
+# accident. The second key is always the occurrence's own internal id.
+_OCCURRENCE_LOCK_NAMESPACE = 725_100
+
+
+def try_acquire_and_process_occurrence(
+    service: ReleaseProcessingService, occurrence_id: int, session: Session, as_of_date: date
+) -> ReleaseCheckRunResult | None:
+    """Acquire a TRANSACTION-scoped PostgreSQL advisory lock
+    (`pg_try_advisory_xact_lock`, keyed by `occurrence_id`) before
+    calling the existing, unmodified `service.process_occurrence` --
+    never a modification of that method, never a duplication of its
+    own economic logic.
+
+    Returns `None`, without calling `process_occurrence` at all, if
+    the lock is already held by another session (an automated sweep
+    and a manual CLI invocation racing the same occurrence, or two
+    overlapping automated sweeps) -- a genuine, expected outcome under
+    concurrent execution, never an error (frozen contract's own source
+    prompt §20: skip, never block indefinitely; the caller records
+    this as "skipped due to lock contention," distinct from either a
+    successful process or a failure).
+
+    The lock is transaction-scoped: PostgreSQL releases it
+    automatically when `session`'s own transaction commits OR rolls
+    back -- including on an unhandled crash, since a dropped
+    connection's own advisory locks are released by PostgreSQL itself.
+    No explicit release call is needed or provided, and none can leak
+    (frozen contract §19's own "zero schema change... session-scoped
+    Postgres primitives, not table rows" reasoning, using the stricter,
+    automatically-safe transaction-scoped variant rather than the
+    session-scoped one, since `process_occurrence`'s own unit of work
+    is already exactly one transaction, §20/§21).
+    """
+    acquired = session.execute(select(func.pg_try_advisory_xact_lock(_OCCURRENCE_LOCK_NAMESPACE, occurrence_id))).scalar_one()
+    if not acquired:
+        return None
+    return service.process_occurrence(occurrence_id, session, as_of_date)

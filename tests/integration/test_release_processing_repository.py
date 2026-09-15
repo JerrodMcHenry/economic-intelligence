@@ -12,7 +12,7 @@ curated range ("9001"+), the same discipline
 tests/integration/test_release_repository.py already establishes.
 """
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 import sqlalchemy as sa
@@ -237,3 +237,165 @@ class TestCheckRunAndUpdatePersistence:
 
 def _occurrence(session, release, scheduled_date=date(2026, 7, 15)):
     return ReleaseRepository(session).upsert_occurrence(release.id, scheduled_date)
+
+
+# ---------------------------------------------------------------------
+# Due-work discovery (Increment #25C, frozen contract
+# docs/product/automated-economic-maintenance-v1.md §8/§10/§14/§50)
+# ---------------------------------------------------------------------
+
+AS_OF = date(2026, 8, 15)
+
+
+def _mapping(session, release, series_id="UNRATE", active=True):
+    session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id=series_id, active=active))
+    session.flush()
+
+
+class TestListDueOccurrenceIds:
+    def test_unmapped_occurrence_is_never_due(self, db_session):
+        """An occurrence whose release has no active mapping at all has
+        nothing for release processing to check (frozen §8's own first
+        rule) -- must never be surfaced, even though it is otherwise
+        eligible."""
+        release = _release(db_session, provider_release_id="9301")
+        _occurrence(db_session, release, scheduled_date=AS_OF)
+        due = ReleaseProcessingRepository(db_session).list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert due == []
+
+    def test_future_scheduled_occurrence_is_never_due(self, db_session):
+        release = _release(db_session, provider_release_id="9302")
+        _mapping(db_session, release)
+        _occurrence(db_session, release, scheduled_date=date(2099, 1, 1))
+        due = ReleaseProcessingRepository(db_session).list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert due == []
+
+    def test_unresolved_occurrence_with_no_check_run_at_all_is_due(self, db_session):
+        release = _release(db_session, provider_release_id="9303")
+        _mapping(db_session, release)
+        occurrence = _occurrence(db_session, release, scheduled_date=AS_OF)
+        due = ReleaseProcessingRepository(db_session).list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert due == [occurrence.id]
+
+    def test_same_day_scheduled_occurrence_is_eligible_and_due(self, db_session):
+        """Release times are unknown -- today's own scheduled date IS
+        eligible (mirrors OccurrenceNotEligibleError's own boundary)."""
+        release = _release(db_session, provider_release_id="9304")
+        _mapping(db_session, release)
+        occurrence = _occurrence(db_session, release, scheduled_date=AS_OF)
+        due = ReleaseProcessingRepository(db_session).list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert occurrence.id in due
+
+    def test_occurrence_settled_today_is_excluded(self, db_session):
+        """A NO_CHANGE run completed TODAY means every currently-active
+        mapped series was already successfully queried today (frozen
+        §10's own settlement rule) -- excluded from today's due list."""
+        release = _release(db_session, provider_release_id="9305")
+        _mapping(db_session, release)
+        occurrence = _occurrence(db_session, release, scheduled_date=AS_OF)
+        repo = ReleaseProcessingRepository(db_session)
+        today_midday = datetime(AS_OF.year, AS_OF.month, AS_OF.day, 12, tzinfo=timezone.utc)
+        repo.add_check_run(occurrence.id, "NO_CHANGE", today_midday, today_midday)
+
+        due = repo.list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert occurrence.id not in due
+
+    def test_occurrence_settled_changed_today_is_also_excluded(self, db_session):
+        """CHANGED counts as settled exactly like NO_CHANGE (frozen §10
+        -- settlement is about "did we successfully ask everyone," not
+        "did everyone answer with a change")."""
+        release = _release(db_session, provider_release_id="9306")
+        _mapping(db_session, release)
+        occurrence = _occurrence(db_session, release, scheduled_date=AS_OF)
+        repo = ReleaseProcessingRepository(db_session)
+        today_midday = datetime(AS_OF.year, AS_OF.month, AS_OF.day, 12, tzinfo=timezone.utc)
+        repo.add_check_run(occurrence.id, "CHANGED", today_midday, today_midday)
+
+        due = repo.list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert occurrence.id not in due
+
+    def test_occurrence_settled_yesterday_is_due_again_today(self, db_session):
+        """Frozen §10's own conservative "small, bounded number of
+        additional checks" for a genuinely late-arriving revision --
+        a settled occurrence, still within its retry window, is due
+        again exactly once per day, never permanently excluded."""
+        release = _release(db_session, provider_release_id="9307")
+        _mapping(db_session, release)
+        occurrence = _occurrence(db_session, release, scheduled_date=AS_OF)
+        repo = ReleaseProcessingRepository(db_session)
+        yesterday_midday = datetime(AS_OF.year, AS_OF.month, AS_OF.day - 1, 12, tzinfo=timezone.utc)
+        repo.add_check_run(occurrence.id, "NO_CHANGE", yesterday_midday, yesterday_midday)
+
+        due = repo.list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert occurrence.id in due
+
+    def test_partial_failure_today_does_not_count_as_settled_and_remains_due(self, db_session):
+        """PARTIAL_FAILURE/FAILED_PROVIDER never count as a settled
+        check (frozen §12) -- same-day retry remains available,
+        bounded only by the external scheduler's own cadence (§14),
+        never by this query."""
+        release = _release(db_session, provider_release_id="9308")
+        _mapping(db_session, release)
+        occurrence = _occurrence(db_session, release, scheduled_date=AS_OF)
+        repo = ReleaseProcessingRepository(db_session)
+        today_midday = datetime(AS_OF.year, AS_OF.month, AS_OF.day, 12, tzinfo=timezone.utc)
+        repo.add_check_run(occurrence.id, "PARTIAL_FAILURE", today_midday, today_midday)
+
+        due = repo.list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert occurrence.id in due
+
+    def test_failed_provider_today_does_not_count_as_settled_and_remains_due(self, db_session):
+        release = _release(db_session, provider_release_id="9309")
+        _mapping(db_session, release)
+        occurrence = _occurrence(db_session, release, scheduled_date=AS_OF)
+        repo = ReleaseProcessingRepository(db_session)
+        today_midday = datetime(AS_OF.year, AS_OF.month, AS_OF.day, 12, tzinfo=timezone.utc)
+        repo.add_check_run(occurrence.id, "FAILED_PROVIDER", today_midday, today_midday)
+
+        due = repo.list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert occurrence.id in due
+
+    def test_occurrence_older_than_retry_window_is_bounded_out(self, db_session):
+        """Frozen §14/§50: bounded backfill -- automation never revisits
+        ancient, permanently-unresolved history."""
+        release = _release(db_session, provider_release_id="9310")
+        _mapping(db_session, release)
+        ancient = AS_OF - timedelta(days=30)
+        occurrence = _occurrence(db_session, release, scheduled_date=ancient)
+        due = ReleaseProcessingRepository(db_session).list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert occurrence.id not in due
+
+    def test_occurrence_exactly_at_the_retry_window_boundary_is_still_due(self, db_session):
+        release = _release(db_session, provider_release_id="9311")
+        _mapping(db_session, release)
+        boundary = date(AS_OF.year, AS_OF.month, AS_OF.day - 7)
+        occurrence = _occurrence(db_session, release, scheduled_date=boundary)
+        due = ReleaseProcessingRepository(db_session).list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert occurrence.id in due
+
+    def test_inactive_mapping_does_not_make_an_occurrence_due(self, db_session):
+        release = _release(db_session, provider_release_id="9312")
+        _mapping(db_session, release, active=False)
+        _occurrence(db_session, release, scheduled_date=AS_OF)
+        due = ReleaseProcessingRepository(db_session).list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert due == []
+
+    def test_deterministic_ordering_oldest_scheduled_date_first(self, db_session):
+        release = _release(db_session, provider_release_id="9313")
+        _mapping(db_session, release)
+        newer = _occurrence(db_session, release, scheduled_date=AS_OF)
+        older = _occurrence(db_session, release, scheduled_date=date(AS_OF.year, AS_OF.month, AS_OF.day - 2))
+        middle = _occurrence(db_session, release, scheduled_date=date(AS_OF.year, AS_OF.month, AS_OF.day - 1))
+
+        due = ReleaseProcessingRepository(db_session).list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert due == [older.id, middle.id, newer.id]
+
+    def test_real_curated_cpi_release_occurrence_is_discoverable_as_due(self, db_session):
+        """The real, migration-seeded CPI mapping (provider_release_id
+        "10") is processable through this exact same due-work query
+        with zero special-casing -- proving this isn't scoped to
+        synthetic test releases only."""
+        release = db_session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "10")).scalar_one()
+        occurrence = _occurrence(db_session, release, scheduled_date=AS_OF)
+        due = ReleaseProcessingRepository(db_session).list_due_occurrence_ids(AS_OF, retry_window_days=7)
+        assert occurrence.id in due

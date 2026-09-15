@@ -37,7 +37,12 @@ from app.clients.fred import FREDClient
 from app.core.config import settings
 from app.db.session import session_scope
 from app.models.release_processing import ReleaseCheckRunResult
-from app.services.release_processing import OccurrenceNotEligibleError, OccurrenceNotFoundError, ReleaseProcessingService
+from app.services.release_processing import (
+    OccurrenceNotEligibleError,
+    OccurrenceNotFoundError,
+    ReleaseProcessingService,
+    try_acquire_and_process_occurrence,
+)
 
 _FAILURE_STATUSES = frozenset({"PARTIAL_FAILURE", "FAILED_PROVIDER"})
 
@@ -59,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         with session_scope() as session:
-            result = service.process_occurrence(args.occurrence_id, session, as_of_date)
+            result = try_acquire_and_process_occurrence(service, args.occurrence_id, session, as_of_date)
     except OccurrenceNotFoundError as exc:
         print(f"Operational failure: {exc}", file=sys.stderr)
         return 1
@@ -71,6 +76,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except SQLAlchemyError:
         print("Operational failure: a database error occurred while processing this release occurrence.", file=sys.stderr)
+        return 1
+
+    if result is None:
+        # Increment #25C: another process (an automated maintenance
+        # sweep, or a concurrent manual invocation) is already
+        # processing this occurrence -- the shared advisory lock
+        # (app.services.release_processing.try_acquire_and_process_occurrence)
+        # was not acquired. Not a failure; simply try again shortly.
+        print("Operational notice: this release occurrence is already being processed by another process.", file=sys.stderr)
         return 1
 
     _print_summary(result)

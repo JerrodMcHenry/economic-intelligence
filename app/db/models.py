@@ -277,3 +277,42 @@ class ReleaseAnalysisUpdate(Base):
     methodology_id: Mapped[str] = mapped_column(String(32), nullable=False)
     data_basis: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class MaintenanceSweep(Base):
+    """Increment #25C: one bounded automated-maintenance sweep attempt
+    -- per-ORCHESTRATOR-RUN, operational-health-shaped data, deliberately
+    NOT the same concept as `ReleaseCheckRun` (per-OCCURRENCE, economic-
+    check-shaped) -- see
+    docs/product/automated-economic-maintenance-v1.md §30/§53. Owned by
+    `app.repositories.maintenance_repository.MaintenanceRepository`,
+    never by `ReleaseProcessingRepository` (same "worker health and
+    economic/domain freshness are two separate concepts, never
+    conflated" reasoning that already keeps every other release-
+    processing table separate from this one).
+
+    `finished_at`/`status`/the three count columns are all nullable and
+    written together, exactly once, at sweep completion
+    (`MaintenanceRepository.finish_sweep`) -- a row with
+    `finished_at IS NULL` means the sweep started and has not (yet, or
+    ever) finished, the exact, intentional signal a future health
+    check needs to distinguish a crashed/still-running sweep from "no
+    sweep ran at all" (no row exists) -- see §52/§25 of the frozen
+    contract. `status` is currently written as exactly one value,
+    `"SUCCEEDED"`: reaching the finish step at all already means the
+    orchestrator itself did not crash (frozen contract §30 -- sweep-
+    level WORKER health is never conflated with any individual
+    occurrence's own processing outcome, which `due_count`/
+    `processed_count`/`failed_count` describe instead, independently).
+    """
+
+    __tablename__ = "maintenance_sweeps"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    due_count: Mapped[int | None] = mapped_column(nullable=True)
+    processed_count: Mapped[int | None] = mapped_column(nullable=True)
+    failed_count: Mapped[int | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

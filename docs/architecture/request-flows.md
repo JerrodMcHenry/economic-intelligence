@@ -2164,3 +2164,79 @@ contract §25/§47: a walk-back whose window includes that date stops
 there, never bridging across it. `#24C` scope is backend-only — no
 frontend consumer of either Flow 38 or Flow 39 exists yet; that is
 `#24D`'s own gated scope (frozen contract §53).
+
+## Flow 40 — Automated Maintenance Sweep (`app.operations.run_maintenance`, Increment #25C)
+
+Not an HTTP flow — there is no route (frozen contract
+`docs/product/automated-economic-maintenance-v1.md` §46/§60/§61, ADR-024:
+release processing stays off the public HTTP surface, automated or
+not). Triggered by an external scheduler (any of: a developer's own
+local cron, a future platform's scheduled-task feature — this project
+makes no assumption about which), one bounded sweep per invocation,
+which then terminates.
+
+```mermaid
+sequenceDiagram
+    participant Sched as External scheduler (cron or equivalent)
+    participant CLI as app.operations.run_maintenance
+    participant Orch as MaintenanceOrchestrator
+    participant MRepo as MaintenanceRepository
+    participant PRepo as ReleaseProcessingRepository
+    participant Svc as ReleaseProcessingService (unmodified)
+
+    Sched->>CLI: python -m app.operations.run_maintenance [--as-of-date D] [--retry-window-days N]
+    CLI->>Orch: run_sweep(as_of_date, retry_window_days)
+    Orch->>MRepo: start_sweep(started_at)  (own transaction, committed immediately)
+    MRepo-->>Orch: sweep_id
+    Orch->>PRepo: list_due_occurrence_ids(as_of_date, retry_window_days)  (own transaction)
+    PRepo-->>Orch: [occurrence_id, ...]  (oldest scheduled_date first)
+
+    loop each due occurrence (own session_scope() -- never batched, §20/§21 preserved)
+        Orch->>Svc: try_acquire_and_process_occurrence(service, occurrence_id, session, as_of_date)
+        Note over Svc: pg_try_advisory_xact_lock(namespace, occurrence_id) first --<br/>shared with the manual CLI (Flow 32); released automatically<br/>on commit/rollback, including an unhandled crash
+        alt lock already held (another sweep, or a manual invocation)
+            Svc-->>Orch: None
+            Note over Orch: recorded as skipped -- not a failure, deferred to next sweep
+        else lock acquired
+            Svc->>Svc: process_occurrence(...) -- Flow 32's own unmodified sequence, in full
+            Svc-->>Orch: ReleaseCheckRunResult
+        else database-layer failure (OperationalError/SQLAlchemyError)
+            Note over Orch: no ReleaseCheckRun row exists for this attempt (§23) --<br/>this sweep's own accounting is the only surviving evidence;<br/>the loop continues to the next due occurrence
+        end
+    end
+
+    Orch->>MRepo: finish_sweep(sweep_id, finished_at, "SUCCEEDED", due_count, processed_count, failed_count)  (own transaction)
+    Orch-->>CLI: MaintenanceSweepOutcome
+    CLI-->>Sched: safe summary to stdout, exit 0 (failed_count == 0) /<br/>exit 1 (failed_count > 0) / exit 2 (fatal/configuration failure)
+```
+
+**Settlement, derived from the existing status enum, no new
+bookkeeping**: `list_due_occurrence_ids` excludes an occurrence only
+when a `NO_CHANGE`/`CHANGED` `ReleaseCheckRun` already exists with
+`completed_at` inside today's UTC day — sufficient by construction,
+since `_determine_status` (Flow 32, unmodified) only ever returns
+either status when every mapped series in that run succeeded.
+`PARTIAL_FAILURE`/`FAILED_PROVIDER` never count as settling, so a
+failed occurrence remains due for same-day retry, bounded only by how
+often the scheduler itself sweeps (§14/§15) — no separate throttle is
+computed here.
+
+**Crash recovery**: if the sweep crashes anywhere between `start_sweep`
+and `finish_sweep` (including inside the per-occurrence loop, before
+that specific occurrence's own crash-safe transaction completes), the
+already-committed sweep row survives with `finished_at IS NULL` — the
+intentional signal a future health check needs (§25/§52) — and the
+next, ordinary sweep recovers cleanly with zero special-cased logic,
+inheriting Flow 32's own pre-existing one-transaction-per-occurrence
+guarantee unchanged.
+
+**What this flow explicitly does NOT do**: it never batches more than
+one occurrence into a shared transaction; it never claims "up to date"
+or infers that a release's true new data has landed merely because
+`PAST_DUE` (§7/§27); it never processes an occurrence without first
+acquiring its advisory lock; it never backfills every historical
+`PAST_DUE` occurrence on first launch (bounded to the retry window,
+§50); nothing in its call graph imports AI. See
+[docs/product/automated-economic-maintenance-v1.md](../product/automated-economic-maintenance-v1.md)
+and [ADR-024](../adr/024-automated-maintenance-scheduler-orchestrator-separation.md)
+for the full frozen contract.
