@@ -2191,6 +2191,10 @@ sequenceDiagram
     participant Svc as ReleaseProcessingService (unmodified)
 
     Sched->>CLI: python -m app.operations.run_maintenance [--as-of-date D] [--retry-window-days N]
+    CLI->>CLI: check_schema_compatibility()  (Increment #26C -- same function GET /readiness uses)
+    alt schema incompatible
+        CLI-->>Sched: safe message to stderr, exit 2 -- zero rows created, run_sweep never called
+    end
     CLI->>Orch: run_sweep(as_of_date, retry_window_days)
     Orch->>MRepo: start_sweep(started_at)  (own transaction, committed immediately)
     MRepo-->>Orch: sweep_id
@@ -2446,4 +2450,79 @@ influence a checkpoint value; it never advances the checkpoint from an
 mid-request; visiting `/inflation`/`/labor`/`/releases` directly never
 triggers any part of this flow (only Overview owns the checkpoint,
 contract §15-16). See [docs/product/since-last-visit-v1.md](../product/since-last-visit-v1.md)
+for the full frozen contract.
+
+---
+
+## Flow 44 — Schema Compatibility Readiness Check (`GET /readiness`, Increment #26C)
+
+Answers "is it safe to route traffic to this instance" — a different
+question from `GET /health` (Flow-independent, unchanged since
+Increment 001: process-liveness only, no database call, ever). Never
+calls FRED, never calls OpenAI, never performs an economic
+calculation, never mutates anything.
+
+```mermaid
+sequenceDiagram
+    participant Client as Operator / load balancer / monitor
+    participant Route as GET /readiness (app/main.py)
+    participant Check as check_schema_compatibility()
+    participant Script as Alembic ScriptDirectory (packaged migration files)
+    participant DB as Configured database (alembic_version table)
+
+    Client->>Route: GET /readiness
+    Route->>Check: check_schema_compatibility()
+    Check->>Script: get_heads()  (no DB connection -- pure filesystem read)
+    Script-->>Check: expected_revision
+    Check->>DB: SELECT version_num FROM alembic_version  (read-only, session_scope())
+    alt table missing
+        DB-->>Check: ProgrammingError
+        Check-->>Route: SCHEMA_UNINITIALIZED
+    else database unreachable
+        DB-->>Check: OperationalError
+        Check-->>Route: DATABASE_UNAVAILABLE
+    else DATABASE_URL not configured
+        Check-->>Route: CONFIGURATION_MISSING
+    else more than one row
+        DB-->>Check: [(rev_a,), (rev_b,), ...]
+        Check-->>Route: SCHEMA_AMBIGUOUS  (never guessed)
+    else exactly one row
+        DB-->>Check: actual_revision
+        alt actual_revision == expected_revision
+            Check-->>Route: COMPATIBLE
+        else actual is an ancestor of expected (walked via down_revision chain)
+            Check-->>Route: SCHEMA_BEHIND
+        else actual is not a recognized ancestor (newer/unknown)
+            Check-->>Route: SCHEMA_AHEAD
+        end
+    end
+    Route-->>Client: 200 {"ready": true, "reason": null, ...} (COMPATIBLE only)<br/>OR 503 {"ready": false, "reason": "schema_mismatch" | "database_unreachable" | "configuration_missing", ...}
+```
+
+**Public-safe response body only** (`app/models/readiness.py`): `ready`,
+`reason` (a 3-value enum — the coarser public vocabulary; the finer
+internal distinction between `SCHEMA_BEHIND`/`SCHEMA_AHEAD`/
+`SCHEMA_UNINITIALIZED`/`SCHEMA_AMBIGUOUS` remains privately inspectable
+via the separate revision strings), `expected_schema_revision`,
+`actual_schema_revision` (short Alembic hex identifiers, never a
+connection string), `version` (this application's own git SHA or
+`APP_VERSION`, if set). Never a stack trace, never a host, never a
+credential.
+
+**The identical `check_schema_compatibility()` call is reused, unmodified,
+by the maintenance-worker preflight** (Flow 40's own updated diagram
+above) and by `app/operations/process_release.py`'s equivalent
+preflight — one shared implementation, never three independent
+opinions about the same fact.
+
+**What this flow explicitly does NOT do**: it never calls FRED or
+OpenAI; it never runs `alembic upgrade`/`downgrade`; it never calls
+`Base.metadata.create_all()`; it never crashes web-process startup on
+a schema mismatch (the process stays alive, `/health` stays `200 ok`,
+only `/readiness` reports `503`); it never requires any economic data
+to exist (a freshly migrated-to-head but economically empty database
+is `ready: true` — product bootstrap completeness is a separate,
+later concern). See
+[docs/product/production-reliability-deployment-v1.md](../product/production-reliability-deployment-v1.md)
+and [ADR-027](../adr/027-schema-compatibility-exact-equality-and-readiness-split.md)
 for the full frozen contract.

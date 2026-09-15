@@ -35,6 +35,7 @@ from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from app.clients.fred import FREDClient
 from app.core.config import settings
+from app.core.schema_compatibility import check_schema_compatibility
 from app.db.session import session_scope
 from app.models.release_processing import ReleaseCheckRunResult
 from app.services.release_processing import (
@@ -57,6 +58,30 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if not settings.database_url:
         print("Operational failure: database is not configured on this server.", file=sys.stderr)
+        return 1
+
+    # Increment #26C (docs/product/production-reliability-deployment-v1.md
+    # §20/§26): the same shared compatibility check `/readiness` and
+    # `app.operations.run_maintenance` use, run before anything else --
+    # specifically before any ReleaseCheckRun/ReleaseObservationUpdate/
+    # ReleaseAnalysisUpdate/RecordedMonitorResult row could possibly be
+    # created. Exit code `1`, matching this CLI's own existing,
+    # established convention (every operational failure here already
+    # returns `1` -- this file has never had a distinct exit code `2`,
+    # unlike `run_maintenance.py`; #26B's own §20 prose named exit code
+    # `2` for both CLIs uniformly without having verified this file's
+    # own actual, already-shipped convention first -- a small, disclosed
+    # factual correction, not a deviation from #26B's actual governing
+    # decision that this preflight must exist and must block all
+    # processing on a mismatch).
+    compatibility = check_schema_compatibility()
+    if not compatibility.compatible:
+        print(
+            f"Operational failure: database schema is not compatible with this application version "
+            f"({compatibility.status.value}; expected {compatibility.expected_revision}, "
+            f"found {compatibility.actual_revision}).",
+            file=sys.stderr,
+        )
         return 1
 
     client = FREDClient(api_key=settings.fred_api_key, timeout=settings.fred_timeout_seconds)

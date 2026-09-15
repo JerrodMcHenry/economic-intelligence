@@ -308,3 +308,74 @@ class TestRecordedMonitorResultViaManualProcessing:
                 assert all(row.calculated_at == runs[0].completed_at for row in rows)
         finally:
             _cleanup(release_id)
+
+
+class TestSchemaCompatibilityPreflight:
+    """Increment #26C (docs/product/production-reliability-deployment-v1.md
+    §20/§26): this CLI performs the SAME shared compatibility check
+    `/readiness` uses, before doing anything else -- specifically
+    before any ReleaseCheckRun/ReleaseObservationUpdate/
+    ReleaseAnalysisUpdate/RecordedMonitorResult row could possibly be
+    created. Exercised here against the isolated schema-drift database
+    (`tests/conftest.py`), never against `TEST_DATABASE_URL` or the
+    developer's own `economic_intelligence` database.
+    """
+
+    def test_incompatible_schema_exits_non_zero_before_any_processing(self, monkeypatch, schema_drift_database_url, capsys):
+        from app.core.config import settings
+        from app.db import session as session_module
+        from tests.conftest import migrate_schema_drift_database
+
+        migrate_schema_drift_database(schema_drift_database_url, "f12b7ec0d626")  # one before head
+        monkeypatch.setattr(settings, "fred_api_key", "test-key-not-a-real-secret")
+        monkeypatch.setattr(settings, "database_url", schema_drift_database_url)
+        session_module._get_engine.cache_clear()
+        session_module._get_session_factory.cache_clear()
+        try:
+            exit_code = main(["--occurrence-id", "1"])
+        finally:
+            session_module._get_engine.cache_clear()
+            session_module._get_session_factory.cache_clear()
+
+        # This CLI's own existing, established exit-code convention:
+        # every operational failure here returns 1 -- it has never had
+        # a distinct exit code 2 the way app.operations.run_maintenance
+        # does; a schema mismatch is one more operational failure of
+        # that same, already-established kind, not a new value.
+        assert exit_code == 1
+        err = capsys.readouterr().err
+        assert "not compatible with this application version" in err
+        assert "SCHEMA_BEHIND" in err
+        # Never leaks a connection string/credential -- matches this
+        # file's own existing TestSafeOutput discipline.
+        assert "://" not in err
+
+    def test_incompatible_schema_creates_zero_rows(self, monkeypatch, schema_drift_database_url):
+        import sqlalchemy as sa
+        from sqlalchemy.orm import Session
+
+        from app.core.config import settings
+        from app.db import session as session_module
+        from app.db.models import ReleaseCheckRun
+        from tests.conftest import migrate_schema_drift_database
+
+        migrate_schema_drift_database(schema_drift_database_url, "f12b7ec0d626")
+        monkeypatch.setattr(settings, "fred_api_key", "test-key-not-a-real-secret")
+        monkeypatch.setattr(settings, "database_url", schema_drift_database_url)
+        session_module._get_engine.cache_clear()
+        session_module._get_session_factory.cache_clear()
+        try:
+            main(["--occurrence-id", "1"])
+        finally:
+            session_module._get_engine.cache_clear()
+            session_module._get_session_factory.cache_clear()
+
+        engine = sa.create_engine(schema_drift_database_url)
+        try:
+            with engine.connect() as connection:
+                session = Session(bind=connection)
+                count = session.execute(sa.select(sa.func.count()).select_from(ReleaseCheckRun)).scalar_one()
+                session.close()
+        finally:
+            engine.dispose()
+        assert count == 0

@@ -8907,3 +8907,143 @@ Historical-revision-propagation detail (§68-71/§117 of the contract);
 accounts; cross-device sync; notifications; Watchlist; a generic
 activity/history page; AI summaries; Growth; Compare; multi-tab
 synchronization (§14, explicitly last-write-wins for V1).
+
+## Increment #26C — Schema Compatibility + Readiness Implementation
+
+Implements the frozen `docs/product/production-reliability-deployment-v1.md`
+(#26B) contract's own compatibility-checking half, directly answering
+the live incident #26A reproduced: the running application's own code
+expected `recorded_monitor_results` (Alembic head `f5420059a092`); the
+database it was pointed at was one migration behind (`09f4c0959e9f`).
+`GET /health` reported `200 ok` throughout; nothing else checked
+whether the code and the database agreed at all.
+
+### The one shared compatibility check
+
+`app/core/schema_compatibility.py` (new) — pure, bounded (imports
+nothing from `app.services`/`app.domain`/`app.repositories`/
+`app.clients`, no AI, no economic dependency of any kind): expected
+revision is derived from the packaged migration files themselves
+(`alembic.script.ScriptDirectory.get_heads()`), never a duplicated
+hard-coded string; actual revision is read via one plain, read-only
+`SELECT version_num FROM alembic_version`. Seven distinguishable
+outcomes (`COMPATIBLE`/`SCHEMA_BEHIND`/`SCHEMA_AHEAD`/
+`SCHEMA_UNINITIALIZED`/`SCHEMA_AMBIGUOUS`/`DATABASE_UNAVAILABLE`/
+`CONFIGURATION_MISSING`) — never a boolean, never a guess when the
+database's own state is genuinely ambiguous (more than one
+`alembic_version` row, or a revision this application's own migration
+graph does not recognize as an ancestor of its expected head). Never
+issues `CREATE`/`ALTER`/`DROP`, never runs `alembic upgrade`/
+`downgrade`, never calls `Base.metadata.create_all()` — proven
+structurally (every `text(...)` SQL literal in the module is asserted
+to start with `SELECT`) as well as behaviorally, against real
+PostgreSQL, across every one of the seven states.
+
+### Health vs. readiness, live-proven against the real, still-stale development database
+
+`GET /health` (unchanged) stays process-liveness-only. `GET /readiness`
+(new) evaluates the shared compatibility check and nothing else —
+never FRED, never AI, never an economic calculation — returning `200`
+with `ready: true` only on exact revision equality (#26B §8/§9's V1
+policy), `503` with a public-safe `reason`
+(`schema_mismatch`/`database_unreachable`/`configuration_missing`) and
+the expected/actual revision strings otherwise. Verified live, this
+increment, against the exact database #26A's own incident described,
+deliberately left unrepaired: `/health` → `200 {"status":"ok"}`,
+`/readiness` → `503 {"ready":false,"reason":"schema_mismatch",
+"expected_schema_revision":"f5420059a092","actual_schema_revision":
+"09f4c0959e9f","version":"<git sha>"}` — the exact incident, now
+diagnosable in one request, without touching the affected database.
+
+### Worker preflight — reused, not reimplemented
+
+`app/operations/run_maintenance.py` and `app/operations/process_release.py`
+each call the identical `check_schema_compatibility()` immediately
+after their own existing configuration-presence checks, before
+constructing a `FREDClient` or touching `ReleaseProcessingService`/
+`MaintenanceOrchestrator` — proven structurally, by source-line
+ordering, not merely by convention. An incompatible schema performs
+zero economic processing: zero `MaintenanceSweep`/`ReleaseCheckRun`/
+`ReleaseObservationUpdate`/`ReleaseAnalysisUpdate`/
+`RecordedMonitorResult` rows, proven behaviorally against the isolated
+schema-drift database (below). `run_maintenance.py` reuses its own
+already-established fatal/configuration exit code `2`; `process_release.py`
+reuses its own already-established, uniform exit code `1` — a small,
+disclosed correction to #26B's own §20 prose, which assumed exit code
+`2` applied uniformly to both CLIs without having verified
+`process_release.py`'s own actual, already-shipped convention (it has
+never had a distinct `2`).
+
+### A second, isolated database this project's own tests can safely migrate backward
+
+#26B's own §11 named the exact, mandatory question: why did 1,463
+passing tests coexist with a live incident? Because `tests/conftest.py`'s
+own `_apply_migrations` fixture always migrates the shared
+`TEST_DATABASE_URL` database to head before any test runs, by design —
+every test proves code correctness against a schema the harness itself
+guarantees is current, never that a specific real database agrees with
+the code. Deployment-drift tests need a database they can freely
+migrate to an earlier revision, or leave genuinely uninitialized,
+without ever disturbing that guarantee for every other suite. A new,
+session-scoped fixture (`tests/conftest.py`'s `schema_drift_database_url`,
+creating `economic_intelligence_schema_drift_test` if it does not
+already exist) plus two small helpers
+(`migrate_schema_drift_database`/`reset_schema_drift_database_to_nothing`)
+give `tests/integration/test_schema_compatibility.py` a dedicated,
+freely-mutable database — sixteen tests covering every state (head,
+one/three revisions behind, an unknown/"ahead" revision simulated via
+direct `alembic_version` overwrite, a genuinely never-migrated
+database, a multi-row ambiguous state, an unreachable database, a
+fresh-to-head round trip, and explicit no-mutation proofs) — the exact
+class of test this whole increment exists to add, none of which could
+have existed before this increment's own compatibility-check module
+did.
+
+### An existing architecture guard's own false positive, fixed the established way
+
+`tests/test_maintenance_architecture.py::TestNoInProcessScheduler`'s
+own pre-existing guard (`"maintenance" not in main_source.lower()`)
+false-positived on `/readiness`'s own accurate docstring, which
+correctly *names* `run_maintenance.py` in prose as one of the two CLIs
+sharing its compatibility function — the identical false-positive
+shape this project has now fixed three times (#25E's `Session`-in-
+docstring guard, #25H's `Date.now()`-in-docstring guard, and now this
+one). Fixed by switching the guard to the AST-based `_imported_module_names`
+check its own sibling test in the same class already uses, rather than
+a raw whole-file substring match — precise, intent-matching, and
+consistent with this project's own established repair pattern, not a
+loosened guard.
+
+### Verification
+
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run twice: **1,507
+passed** both times, identical, 0 skipped (1,463 baseline at #26B →
+1,507; +44 new tests: 16 schema-compatibility integration tests, 8
+`/readiness` API tests, 1 `/health`-vs-`/readiness` proof, 4 worker-
+preflight tests across both CLIs, 15 architecture guards). Frontend:
+unchanged, **1,137 passed** — confirmed zero frontend files touched.
+`tsc -b --noEmit`, `oxlint`, `vite build` all pass cleanly. The
+developer's own `economic_intelligence` database remains exactly as
+#26A found it (`alembic current` → `09f4c0959e9f`) — deliberately not
+repaired this increment; its own live `/readiness` response is the
+proof this increment set out to produce, not a byproduct to clean up.
+
+### New files
+
+`app/core/schema_compatibility.py`, `app/core/version.py`,
+`app/models/readiness.py`, `tests/integration/test_schema_compatibility.py`,
+`tests/api/test_readiness.py`, `tests/test_schema_compatibility_architecture.py`,
+`docs/adr/027-schema-compatibility-exact-equality-and-readiness-split.md`.
+Modified: `app/main.py` (new `/readiness` route), `app/operations/run_maintenance.py`/
+`process_release.py` (preflight integration), `tests/conftest.py` (the
+schema-drift database fixture/helpers), `tests/api/test_health.py` (the
+health-vs-readiness proof), `tests/test_maintenance_architecture.py`
+(the false-positive fix above). No migration — this increment adds
+zero new Alembic revisions, per its own explicit scope.
+
+### Deferred (named explicitly, per #26B's own implementation split)
+
+Deployment pipeline, Docker, CI/CD, hosting configuration, scheduler
+execution, maintenance-automation activation, backups, product
+analytics, frontend features, economic methodology, AI — all
+explicitly #26D/#26E/#26F's own scope, per #26B §61.

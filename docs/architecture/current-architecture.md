@@ -474,12 +474,40 @@ Notes on the current implementation:
   the only operation that writes, and the only path that touches both
   FRED and PostgreSQL.
 
-## Health endpoint
+## Health and readiness endpoints (extended #26C: `/readiness` + schema compatibility)
 
 `GET /health` is unchanged since Increment 001: a synchronous route with no
 dependencies, returning `{"status": "ok"}`. It exists to prove the process
-is up and serving, independent of any external integration's (FRED's or
-the database's) health.
+is up and serving, independent of any external integration's (FRED's, the
+database's, or the schema's) health — it never calls the database and stays
+`200 ok` even while `/readiness` reports the instance unready.
+
+`GET /readiness` (Increment #26C, `docs/product/production-reliability-deployment-v1.md`
+#26B's own frozen contract) answers a different question: is it safe to
+route real traffic to this instance. It evaluates database reachability
+and schema compatibility — nothing else; it never calls FRED, never calls
+OpenAI, never performs an economic calculation. Schema compatibility is
+computed by `app.core.schema_compatibility.check_schema_compatibility` — a
+small, bounded module (no dependency on `app.services`/`app.domain`/
+`app.repositories`/`app.clients`) that derives the application's own
+expected Alembic revision from the packaged migration files themselves
+(`alembic.script.ScriptDirectory`, never a duplicated hard-coded string)
+and reads the database's actual revision via one read-only
+`SELECT version_num FROM alembic_version` — never `alembic upgrade`,
+never `Base.metadata.create_all()`. V1 compatibility is exact revision
+equality (`docs/adr/027-schema-compatibility-exact-equality-and-readiness-split.md`);
+`/readiness` returns `200 {"ready": true, ...}` only then, `503` with a
+public-safe `reason` (`schema_mismatch`/`database_unreachable`/
+`configuration_missing`) and the expected/actual revision strings
+otherwise. Web process startup never runs a migration and never mutates
+schema in any way — `/readiness` evaluates the check lazily, per request.
+
+The same shared compatibility check is reused, unmodified, by
+`app/operations/run_maintenance.py` and `app/operations/process_release.py`
+as a preflight before either CLI does anything else — an incompatible
+schema performs zero economic processing and creates zero
+`MaintenanceSweep`/`ReleaseCheckRun`/`ReleaseObservationUpdate`/
+`ReleaseAnalysisUpdate`/`RecordedMonitorResult` rows.
 
 ## External provider boundary
 
@@ -1234,9 +1262,17 @@ The following are intentionally absent — not overlooked:
   FastAPI/Uvicorn support async routes and SQLAlchemy supports async
   sessions.
 - **Containerization / cloud infrastructure** — no Dockerfile, no deployment
-  configuration, no Terraform.
+  configuration, no Terraform, no CI/CD, no chosen hosting platform, no
+  scheduler actually invoking `app/operations/run_maintenance.py` on a
+  cadence (`docs/product/production-reliability-deployment-v1.md` #26B's
+  own explicit scope for a later, dedicated increment; #26C added only the
+  schema-compatibility checking and `/readiness` route this future
+  deployment pipeline will depend on, not the pipeline itself).
 - **Observability** — no structured logging, metrics, or tracing beyond
-  Uvicorn's default access logs.
+  Uvicorn's default access logs and each CLI's own existing safe stdout
+  summary. `GET /readiness` (#26C) narrowly answers one specific
+  question — schema/database compatibility — and is not itself a
+  monitoring or alerting system.
 - **Automated test suite** — verification so far has been done by running
   the live application and scripted checks against a real database, not a
   committed test suite.

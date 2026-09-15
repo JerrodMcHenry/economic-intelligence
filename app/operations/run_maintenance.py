@@ -59,6 +59,7 @@ from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from app.clients.fred import FREDClient
 from app.core.config import settings
+from app.core.schema_compatibility import check_schema_compatibility
 from app.services.maintenance import DEFAULT_RETRY_WINDOW_DAYS, MaintenanceOrchestrator, MaintenanceSweepOutcome
 
 
@@ -72,6 +73,24 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if not settings.database_url:
         print("Operational failure: database is not configured on this server.", file=sys.stderr)
+        return 2
+
+    # Increment #26C (docs/product/production-reliability-deployment-v1.md
+    # §20/§23): the same shared compatibility check `/readiness` uses,
+    # run BEFORE anything else -- specifically before any
+    # MaintenanceSweep/ReleaseCheckRun/ReleaseObservationUpdate/
+    # ReleaseAnalysisUpdate/RecordedMonitorResult row could possibly be
+    # created. An incompatible schema performs zero economic
+    # processing; this is the literal fix for the #26A incident's own
+    # root cause reaching the maintenance worker specifically.
+    compatibility = check_schema_compatibility()
+    if not compatibility.compatible:
+        print(
+            f"Operational failure: database schema is not compatible with this application version "
+            f"({compatibility.status.value}; expected {compatibility.expected_revision}, "
+            f"found {compatibility.actual_revision}).",
+            file=sys.stderr,
+        )
         return 2
 
     client = FREDClient(api_key=settings.fred_api_key, timeout=settings.fred_timeout_seconds)

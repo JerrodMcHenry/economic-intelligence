@@ -147,10 +147,26 @@ class TestNoInProcessScheduler:
         assert found == [], f"a scheduler/job-queue dependency was added: {found}"
 
     def test_fastapi_app_module_never_imports_the_maintenance_orchestrator(self):
-        main_source = (REPO_ROOT / "app/main.py").read_text()
-        assert "maintenance" not in main_source.lower(), (
-            "app/main.py references 'maintenance' -- the orchestrator must never be wired into the "
-            "web process's own startup/lifecycle (frozen contract §45)"
+        """AST-based import check, not a raw substring match on the
+        whole file's text (Increment #26C, production-reliability-
+        deployment-v1.md): `app/main.py`'s own `/readiness` route
+        docstring correctly, accurately *names* `run_maintenance.py`
+        in prose, as one of the two CLIs that share its compatibility-
+        check function -- a real, safe, English cross-reference, never
+        an import of the orchestrator itself. A raw substring check
+        would false-positive on that accurate documentation the same
+        way this project's own established precedent (#25E's
+        `Session`-in-docstring guard, #25H's `Date.now()`-in-docstring
+        guard) already fixed twice before -- checking imports directly,
+        via the same `_imported_module_names` helper the sibling test
+        in this class already uses, is the precise, intent-matching
+        check the substring version was only ever approximating."""
+        imported = _imported_module_names(Path("app/main.py"))
+        forbidden_prefixes = ("app.services.maintenance", "app.repositories.maintenance_repository", "app.operations.run_maintenance")
+        violations = [name for name in imported if any(name == p or name.startswith(p + ".") for p in forbidden_prefixes)]
+        assert violations == [], (
+            f"app/main.py imports the maintenance orchestrator: {violations} -- it must never be wired into "
+            "the web process's own startup/lifecycle (frozen contract §45)"
         )
 
 
