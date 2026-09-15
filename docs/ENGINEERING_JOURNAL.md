@@ -8541,3 +8541,128 @@ Visit (frontend, #25D's own scope, now unblocked for a genuinely
 honest freshness story), Watchlist, notifications, accounts,
 multi-device sync, alerting infrastructure, a generic job-queue
 framework, Growth, Compare, AI.
+
+## Increment #25E — Recorded State History V1 Persistence
+
+Implements the frozen `docs/product/recorded-state-history-v1.md`
+contract (#25D). Closes the exact gap #24A/#25B each independently
+named: when release processing genuinely recomputes a canonical
+monitor's top-level state and finds it *unchanged*, nothing durable
+previously proved that recomputation happened — `ReleaseAnalysisUpdate`
+is change-only by design. A new table, `recorded_monitor_results`, now
+records every genuinely-executed canonical AFTER result, regardless of
+whether it changed. Backend persistence only — zero read API, zero
+frontend change, zero economic-methodology change.
+
+### One new write step, inserted at the existing, unmodified computation point
+
+`ReleaseProcessingService._apply_changes_and_compute_analysis`
+(`app/services/release_processing.py`) already computed a genuine
+AFTER canonical result (`_evaluate_component_at("PRIMARY_MOMENTUM")`/
+`_evaluate_labor_at`) for `ReleaseAnalysisUpdate`'s own diffing
+purposes — that exact, already-executing call is now also captured as
+a `RecordableMonitorResult` (a new, second return value from the same
+function, never a second computation) and persisted immediately after
+`check_run = repo.add_check_run(...)` obtains a real id — the identical
+point `add_observation_update`/`add_analysis_update` already wait for.
+`ReleaseCheckRun`'s own creation point, meaning, and timing are
+completely unchanged. One rule governs recording for both the
+"unchanged state" and "unchanged data" cases at once: a row is written
+whenever the AFTER call genuinely runs, full stop — a `NO_CHANGE` check
+never reaches that call at all (traced directly: `_apply_changes_and_compute_analysis`
+returns early, before any `_evaluate_*_at` call, whenever there are no
+observation changes or no affected monitor), so it correctly produces
+zero rows without any separate branch.
+
+### Identity: scoped to a genuine computation event, not to the period alone
+
+`UNIQUE(release_check_run_id, monitor, evaluation_period)` — never
+`(monitor, evaluation_period, methodology_id)`, which would collide
+across every legitimate repeat (a later release, a provider revision,
+a manual retry). A single check run can legitimately produce several
+rows for the same monitor (a Labor benchmark revision can affect
+`{t, t+3, t+6}` in one call) — proven directly against real PostgreSQL,
+including the one genuine duplicate case the constraint exists to
+prevent (the same run/monitor/period pair twice) and the many
+legitimate repeats it must never block (the same period across two
+independent runs).
+
+### Manual and automated paths produce identical results, with no new plumbing
+
+Because the write step lives inside `process_occurrence` itself — the
+one shared entry point both the manual CLI and the automated
+maintenance orchestrator (#25C) already call, unmodified since #25C —
+recording behaves identically regardless of origin, with zero
+automation-specific logic added anywhere. `MaintenanceSweep` is
+deliberately never referenced: no `sweep_id` is threaded into
+`process_occurrence`, and manual processing (which has no sweep at
+all) must produce equally valid records. Proven directly: the same
+fixture, run once through the manual CLI (`app/operations/process_release.py`)
+and once through `MaintenanceOrchestrator.run_sweep`, produces the same
+shape of `RecordedMonitorResult` row either way.
+
+### Insufficient-data results are recorded too, uniformly
+
+Both domains' `_evaluate_*_at` functions can genuinely return
+`INSUFFICIENT_DATA` as a real, successfully-computed classification —
+recorded identically to any other state, using the domain's own
+existing literal value (no new nullable "status" column). This makes
+`RecordedMonitorResult` honestly canonical-*result* history, not
+narrowly state-only history — it can prove "EI calculated and found
+insufficient evidence at T," a deliberate, accepted scope decision
+(contract §37/§38), not an oversight.
+
+### Two pre-existing architecture guards updated by name, not loosened
+
+`tests/test_release_processing_architecture.py::TestNoFullMonitorSnapshot`
+and `tests/test_maintenance_architecture.py::TestNoRecordedStatePersistence`
+were both deliberate trip-wires from #18/#25C, written specifically to
+force a conscious decision the moment a monitor-result-shaped table was
+introduced. Both were updated with a narrow, explicit, by-name
+allowlist for exactly `recorded_monitor_results` — the substring match
+itself (`"monitor_result"`, `"snapshot"`, `"recorded_state"`) is
+otherwise unchanged and still catches any other, undesigned table —
+mirroring #25C's own `NETWORK_EXCEPTIONS` extension precedent (a
+narrow, expected allowlist extension, not a weakened guard).
+
+### Verification
+
+Backend: `TEST_DATABASE_URL=... pytest tests/ -q`, run twice: **1,375
+passed** both times, 0 skipped, 0 failed (1,324 baseline at #25C → 1,375
+after this increment; +51 new tests: model/repository/constraint tests
+against real PostgreSQL, the Inflation/Labor changed and — critically —
+*unchanged-state* integration tests proving the closed gap directly,
+insufficient-data, NO_CHANGE, retries, revision immutability,
+same-period multiple runs, partial/total provider failure, a real
+database-failure transaction-rollback proof, manual and automated
+equivalence, a hard read-side guard proving every monitor/state-
+duration/what-changed `GET` route creates zero rows, and architecture
+guards). Frontend: `npx vitest run`: **1,032 passed**, unchanged —
+confirmed zero frontend files touched. Migration verified with a real
+upgrade/downgrade/upgrade round-trip against the isolated test database.
+
+### New files
+
+`alembic/versions/f5420059a092_create_recorded_monitor_results.py`,
+`docs/adr/025-recorded-state-history-append-only-persistence.md`,
+`tests/integration/test_recorded_monitor_result_repository.py`,
+`tests/api/test_recorded_monitor_result_read_side.py`,
+`tests/test_recorded_monitor_result_architecture.py`. Modified:
+`app/db/models.py` (`RecordedMonitorResult`), `app/models/release_processing.py`
+(`RecordableMonitorResult`), `app/repositories/release_processing_repository.py`
+(`add_recorded_monitor_result`), `app/services/release_processing.py`
+(the new write step and two small per-domain builder helpers),
+`tests/integration/test_release_processing_service.py`/
+`test_maintenance_orchestrator.py`/`test_process_release_cli.py` (new
+test classes), `tests/test_release_processing_architecture.py`/
+`tests/test_maintenance_architecture.py` (the two allowlist updates
+above).
+
+### Deferred (named explicitly, restated from #25D)
+
+A read API of any shape (persistence-only for this increment, per
+#25D §100); frontend UI of any shape (§101); Since Last Visit itself
+(unlocked, not built); metric/evidence snapshots (§41/§42); raw
+observation vintages/ALFRED integration (§23); correction/invalidation
+machinery (§31/§93); an automated-vs-manual provenance field (§28/§29);
+Watchlist; accounts; notifications; Growth; Compare; AI.

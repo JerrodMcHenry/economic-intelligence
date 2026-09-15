@@ -7,7 +7,7 @@ shape of the data as stored in PostgreSQL.
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -315,4 +315,75 @@ class MaintenanceSweep(Base):
     due_count: Mapped[int | None] = mapped_column(nullable=True)
     processed_count: Mapped[int | None] = mapped_column(nullable=True)
     failed_count: Mapped[int | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class RecordedMonitorResult(Base):
+    """Increment #25E: one immutable record proving that Economic
+    Intelligence's own canonical monitor computation genuinely
+    executed -- see docs/product/recorded-state-history-v1.md, the
+    frozen #25D contract this table implements verbatim.
+
+    Distinct from every other table in this schema: `ReleaseCheckRun`
+    proves a check was ATTEMPTED (see that class's own docstring);
+    `ReleaseAnalysisUpdate` proves a canonical fact CHANGED (change-
+    only -- a check that recomputes and confirms the SAME state writes
+    zero `ReleaseAnalysisUpdate` rows, by that class's own design).
+    `RecordedMonitorResult` proves a canonical monitor result was
+    genuinely CALCULATED, regardless of whether it changed -- the
+    exact gap #24A/#25B/#25D each independently identified and this
+    table exists to close (contract §4/§9).
+
+    A row is written ONLY when the existing, unmodified
+    `_evaluate_component_at`("PRIMARY_MOMENTUM")/`_evaluate_labor_at`
+    AFTER-evidence call genuinely executes inside
+    `ReleaseProcessingService._apply_changes_and_compute_analysis` --
+    never synthesized, never backfilled, never written from a read
+    path (contract §6/§51/§63). `release_check_run_id` is the row's
+    sole source-event provenance (contract §24) -- the same
+    `ReleaseCheckRun` row `ReleaseObservationUpdate`/
+    `ReleaseAnalysisUpdate` already reference, created identically
+    whether processing was triggered manually or by the automated
+    maintenance orchestrator (contract §27).
+
+    Append-only through normal application code: the repository
+    exposes only `add_recorded_monitor_result`, never an update or
+    delete method (contract §30). A later provider revision or
+    methodology change never mutates an existing row -- it produces a
+    NEW row, from a NEW `ReleaseCheckRun`, for the same
+    `(monitor, evaluation_period)` (contract §12/§18/§82).
+
+    `UNIQUE(release_check_run_id, monitor, evaluation_period)`
+    deliberately does NOT include `methodology_id` -- identity is
+    scoped to one genuine computation event, not to "this
+    monitor/period pair, ever" (contract §13/§33), so the same period
+    can legitimately be recorded again by a later, independent
+    `ReleaseCheckRun` (a later release, a revision, a manual retry)
+    without colliding. `state` is a plain string, never a database
+    enum (contract §19/§71) -- it may legitimately be the literal
+    `"INSUFFICIENT_DATA"` (contract §37), a real, successfully-
+    computed classification, never a failure. `calculated_at` reuses
+    the owning `ReleaseCheckRun.completed_at` value verbatim -- no
+    independent clock read (contract §15).
+    """
+
+    __tablename__ = "recorded_monitor_results"
+    __table_args__ = (
+        UniqueConstraint(
+            "release_check_run_id", "monitor", "evaluation_period", name="uq_recorded_monitor_result_run_monitor_period"
+        ),
+        Index("ix_recorded_monitor_results_monitor_calculated_at", "monitor", "calculated_at"),
+        Index("ix_recorded_monitor_results_monitor_evaluation_period", "monitor", "evaluation_period"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    release_check_run_id: Mapped[int] = mapped_column(
+        ForeignKey("release_check_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    monitor: Mapped[str] = mapped_column(String(16), nullable=False)
+    evaluation_period: Mapped[date] = mapped_column(Date, nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    methodology_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    data_basis: Mapped[str] = mapped_column(String(32), nullable=False)
+    calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

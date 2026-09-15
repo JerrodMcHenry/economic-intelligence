@@ -155,17 +155,23 @@ class TestNoInProcessScheduler:
 
 
 class TestNoRecordedStatePersistence:
-    """Guard: #25C deliberately does not introduce recorded-canonical-
-    state/monitor-snapshot persistence -- frozen contract §35/§43/§46,
-    explicitly deferred to a future, separate increment. Mirrors
+    """Guard: #25C itself deliberately did not introduce recorded-
+    canonical-state/monitor-snapshot persistence -- frozen contract
+    §35/§43/§46, explicitly deferred to its own future, separate
+    increment. That increment, #25E, introduced exactly ONE
+    deliberate, frozen table -- `recorded_monitor_results` (see
+    docs/product/recorded-state-history-v1.md) -- allow-listed here BY
+    NAME, never by loosening the substring match. Mirrors
     `tests/test_release_processing_architecture.py::TestNoFullMonitorSnapshot`'s
-    identical discipline, extended to this increment's own new table."""
+    identical discipline and identical allow-listing approach."""
+
+    _ALLOWED_RECORDED_STATE_TABLE = "recorded_monitor_results"
 
     def test_no_monitor_or_state_snapshot_table_exists_on_the_orm_base(self):
         from app.db.base import Base
 
         forbidden_substrings = ("snapshot", "monitor_result", "recorded_state", "historical_state")
-        table_names = set(Base.metadata.tables.keys())
+        table_names = set(Base.metadata.tables.keys()) - {self._ALLOWED_RECORDED_STATE_TABLE}
         violations = {name for name in table_names if any(s in name.lower() for s in forbidden_substrings)}
         assert violations == set(), f"a monitor-snapshot-shaped table exists: {violations}"
 

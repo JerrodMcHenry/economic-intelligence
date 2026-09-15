@@ -1464,7 +1464,9 @@ sequenceDiagram
         Svc->>PRepo: read current persisted data (AFTER snapshot)
         Svc->>Dom: same exact-period primitives, again
         Svc->>Dom: compare_series_momentum_section / compare_target_section /<br/>compare_confirmation_section (before vs after, once per affected pair)
-        Svc->>PRepo: add_check_run() + add_observation_update()* + add_analysis_update()*
+        Svc->>PRepo: add_check_run()
+        Note over Svc,PRepo: Increment #25E -- add_recorded_monitor_result()* for the PRIMARY_MOMENTUM<br/>AFTER evidence already computed above, regardless of whether it changed
+        Svc->>PRepo: add_recorded_monitor_result()* + add_observation_update()* + add_analysis_update()*
         PRepo-->>Svc: ReleaseCheckRunResult
         Svc-->>CLI: ReleaseCheckRunResult
         CLI-->>Op: safe summary to stdout, exit 0 (NO_CHANGE/CHANGED)<br/>or exit 1 (PARTIAL_FAILURE/FAILED_PROVIDER)
@@ -1487,7 +1489,11 @@ calendar months" -- and cannot see a revision to an older period; see
 `docs/architecture/release-processing-v1.md` §8.2 for why this flow
 instead calls the same underlying comparator functions directly, at a
 release-scoped before/after pair rather than a month-over-month pair).
-It never persists a full `InflationMonitorResult`. It never writes to
+It never persists a full `InflationMonitorResult` -- Increment #25E's
+own `add_recorded_monitor_result()*` (above) persists only the
+already-computed `state`/`evaluation_period`/`methodology_id`/
+`data_basis` quartet, never evidence or metric detail; see Flow 41 for
+the dedicated walkthrough. It never writes to
 `ReleaseOccurrence.schedule_status` or infers publication from the
 occurrence's scheduled date. Nothing in this flow's call graph imports
 AI or news.
@@ -2239,4 +2245,65 @@ acquiring its advisory lock; it never backfills every historical
 §50); nothing in its call graph imports AI. See
 [docs/product/automated-economic-maintenance-v1.md](../product/automated-economic-maintenance-v1.md)
 and [ADR-024](../adr/024-automated-maintenance-scheduler-orchestrator-separation.md)
+for the full frozen contract.
+
+---
+
+## Flow 41 — Recorded State History Persistence (`RecordedMonitorResult`, Increment #25E)
+
+Not a standalone flow -- a single new step inserted into Flow 32/32B's
+own `_apply_changes_and_compute_analysis`, shown here on its own for
+clarity. Reachable ONLY from that one, existing, already-transactional
+call site -- never from a route, a read endpoint, State Duration, or
+the maintenance orchestrator directly (both Flow 32's manual CLI and
+Flow 40's automated sweep reach it exclusively by calling
+`process_occurrence`, which they already do, unmodified).
+
+```mermaid
+sequenceDiagram
+    participant Svc as ReleaseProcessingService._apply_changes_and_compute_analysis
+    participant Dom as app.domain.inflation / labor (unmodified)
+    participant PRepo as ReleaseProcessingRepository
+
+    Note over Svc: observation_changes is empty, OR no changed series<br/>maps to a canonical component (§10) --
+    alt no genuine recomputation trigger
+        Note over Svc: return ([], []) -- zero analysis changes,<br/>zero recordable results. Nothing is ever recorded.
+    else affected_pairs / labor_periods non-empty
+        Svc->>Dom: _evaluate_component_at("PRIMARY_MOMENTUM", period) / _evaluate_labor_at(period)
+        Note over Svc,Dom: the SAME AFTER-evidence call already made<br/>for ReleaseAnalysisUpdate's own diffing (Flow 32) -- never a second computation
+        Dom-->>Svc: state (may be a real, unchanged state, or INSUFFICIENT_DATA)
+        Svc->>Svc: build RecordableMonitorResult(monitor, period, state,<br/>methodology_id, data_basis) -- zero economic content
+        Note over Svc: returned alongside analysis_changes;<br/>process_occurrence persists it right after add_check_run() obtains an id
+        Svc->>PRepo: add_recorded_monitor_result(check_run.id, record, calculated_at=completed_at)
+    end
+```
+
+**The one rule that closes the gap**: recording depends only on whether
+the AFTER call genuinely executed -- never on whether the subsequent
+diff against BEFORE found a difference. A check that recomputes and
+confirms the exact same state as before writes zero
+`ReleaseAnalysisUpdate` rows (that table's own change-only design,
+unchanged) but exactly one `RecordedMonitorResult` row -- the durable
+proof, previously impossible, that "EI recomputed and confirmed COOLING
+at this time," not merely "EI has always said COOLING since some
+earlier, unknown point."
+
+**Identity and immutability**: `UNIQUE(release_check_run_id, monitor,
+evaluation_period)` -- a later provider revision or a retry never
+updates an existing row; it produces an entirely new one, from its own
+new `ReleaseCheckRun`, at its own new `calculated_at`. `calculated_at`
+is the exact `completed_at` value Flow 32 already computes once for the
+owning `ReleaseCheckRun` -- no independent clock read is introduced.
+
+**What this flow explicitly does NOT do**: it never runs outside
+`process_occurrence`'s own transaction; it never persists metric/
+evidence detail, only the classified output; it never claims the
+underlying raw inputs remain independently reconstructable later
+(`data_basis` describes what EI had on file at calculation time, not a
+provider vintage); it is never reachable from any `GET` route, from
+State Duration, from Relate, or from Salience (checked structurally,
+`tests/test_recorded_monitor_result_architecture.py`); it never
+backfills a period processed before this increment's own deployment.
+See [docs/product/recorded-state-history-v1.md](../product/recorded-state-history-v1.md)
+and [ADR-025](../adr/025-recorded-state-history-append-only-persistence.md)
 for the full frozen contract.

@@ -272,3 +272,39 @@ class TestExplicitAsOfDate:
     def test_invalid_as_of_date_format_is_rejected_by_argument_parsing(self, configured_settings):
         with pytest.raises(SystemExit):
             main(["--occurrence-id", "1", "--as-of-date", "not-a-date"])
+
+
+class TestRecordedMonitorResultViaManualProcessing:
+    """Increment #25E: the manual CLI reuses the identical
+    `process_occurrence` code path automation uses (contract §27) --
+    no scheduler dependency, no special-casing. Proven here exactly as
+    #25C's own manual/automated coexistence discipline already
+    established for locking."""
+
+    def test_a_genuinely_executed_recomputation_is_recorded_through_the_manual_cli(self, configured_settings, capsys):
+        import sqlalchemy as sa
+
+        from app.db.models import ReleaseCheckRun, RecordedMonitorResult
+        from app.db.session import session_scope
+
+        release_id, occurrence_id = _seed_release_mapping_and_occurrence()
+        payload = [{"date": "2026-01-01", "value": "4.1"}]
+        try:
+            with patch.object(FREDClient, "get_observations", return_value=payload):
+                with patch.object(FREDClient, "get_series_info", return_value={"id": "UNRATE", "title": "Unemployment Rate", "units": "Percent"}):
+                    exit_code = main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
+            assert exit_code == 0
+
+            with session_scope() as session:
+                runs = session.execute(
+                    sa.select(ReleaseCheckRun).where(ReleaseCheckRun.release_occurrence_id == occurrence_id)
+                ).scalars().all()
+                assert len(runs) == 1
+                rows = session.execute(
+                    sa.select(RecordedMonitorResult).where(RecordedMonitorResult.release_check_run_id == runs[0].id)
+                ).scalars().all()
+                assert rows != [], "a genuinely-executed recomputation must be recorded via the manual CLI, identically to automation"
+                assert all(row.monitor == "labor" for row in rows)
+                assert all(row.calculated_at == runs[0].completed_at for row in rows)
+        finally:
+            _cleanup(release_id)

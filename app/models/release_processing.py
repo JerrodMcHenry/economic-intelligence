@@ -25,6 +25,12 @@ from app.models.inflation_what_changed import ChangeEventType
 ObservationChangeType = Literal["NEW", "REVISED"]
 CheckRunStatus = Literal["NO_CHANGE", "CHANGED", "PARTIAL_FAILURE", "FAILED_PROVIDER"]
 
+# Increment #25E: the two canonical monitors Recorded State History V1
+# covers -- see docs/product/recorded-state-history-v1.md §20/§65.
+# Deliberately narrow, never generalized to an arbitrary future
+# subject list.
+RecordedMonitor = Literal["inflation", "labor"]
+
 
 class SeriesCheckOutcome(BaseModel):
     """One mapped series' outcome within a check run. `error` is always
@@ -85,6 +91,31 @@ class AnalysisChangeRecord(BaseModel):
     evaluation_period: date
     methodology_id: str = METHODOLOGY_ID
     data_basis: str = DATA_BASIS
+
+
+class RecordableMonitorResult(BaseModel):
+    """Increment #25E: the in-memory shape of one genuinely-executed
+    canonical monitor AFTER result, ready to persist as one
+    `RecordedMonitorResult` row -- see
+    docs/product/recorded-state-history-v1.md (the frozen #25D
+    contract), specifically §5/§7/§40. Built ONLY from the existing,
+    unmodified `_evaluate_component_at`("PRIMARY_MOMENTUM")/
+    `_evaluate_labor_at` AFTER-evidence call each domain branch of
+    `ReleaseProcessingService._apply_changes_and_compute_analysis`
+    already makes for `ReleaseAnalysisUpdate`'s own purposes -- never
+    a second, independent computation.
+
+    Deliberately does NOT carry `calculated_at` -- that value is the
+    owning `ReleaseCheckRun.completed_at`, not known until after this
+    object is built (contract §15); it is passed as a separate
+    argument to `ReleaseProcessingRepository.add_recorded_monitor_result`
+    instead, once available."""
+
+    monitor: RecordedMonitor
+    evaluation_period: date
+    state: str
+    methodology_id: str
+    data_basis: str
 
 
 class ReleaseCheckRunResult(BaseModel):

@@ -58,7 +58,14 @@ from app.domain.release_processing import (
     components_for_series,
     five_year_observation_start,
 )
-from app.models.inflation import CONFIRMATION_SERIES_ID, HEADLINE_CPI_SERIES_ID, PRIMARY_SERIES_ID, TARGET_SERIES_ID
+from app.models.inflation import (
+    CONFIRMATION_SERIES_ID,
+    DATA_BASIS as INFLATION_DATA_BASIS,
+    HEADLINE_CPI_SERIES_ID,
+    METHODOLOGY_ID as INFLATION_METHODOLOGY_ID,
+    PRIMARY_SERIES_ID,
+    TARGET_SERIES_ID,
+)
 from app.models.inflation_what_changed import ChangeComponent
 from app.models.labor import (
     CONDITION_DEADBAND_JOBS,
@@ -72,6 +79,7 @@ from app.models.release_processing import (
     AnalysisChangeRecord,
     CheckRunStatus,
     ObservationChangeRecord,
+    RecordableMonitorResult,
     ReleaseCheckRunResult,
     SeriesCheckOutcome,
 )
@@ -206,11 +214,13 @@ class ReleaseProcessingService:
             else:
                 any_provider_failure = True
 
-        analysis_changes = self._apply_changes_and_compute_analysis(repo, observation_changes)
+        analysis_changes, recordable_results = self._apply_changes_and_compute_analysis(repo, observation_changes)
 
         completed_at = datetime.now(timezone.utc)
         status = _determine_status(any_provider_failure, any_provider_success, observation_changes)
         check_run = repo.add_check_run(occurrence.id, status, started_at, completed_at)
+        for record in recordable_results:
+            repo.add_recorded_monitor_result(check_run.id, record, completed_at)
         for record in observation_changes:
             repo.add_observation_update(check_run.id, record)
         for record in analysis_changes:
@@ -300,7 +310,7 @@ class ReleaseProcessingService:
 
     def _apply_changes_and_compute_analysis(
         self, repo: ReleaseProcessingRepository, observation_changes: list[ObservationChangeRecord]
-    ) -> list[AnalysisChangeRecord]:
+    ) -> tuple[list[AnalysisChangeRecord], list[RecordableMonitorResult]]:
         """Captures BEFORE evidence, writes every changed observation,
         captures AFTER evidence, and diffs the two using the existing
         comparison primitives -- exactly once per affected Inflation
@@ -316,20 +326,34 @@ class ReleaseProcessingService:
         explicitly-dispatched branches (docs/architecture/labor-release-integration-v1.md
         §24) -- never a generic adapter framework, never `elif` between
         them (a series could in principle belong to both in the
-        future, per that document's §26)."""
+        future, per that document's §26).
+
+        Increment #25E: also returns every genuinely-executed
+        canonical monitor AFTER result as a `RecordableMonitorResult`,
+        built directly from the SAME `after_evidence`/`after_labor_results`
+        values already computed below for `ReleaseAnalysisUpdate`'s own
+        purposes -- never a second, independent computation (see
+        docs/product/recorded-state-history-v1.md §6/§7/§95, the frozen
+        #25D contract). Both early-return paths below correspond
+        exactly to the contract's own §10 finding (no canonical AFTER
+        computation ever runs when there is nothing relevant to
+        recompute), so both return an empty recordable-results list
+        alongside an empty analysis-changes list."""
         if not observation_changes:
-            return []
+            return [], []
 
         affected_pairs = _affected_component_period_pairs(repo, observation_changes)
         labor_periods = _affected_labor_periods(observation_changes)
         if not affected_pairs and not labor_periods:
             # Every changed observation belongs to a series with no
             # deterministic Inflation OR Labor consumer -- write the
-            # data, compute no analysis (there is none to compute).
+            # data, compute no analysis (there is none to compute) and
+            # no Recorded State (there is nothing to record -- #25E
+            # contract §10/§64).
             for record in observation_changes:
                 economic_series = repo.get_series_by_series_id(record.series_id)
                 repo.write_observation(economic_series.id, record.observation_date, record.new_value)
-            return []
+            return [], []
 
         before_observations = _load_canonical_observations(repo) if affected_pairs else {}
         before_evidence = {pair: _evaluate_component_at(before_observations, pair[0], pair[1]) for pair in affected_pairs}
@@ -352,7 +376,21 @@ class ReleaseProcessingService:
             )
         for period in sorted(labor_periods):
             analysis_changes.extend(_diff_labor_at(period, before_labor_results[period], after_labor_results[period]))
-        return analysis_changes
+
+        recordable_results: list[RecordableMonitorResult] = []
+        for component, period in sorted(affected_pairs, key=lambda pair: (pair[0], pair[1])):
+            if component != "PRIMARY_MOMENTUM":
+                # Recorded State History V1's canonical scope is each
+                # monitor's own top-level state only (contract §65) --
+                # TARGET/CONFIRMATION/HEADLINE_CPI never feed Inflation's
+                # own top-level `underlying_momentum.state`, exactly
+                # matching State Duration V1's identical narrow scope.
+                continue
+            recordable_results.append(_build_inflation_recordable_result(period, after_evidence[(component, period)]))
+        for period in sorted(labor_periods):
+            recordable_results.append(_build_labor_recordable_result(period, after_labor_results[period]))
+
+        return analysis_changes, recordable_results
 
 
 def _determine_status(
@@ -433,6 +471,42 @@ def _evaluate_component_at(observations_by_series: dict[str, list[Observation]],
     if component == "CONFIRMATION":
         return compute_confirmation_at(observations_by_series[PRIMARY_SERIES_ID], observations_by_series[CONFIRMATION_SERIES_ID], period)
     raise AssertionError(f"unhandled ChangeComponent: {component}")  # pragma: no cover
+
+
+def _build_inflation_recordable_result(period: date, after_evidence) -> RecordableMonitorResult:
+    """Increment #25E: builds one `RecordableMonitorResult` from an
+    already-computed `SeriesMomentumResult` (the AFTER evidence
+    `_evaluate_component_at("PRIMARY_MOMENTUM", ...)` already returned
+    above) -- never a second call, never a re-derivation.
+    `SeriesMomentumResult` itself carries no `methodology_id`/
+    `data_basis` fields (see `app.models.inflation`), so both are
+    taken from that module's own canonical constants, exactly as every
+    other Inflation-owned record in this file already does (contract
+    §17/§22)."""
+    return RecordableMonitorResult(
+        monitor="inflation",
+        evaluation_period=period,
+        state=after_evidence.state,
+        methodology_id=INFLATION_METHODOLOGY_ID,
+        data_basis=INFLATION_DATA_BASIS,
+    )
+
+
+def _build_labor_recordable_result(period: date, after_result: LaborMonitorResult) -> RecordableMonitorResult:
+    """Increment #25E: builds one `RecordableMonitorResult` from an
+    already-computed `LaborMonitorResult` (the AFTER evidence
+    `_evaluate_labor_at` already returned above) -- never a second
+    call, never a re-derivation. Unlike Inflation, `LaborMonitorResult`
+    already carries its own `methodology_id`/`data_basis` fields,
+    taken directly from the result object rather than a module
+    constant (contract §17/§22)."""
+    return RecordableMonitorResult(
+        monitor="labor",
+        evaluation_period=period,
+        state=after_result.state,
+        methodology_id=after_result.methodology_id,
+        data_basis=after_result.data_basis,
+    )
 
 
 def _diff_component_at(component: ChangeComponent, period: date, before_evidence, after_evidence) -> list[AnalysisChangeRecord]:

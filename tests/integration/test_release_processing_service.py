@@ -1497,3 +1497,409 @@ class TestLaborIdempotency:
         all_analysis_updates = [u for run in all_runs for u in repo.list_analysis_updates_for_run(run.id)]
         # Exactly the first run's own events -- never duplicated by the second, no-op run:
         assert len(all_analysis_updates) == len(first.analysis_changes)
+
+
+# =======================================================================
+# Increment #25E -- Recorded State History V1 persistence.
+# Frozen contract: docs/product/recorded-state-history-v1.md (#25D).
+#
+# `RecordedMonitorResult` rows are written ONLY when
+# `_evaluate_component_at`("PRIMARY_MOMENTUM")/`_evaluate_labor_at`
+# genuinely executes inside `_apply_changes_and_compute_analysis` --
+# these tests reuse the exact CPI/PIO/Employment Situation fixtures
+# already established above, never a parallel fixture set (matching
+# this file's own established discipline).
+# =======================================================================
+
+from app.db.models import RecordedMonitorResult  # noqa: E402
+
+
+def _recorded_results(session, monitor: str | None = None) -> list[RecordedMonitorResult]:
+    stmt = sa.select(RecordedMonitorResult)
+    if monitor is not None:
+        stmt = stmt.where(RecordedMonitorResult.monitor == monitor)
+    return list(session.execute(stmt.order_by(RecordedMonitorResult.id.asc())).scalars())
+
+
+class TestRecordedMonitorResultInflationChanged:
+    def test_a_genuine_state_change_records_the_after_result(self, db_session):
+        release = _pio_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        base = _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002)
+        latest_period = max(base)
+
+        _seed_series(db_session, "PCEPILFE", base, title="Core PCE")
+        _seed_series(db_session, "PCEPI", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        _seed_series(db_session, "CPIAUCSL", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
+        _seed_series(db_session, "CPILFESL", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
+
+        revised = dict(base)
+        revised[latest_period] = base[latest_period] * 1.25  # forces a genuine state change
+
+        expected_before = compute_series_momentum_at(
+            [Observation(date=d, value=v) for d, v in sorted(base.items())], "PCEPILFE", latest_period
+        )
+        expected_after = compute_series_momentum_at(
+            [Observation(date=d, value=v) for d, v in sorted(revised.items())], "PCEPILFE", latest_period
+        )
+        assert expected_before.state != expected_after.state, "test fixture must actually produce a state change"
+
+        payload_pcepilfe = _fred_payload(revised)
+        payload_pcepi = _fred_payload(_constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        with _patched(observations_by_series={"PCEPILFE": payload_pcepilfe, "PCEPI": payload_pcepi}) as client:
+            ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        rows = _recorded_results(db_session, monitor="inflation")
+        assert len(rows) == 1
+        assert rows[0].evaluation_period == latest_period
+        assert rows[0].state == expected_after.state
+        assert rows[0].methodology_id == "inflation_v1.0"
+        assert rows[0].data_basis == "latest_revised_data"
+
+        repo = ReleaseProcessingRepository(db_session)
+        runs = repo.list_check_runs_for_occurrence(occurrence.id)
+        assert len(runs) == 1
+        # calculated_at reuses the owning ReleaseCheckRun.completed_at verbatim (contract §15) --
+        # no independent clock read.
+        assert rows[0].release_check_run_id == runs[0].id
+        assert rows[0].calculated_at == runs[0].completed_at
+
+
+class TestRecordedMonitorResultInflationUnchangedState:
+    def test_genuine_recomputation_with_an_unchanged_state_still_records_a_result(self, db_session):
+        """THE critical test: the primary historical gap #25E closes.
+        A revision small enough to leave the classified state unchanged
+        produces ZERO ReleaseAnalysisUpdate rows for PRIMARY_MOMENTUM
+        (change-only, by that table's own design) but MUST still
+        produce a RecordedMonitorResult row, proving EI genuinely
+        re-verified the state at this later calculation time (contract
+        §9)."""
+        release = _pio_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        base = _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002)
+        latest_period = max(base)
+
+        _seed_series(db_session, "PCEPILFE", base, title="Core PCE")
+        _seed_series(db_session, "PCEPI", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        _seed_series(db_session, "CPIAUCSL", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
+        _seed_series(db_session, "CPILFESL", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
+
+        revised = dict(base)
+        # A negligible nudge -- far too small to cross the 10-percentage-point
+        # neutral band, so the classified state is identical before and after.
+        revised[latest_period] = base[latest_period] + 0.001
+
+        expected_before = compute_series_momentum_at(
+            [Observation(date=d, value=v) for d, v in sorted(base.items())], "PCEPILFE", latest_period
+        )
+        expected_after = compute_series_momentum_at(
+            [Observation(date=d, value=v) for d, v in sorted(revised.items())], "PCEPILFE", latest_period
+        )
+        assert expected_before.state == expected_after.state == "STABLE", "test fixture must genuinely leave the state unchanged"
+
+        payload_pcepilfe = _fred_payload(revised)
+        payload_pcepi = _fred_payload(_constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        with _patched(observations_by_series={"PCEPILFE": payload_pcepilfe, "PCEPI": payload_pcepi}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        assert result.observation_changes != [], "test fixture must genuinely produce a REVISED observation write"
+        state_events = [e for e in result.analysis_changes if e.component == "PRIMARY_MOMENTUM" and e.event_type == "STATE_CHANGED"]
+        assert state_events == [], "test fixture must genuinely produce zero ReleaseAnalysisUpdate state-change rows"
+
+        rows = _recorded_results(db_session, monitor="inflation")
+        assert len(rows) == 1
+        assert rows[0].evaluation_period == latest_period
+        assert rows[0].state == "STABLE"
+
+
+class TestRecordedMonitorResultLaborChanged:
+    def test_a_genuine_state_change_records_the_after_result(self, db_session):
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        period = date(2009, 5, 1)
+        expected_before = _labor_result(_PAYEMS_THOUSANDS, _UNRATE_PERCENT, period)
+        revised_payems = dict(_PAYEMS_THOUSANDS)
+        revised_payems[period] = _PAYEMS_THOUSANDS[period] - 500
+        expected_after = _labor_result(revised_payems, _UNRATE_PERCENT, period)
+        assert expected_before.state != expected_after.state, "test fixture must actually produce a state change"
+
+        revised_value = _PAYEMS_THOUSANDS[period] - 500
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({period: revised_value}), UNRATE_SERIES_ID: []}) as client:
+            ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        rows = _recorded_results(db_session, monitor="labor")
+        matching = [r for r in rows if r.evaluation_period == period]
+        assert len(matching) == 1
+        assert matching[0].state == expected_after.state
+        assert matching[0].methodology_id == "labor_v1.0"
+        assert matching[0].data_basis == "latest_revised_data"
+
+
+class TestRecordedMonitorResultLaborUnchangedState:
+    def test_genuine_recomputation_with_an_unchanged_state_still_records_a_result(self, db_session):
+        """The Labor equivalent of TestRecordedMonitorResultInflationUnchangedState
+        -- equally critical (contract §9's decision is explicitly
+        uniform across both domains, §37)."""
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        period = date(2009, 5, 1)
+        expected_before = _labor_result(_PAYEMS_THOUSANDS, _UNRATE_PERCENT, period)
+        revised_payems = dict(_PAYEMS_THOUSANDS)
+        revised_payems[period] = _PAYEMS_THOUSANDS[period] - 1  # a negligible nudge
+        expected_after = _labor_result(revised_payems, _UNRATE_PERCENT, period)
+        assert expected_before.state == expected_after.state, "test fixture must genuinely leave the state unchanged"
+
+        revised_value = _PAYEMS_THOUSANDS[period] - 1
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({period: revised_value}), UNRATE_SERIES_ID: []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        assert result.observation_changes != [], "test fixture must genuinely produce a REVISED observation write"
+        labor_state_events = [e for e in result.analysis_changes if e.component == "LABOR" and e.event_type == "STATE_CHANGED"]
+        assert labor_state_events == [], "test fixture must genuinely produce zero LABOR-level ReleaseAnalysisUpdate state-change rows"
+
+        rows = _recorded_results(db_session, monitor="labor")
+        matching = [r for r in rows if r.evaluation_period == period]
+        assert len(matching) == 1
+        assert matching[0].state == expected_before.state
+
+
+class TestRecordedMonitorResultInsufficientData:
+    def test_genuinely_insufficient_computation_is_recorded_for_both_domains(self, db_session):
+        """Contract §37: insufficient-data results are recorded,
+        uniformly for Inflation and Labor -- a real, successfully-
+        computed classification, never treated as a failure."""
+        release = _pio_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        # Deliberately sparse -- only one prior month persisted, one NEW
+        # month arrives, nowhere near enough for any r_3m/r_6m/r_12m
+        # endpoint set.
+        _seed_series(db_session, "PCEPILFE", {date(2025, 12, 1): 119.0}, title="Core PCE")
+        _seed_series(db_session, "PCEPI", {date(2025, 12, 1): 129.0}, title="Headline PCE")
+        _seed_series(db_session, "CPIAUCSL", {date(2025, 12, 1): 299.0}, title="CPI")
+        _seed_series(db_session, "CPILFESL", {date(2025, 12, 1): 279.0}, title="Core CPI")
+
+        expected = compute_series_momentum_at(
+            [Observation(date=date(2025, 12, 1), value=119.0), Observation(date=date(2026, 1, 1), value=120.0)],
+            "PCEPILFE",
+            date(2026, 1, 1),
+        )
+        assert expected.state == "INSUFFICIENT_DATA", "test fixture must genuinely be insufficient"
+
+        payload_pcepilfe = _fred_payload({date(2026, 1, 1): 120.0})
+        with _patched(observations_by_series={"PCEPILFE": payload_pcepilfe, "PCEPI": []}) as client:
+            ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        rows = _recorded_results(db_session, monitor="inflation")
+        assert len(rows) == 1
+        assert rows[0].state == "INSUFFICIENT_DATA"
+        assert rows[0].evaluation_period == date(2026, 1, 1)
+
+
+class TestRecordedMonitorResultNoChange:
+    def test_no_change_check_records_nothing(self, db_session):
+        """Contract §10: a NO_CHANGE run never reaches the canonical
+        AFTER computation at all -- traced structurally, not merely
+        behaviorally, in tests/test_recorded_monitor_result_architecture.py."""
+        release = _pio_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_series(db_session, "PCEPILFE", {date(2026, 1, 1): 120.0})
+
+        with _patched(observations_by_series={"PCEPILFE": _fred_payload({date(2026, 1, 1): 120.0}), "PCEPI": []}) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        assert result.status == "NO_CHANGE"
+        assert _recorded_results(db_session) == []
+
+
+class TestRecordedMonitorResultUnaffectedSeries:
+    def test_a_change_to_a_series_with_no_canonical_consumer_records_nothing(self, db_session):
+        """Contract §64: a changed series that maps to neither monitor
+        writes observations but computes, and records, nothing."""
+        release = _release(db_session, name="Unmapped Release", provider_release_id="9501")
+        _mapping(db_session, release, series_id="FABRICATED_UNMAPPED_SERIES_XYZ")
+        occurrence = _occurrence(db_session, release)
+
+        with _patched(
+            observations_by_series={"FABRICATED_UNMAPPED_SERIES_XYZ": _fred_payload({date(2026, 1, 1): 42.0})},
+            info_by_series={"FABRICATED_UNMAPPED_SERIES_XYZ": {"id": "FABRICATED_UNMAPPED_SERIES_XYZ", "title": "Fabricated", "units": "Units"}},
+        ) as client:
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        assert result.observation_changes != []  # the write genuinely happened
+        assert result.analysis_changes == []
+        assert _recorded_results(db_session) == []
+
+
+class TestRecordedMonitorResultRevisionImmutability:
+    def test_a_later_revision_appends_a_new_row_and_never_mutates_the_prior_one(self, db_session):
+        """Contract §12/§82: the worked revision example, proven end to
+        end. Two genuine, different-magnitude revisions to the same
+        occurrence's own PCEPILFE series produce TWO RecordedMonitorResult
+        rows for the same evaluation_period, from two different
+        release_check_run_id, both persisting unmodified."""
+        release = _pio_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        base = _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002)
+        latest_period = max(base)
+
+        _seed_series(db_session, "PCEPILFE", base, title="Core PCE")
+        _seed_series(db_session, "PCEPI", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        _seed_series(db_session, "CPIAUCSL", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
+        _seed_series(db_session, "CPILFESL", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
+
+        first_revision = dict(base)
+        first_revision[latest_period] = base[latest_period] * 1.25
+        with _patched(observations_by_series={
+            "PCEPILFE": _fred_payload(first_revision),
+            "PCEPI": _fred_payload(_constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002)),
+        }) as client:
+            ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        repo = ReleaseProcessingRepository(db_session)
+        first_run = repo.list_check_runs_for_occurrence(occurrence.id)[0]
+        rows_after_first = _recorded_results(db_session, monitor="inflation")
+        assert len(rows_after_first) == 1
+        first_row_id = rows_after_first[0].id
+        first_row_state = rows_after_first[0].state
+        first_row_calculated_at = rows_after_first[0].calculated_at
+
+        second_revision_value = base[latest_period] * 0.80  # a further, different revision
+        with _patched(observations_by_series={
+            "PCEPILFE": _fred_payload({latest_period: second_revision_value}),
+            "PCEPI": _fred_payload(_constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002)),
+        }) as client:
+            ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        second_run = [r for r in repo.list_check_runs_for_occurrence(occurrence.id) if r.id != first_run.id][0]
+        rows_after_second = _recorded_results(db_session, monitor="inflation")
+        assert len(rows_after_second) == 2
+
+        # The first row survives byte-identical -- never mutated:
+        unchanged_first = next(r for r in rows_after_second if r.id == first_row_id)
+        assert unchanged_first.state == first_row_state
+        assert unchanged_first.calculated_at == first_row_calculated_at
+        assert unchanged_first.release_check_run_id == first_run.id
+
+        second_row = next(r for r in rows_after_second if r.id != first_row_id)
+        assert second_row.evaluation_period == latest_period
+        assert second_row.release_check_run_id == second_run.id
+        assert {r.release_check_run_id for r in rows_after_second} == {first_run.id, second_run.id}
+
+
+class TestRecordedMonitorResultRetries:
+    def test_repeated_no_change_checks_record_nothing_until_a_genuine_change_is_detected(self, db_session):
+        """Contract §11's own worked example: 09:00 NO_CHANGE, 10:00
+        NO_CHANGE, 11:00 NEW data -> recompute. Only the third call
+        creates a RecordedMonitorResult row."""
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: [], UNRATE_SERIES_ID: []}) as client:
+            first = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+        assert first.status == "NO_CHANGE"
+
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: [], UNRATE_SERIES_ID: []}) as client:
+            second = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+        assert second.status == "NO_CHANGE"
+        assert _recorded_results(db_session) == []
+
+        revised_value = _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500
+        with _patched(observations_by_series={PAYEMS_SERIES_ID: _fred_payload({date(2009, 5, 1): revised_value}), UNRATE_SERIES_ID: []}) as client:
+            third = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+        assert third.status == "CHANGED"
+        assert _recorded_results(db_session) != []
+
+
+class TestRecordedMonitorResultPartialFailure:
+    def test_the_succeeding_series_change_still_genuinely_recomputes_and_records(self, db_session):
+        """Contract §36: a PARTIAL_FAILURE run CAN still produce a
+        genuine RecordedMonitorResult row -- recording is keyed to
+        whether the AFTER computation genuinely ran, never to the
+        coarser CheckRunStatus label. PAYEMS succeeds and changes;
+        UNRATE fails -- Labor's own state still genuinely recomputes
+        using PAYEMS's new value alongside UNRATE's currently-persisted
+        (unaffected by today's failed fetch) value."""
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        def _get_observations(series_id, **kwargs):
+            if series_id == UNRATE_SERIES_ID:
+                raise FREDTimeoutError("timed out")
+            return _fred_payload({date(2009, 5, 1): _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500})
+
+        client = FREDClient(api_key="not-used", timeout=1.0)
+        with patch.object(FREDClient, "get_observations", side_effect=_get_observations):
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        assert result.status == "PARTIAL_FAILURE"
+        rows = _recorded_results(db_session, monitor="labor")
+        assert rows != [], "PARTIAL_FAILURE must not suppress a genuinely-executed recomputation"
+
+
+class TestRecordedMonitorResultProviderFailure:
+    def test_a_total_provider_failure_records_nothing(self, db_session):
+        """Contract §35: no genuine AFTER computation ever runs when
+        every mapped series' fetch fails -- zero history, exactly like
+        every other write this occurrence would have produced."""
+        release = _employment_situation_release(db_session)
+        occurrence = _occurrence(db_session, release)
+        _seed_payems(db_session)
+        _seed_unrate(db_session)
+
+        client = FREDClient(api_key="not-used", timeout=1.0)
+        with patch.object(FREDClient, "get_observations", side_effect=FREDTimeoutError("timed out")):
+            result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
+
+        assert result.status == "FAILED_PROVIDER"
+        assert _recorded_results(db_session) == []
+
+
+class TestRecordedMonitorResultDatabaseFailureRollback:
+    def test_a_deliberate_failure_after_provider_success_rolls_back_recorded_results_too(self, real_session_scope):
+        """Mirrors TestLaborDatabaseFailureRollback's own identical
+        pattern -- proves RecordedMonitorResult rolls back atomically
+        with ReleaseCheckRun/observation writes/analysis-update effects
+        (contract §36 of the #25E implementation prompt), never left
+        as an orphaned row when the surrounding transaction fails."""
+        with real_session_scope() as setup_session:
+            release = _employment_situation_release(setup_session)
+            occurrence = _occurrence(setup_session, release)
+            _seed_payems(setup_session, {date(2009, 5, 1): _PAYEMS_THOUSANDS[date(2009, 5, 1)]})
+            occurrence_id = occurrence.id
+
+        try:
+            class _DeliberateFailure(Exception):
+                pass
+
+            payload = _fred_payload({date(2009, 5, 1): _PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500})
+            client = FREDClient(api_key="not-used", timeout=1.0)
+
+            with pytest.raises(_DeliberateFailure):
+                with real_session_scope() as session:
+                    with patch.object(FREDClient, "get_observations", side_effect=lambda sid, **kw: payload if sid == PAYEMS_SERIES_ID else []):
+                        with patch.object(ReleaseProcessingRepository, "add_check_run", side_effect=_DeliberateFailure("simulated failure")):
+                            ReleaseProcessingService(client).process_occurrence(occurrence_id, session, AS_OF)
+
+            with real_session_scope() as verify_session:
+                assert _recorded_results(verify_session) == []
+        finally:
+            with real_session_scope() as cleanup_session:
+                from app.db.models import ReleaseOccurrence
+
+                cleanup_session.execute(ReleaseOccurrence.__table__.delete().where(ReleaseOccurrence.id == occurrence_id))
+                series = ReleaseProcessingRepository(cleanup_session).get_series_by_series_id(PAYEMS_SERIES_ID)
+                if series is not None:
+                    from app.db.models import EconomicObservation, EconomicSeries as _EconomicSeries
+
+                    cleanup_session.execute(EconomicObservation.__table__.delete().where(EconomicObservation.economic_series_id == series.id))
+                    cleanup_session.execute(_EconomicSeries.__table__.delete().where(_EconomicSeries.id == series.id))

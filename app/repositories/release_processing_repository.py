@@ -35,13 +35,14 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     EconomicObservation,
     EconomicSeries,
+    RecordedMonitorResult,
     ReleaseAnalysisUpdate,
     ReleaseCheckRun,
     ReleaseObservationUpdate,
     ReleaseOccurrence,
     ReleaseSeriesMapping,
 )
-from app.models.release_processing import AnalysisChangeRecord, CheckRunStatus, ObservationChangeRecord
+from app.models.release_processing import AnalysisChangeRecord, CheckRunStatus, ObservationChangeRecord, RecordableMonitorResult
 
 # The two CheckRunStatus values that mean "every currently-active
 # mapped series in that run was successfully queried" (see
@@ -177,6 +178,29 @@ class ReleaseProcessingRepository:
                 previous_value=record.previous_value,
                 new_value=record.new_value,
                 detected_at=record.detected_at,
+            )
+        )
+
+    def add_recorded_monitor_result(
+        self, release_check_run_id: int, record: RecordableMonitorResult, calculated_at: datetime
+    ) -> None:
+        """Increment #25E: persist one genuinely-executed canonical
+        monitor AFTER result -- see
+        docs/product/recorded-state-history-v1.md §24/§40/§59/§61.
+        `calculated_at` is the owning `ReleaseCheckRun.completed_at`
+        value, passed in by the caller (contract §15) rather than read
+        from the clock here. No update/delete counterpart exists on
+        this repository -- `RecordedMonitorResult` rows are append-
+        only through normal application code (contract §30)."""
+        self._session.add(
+            RecordedMonitorResult(
+                release_check_run_id=release_check_run_id,
+                monitor=record.monitor,
+                evaluation_period=record.evaluation_period,
+                state=record.state,
+                methodology_id=record.methodology_id,
+                data_basis=record.data_basis,
+                calculated_at=calculated_at,
             )
         )
 

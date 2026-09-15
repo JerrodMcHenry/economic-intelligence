@@ -566,3 +566,69 @@ class TestNoLiveFredCall:
         finally:
             _cleanup(real_session_scope, release_id)
             _cleanup_sweeps(real_session_scope, [outcome.sweep_id])
+
+
+class TestRecordedMonitorResultViaAutomation:
+    """Increment #25E: automated processing reuses the identical
+    `process_occurrence` code path as the manual CLI (contract §27) --
+    these tests prove the SAME RecordedMonitorResult behavior holds
+    end to end through `MaintenanceOrchestrator.run_sweep`, with no
+    automation-specific recording logic anywhere (contract §39/§41)."""
+
+    def test_no_change_occurrence_records_nothing(self, real_session_scope):
+        from app.db.models import RecordedMonitorResult
+        import sqlalchemy as _sa
+
+        release_id, occurrence_id = _seed_release_mapping_and_occurrence(real_session_scope, provider_release_id="9421")
+        orchestrator = MaintenanceOrchestrator(_mock_client())
+        try:
+            with patch.object(FREDClient, "get_observations", return_value=[]):
+                outcome = orchestrator.run_sweep(AS_OF)
+            assert outcome.processed_count == 1
+
+            with real_session_scope() as session:
+                runs = session.execute(
+                    sa.select(ReleaseCheckRun).where(ReleaseCheckRun.release_occurrence_id == occurrence_id)
+                ).scalars().all()
+                run_ids = [run.id for run in runs]
+                rows = session.execute(
+                    _sa.select(RecordedMonitorResult).where(RecordedMonitorResult.release_check_run_id.in_(run_ids))
+                ).scalars().all()
+                assert rows == []
+        finally:
+            _cleanup(real_session_scope, release_id)
+            _cleanup_sweeps(real_session_scope, [outcome.sweep_id])
+
+    def test_a_genuinely_executed_recomputation_is_recorded_through_the_orchestrator(self, real_session_scope):
+        """A single new UNRATE observation, with no other history at
+        all, still genuinely executes Labor's own AFTER computation
+        (which correctly returns INSUFFICIENT_DATA, given how sparse
+        the fixture is) -- and that genuine, real execution is what
+        gets recorded, exactly mirroring the identical fixture already
+        proven for the manual CLI path."""
+        from app.db.models import RecordedMonitorResult
+        import sqlalchemy as _sa
+
+        release_id, occurrence_id = _seed_release_mapping_and_occurrence(real_session_scope, provider_release_id="9422")
+        orchestrator = MaintenanceOrchestrator(_mock_client())
+        payload = [{"date": "2026-01-01", "value": "4.1"}]
+        try:
+            with patch.object(FREDClient, "get_observations", return_value=payload):
+                with patch.object(FREDClient, "get_series_info", return_value={"id": "UNRATE", "title": "Unemployment Rate", "units": "Percent"}):
+                    outcome = orchestrator.run_sweep(AS_OF)
+            assert outcome.processed_count == 1
+
+            with real_session_scope() as session:
+                runs = session.execute(
+                    sa.select(ReleaseCheckRun).where(ReleaseCheckRun.release_occurrence_id == occurrence_id)
+                ).scalars().all()
+                assert len(runs) == 1
+                rows = session.execute(
+                    _sa.select(RecordedMonitorResult).where(RecordedMonitorResult.release_check_run_id == runs[0].id)
+                ).scalars().all()
+                assert rows != [], "the genuine AFTER computation must have produced at least one recorded result"
+                assert all(row.monitor == "labor" for row in rows)
+                assert all(row.calculated_at == runs[0].completed_at for row in rows)
+        finally:
+            _cleanup(real_session_scope, release_id)
+            _cleanup_sweeps(real_session_scope, [outcome.sweep_id])

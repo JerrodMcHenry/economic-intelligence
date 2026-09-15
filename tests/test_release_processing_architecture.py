@@ -272,13 +272,22 @@ class TestNoJoltsOrCivpartInReleaseProcessing:
 
 class TestNoFullMonitorSnapshot:
     """Guard #8: no full InflationMonitorResult snapshot table/model
-    was introduced for #18."""
+    was introduced for #18. Increment #25E introduced exactly ONE
+    deliberate, frozen exception -- `recorded_monitor_results` (see
+    docs/product/recorded-state-history-v1.md) -- which is explicitly
+    NOT a full snapshot (state only; no evidence/metric columns; see
+    `tests/test_recorded_monitor_result_architecture.py`'s own
+    dedicated shape guard) and is allow-listed here BY NAME, never by
+    loosening the substring match itself -- any OTHER table matching
+    these substrings still fails this guard."""
+
+    _ALLOWED_MONITOR_RESULT_TABLE = "recorded_monitor_results"
 
     def test_no_monitor_snapshot_table_exists_on_the_orm_base(self):
         from app.db.base import Base
 
         forbidden_substrings = ("snapshot", "monitor_result")
-        table_names = set(Base.metadata.tables.keys())
+        table_names = set(Base.metadata.tables.keys()) - {self._ALLOWED_MONITOR_RESULT_TABLE}
         violations = {name for name in table_names if any(s in name.lower() for s in forbidden_substrings)}
         assert violations == set(), f"a monitor-snapshot-shaped table exists: {violations}"
 
