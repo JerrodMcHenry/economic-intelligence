@@ -228,6 +228,173 @@ describe("Current State", () => {
   });
 });
 
+describe("How They Relate (Increment #23C)", () => {
+  it("renders the exact same-period composition sentence when both periods match", async () => {
+    resolveAll({
+      monitor: buildMonitor({ underlying_momentum: buildMomentum({ state: "COOLING", calculation_period: "2026-07-01" }) }),
+      laborMonitor: buildLaborMonitor({ state: "STRENGTHENING", evaluation_period: "2026-07-01" }),
+    });
+    renderPage();
+
+    const section = await findSection("How They Relate");
+    expect(within(section).getByText("As of July 2026, Inflation is Cooling while Labor is Strengthening.")).toBeInTheDocument();
+  });
+
+  it("renders the exact different-period composition sentence, both periods visible, when periods differ", async () => {
+    resolveAll({
+      monitor: buildMonitor({ underlying_momentum: buildMomentum({ state: "COOLING", calculation_period: "2026-07-01" }) }),
+      laborMonitor: buildLaborMonitor({ state: "STRENGTHENING", evaluation_period: "2026-08-01" }),
+    });
+    renderPage();
+
+    const section = await findSection("How They Relate");
+    expect(
+      within(section).getByText("Inflation is Cooling as of July 2026. Labor is Strengthening as of August 2026."),
+    ).toBeInTheDocument();
+    expect(within(section).queryByText(/\bwhile\b/i)).not.toBeInTheDocument();
+  });
+
+  it("Inflation insufficient, Labor sufficient: no relationship sentence, Labor's own fact plus the unavailable fragment", async () => {
+    resolveAll({
+      monitor: buildMonitor({ underlying_momentum: buildMomentum({ state: "INSUFFICIENT_DATA", calculation_period: null }) }),
+      laborMonitor: buildLaborMonitor({ state: "STABLE", evaluation_period: "2026-07-01" }),
+    });
+    renderPage();
+
+    const section = await findSection("How They Relate");
+    expect(
+      within(section).getByText("Labor is Stable as of July 2026. Inflation does not currently have enough data to classify its state."),
+    ).toBeInTheDocument();
+  });
+
+  it("Labor insufficient, Inflation sufficient: mirror", async () => {
+    resolveAll({
+      monitor: buildMonitor({ underlying_momentum: buildMomentum({ state: "HEATING", calculation_period: "2026-07-01" }) }),
+      laborMonitor: buildLaborMonitor({ state: "INSUFFICIENT_DATA", evaluation_period: null }),
+    });
+    renderPage();
+
+    const section = await findSection("How They Relate");
+    expect(
+      within(section).getByText("Inflation is Heating as of July 2026. Labor does not currently have enough data to classify its state."),
+    ).toBeInTheDocument();
+  });
+
+  it("both insufficient: one combined statement, no per-side fragments", async () => {
+    resolveAll({
+      monitor: buildMonitor({ underlying_momentum: buildMomentum({ state: "INSUFFICIENT_DATA", calculation_period: null }) }),
+      laborMonitor: buildLaborMonitor({ state: "INSUFFICIENT_DATA", evaluation_period: null }),
+    });
+    renderPage();
+
+    const section = await findSection("How They Relate");
+    expect(
+      within(section).getByText("Not enough data is currently available to describe how Inflation and Labor relate."),
+    ).toBeInTheDocument();
+  });
+
+  it("Inflation resource error: no relationship sentence, Labor's own fact still renders, existing error message shown", async () => {
+    mockedGetMonitor.mockRejectedValue(new Error("down"));
+    mockedGetWhatChanged.mockResolvedValue(buildWhatChanged());
+    mockedGetLaborMonitor.mockResolvedValue(buildLaborMonitor({ state: "STABLE" }));
+    mockedGetLaborWhatChanged.mockResolvedValue(buildLaborWhatChanged());
+    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
+    mockedFetchUpcoming.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
+    mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
+    renderPage();
+
+    const section = await findSection("How They Relate");
+    expect(within(section).getByText("Inflation data could not be loaded.")).toBeInTheDocument();
+    // Not the insufficient-data fragment -- a resource error is a
+    // different, distinct case (§10) and must never be composed as if
+    // the state had been successfully learned as INSUFFICIENT_DATA.
+    expect(within(section).queryByText(/does not currently have enough data/i)).not.toBeInTheDocument();
+    expect(within(section).queryByText(/Inflation is/)).not.toBeInTheDocument();
+  });
+
+  it("Labor resource error: mirror", async () => {
+    mockedGetMonitor.mockResolvedValue(buildMonitor({ underlying_momentum: buildMomentum({ state: "STABLE" }) }));
+    mockedGetWhatChanged.mockResolvedValue(buildWhatChanged());
+    mockedGetLaborMonitor.mockRejectedValue(new Error("down"));
+    mockedGetLaborWhatChanged.mockResolvedValue(buildLaborWhatChanged());
+    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
+    mockedFetchUpcoming.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
+    mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
+    renderPage();
+
+    const section = await findSection("How They Relate");
+    expect(within(section).getByText("Labor data could not be loaded.")).toBeInTheDocument();
+    expect(within(section).queryByText(/does not currently have enough data/i)).not.toBeInTheDocument();
+  });
+
+  it("both resources error: both existing error messages, no relationship sentence", async () => {
+    mockedGetMonitor.mockRejectedValue(new Error("down"));
+    mockedGetWhatChanged.mockResolvedValue(buildWhatChanged());
+    mockedGetLaborMonitor.mockRejectedValue(new Error("down"));
+    mockedGetLaborWhatChanged.mockResolvedValue(buildLaborWhatChanged());
+    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
+    mockedFetchUpcoming.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
+    mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
+    renderPage();
+
+    const section = await findSection("How They Relate");
+    expect(within(section).getByText("Inflation data could not be loaded.")).toBeInTheDocument();
+    expect(within(section).getByText("Labor data could not be loaded.")).toBeInTheDocument();
+  });
+
+  it("no partial relationship sentence renders while either resource is still loading", () => {
+    mockedGetMonitor.mockReturnValue(new Promise(() => {}));
+    mockedGetWhatChanged.mockReturnValue(new Promise(() => {}));
+    mockedGetLaborMonitor.mockResolvedValue(buildLaborMonitor({ state: "STRENGTHENING" }));
+    mockedGetLaborWhatChanged.mockResolvedValue(buildLaborWhatChanged());
+    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
+    mockedFetchUpcoming.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
+    mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
+    renderPage();
+
+    // Labor's own state is already resolved, but Inflation is still
+    // pending -- no sentence naming Labor's state may appear yet.
+    expect(screen.queryByText(/Strengthening/)).not.toBeInTheDocument();
+  });
+
+  it("composed sentence renders once both resources resolve successfully", async () => {
+    resolveAll();
+    renderPage();
+
+    const section = await findSection("How They Relate");
+    expect(await within(section).findByText(/^As of/)).toBeInTheDocument();
+  });
+
+  it("links to /inflation and /labor via 'View Inflation →'/'View Labor →'", async () => {
+    resolveAll();
+    renderPage();
+
+    const section = await findSection("How They Relate");
+    expect(within(section).getByRole("link", { name: "View Inflation →" })).toHaveAttribute("href", "/inflation");
+    expect(within(section).getByRole("link", { name: "View Labor →" })).toHaveAttribute("href", "/labor");
+  });
+
+  it("contains no cross-domain agreement/divergence or regime vocabulary, all canonical Inflation/Labor state pairs", async () => {
+    const inflationStates = ["COOLING", "HEATING", "STABLE", "MIXED"] as const;
+    const laborStates = ["STRENGTHENING", "COOLING", "STABLE", "MIXED"] as const;
+    for (const inflationState of inflationStates) {
+      for (const laborState of laborStates) {
+        resolveAll({
+          monitor: buildMonitor({ underlying_momentum: buildMomentum({ state: inflationState }) }),
+          laborMonitor: buildLaborMonitor({ state: laborState }),
+        });
+        const { unmount } = renderPage();
+        const section = await findSection("How They Relate");
+        const text = section.textContent ?? "";
+        for (const forbidden of [/agrees?\b/i, /confirms?\b/i, /diverges?\b/i, /contradicts?\b/i, /goldilocks/i, /bullish/i, /bearish/i]) {
+          expect(text).not.toMatch(forbidden);
+        }
+        unmount();
+      }
+    }
+  });
+});
+
 describe("What Changed", () => {
   it("renders only actual backend ChangeEvents, never an invented 'State remains X' narrative", async () => {
     // State is MIXED, but the flat `changes` list contains ONLY metric
@@ -483,7 +650,7 @@ describe("Recent Data Updates", () => {
     expect(within(section).getByText("Data changes detected.")).toBeInTheDocument();
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
-    expect(headings).toEqual(["Current State", "What Changed", "Recent Data Updates", "Releases"]);
+    expect(headings).toEqual(["Current State", "How They Relate", "What Changed", "Recent Data Updates", "Releases"]);
     expect(screen.queryByRole("heading", { name: "Latest Data Detected" })).not.toBeInTheDocument();
   });
 
@@ -788,7 +955,9 @@ describe("partial failure isolation", () => {
     mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
     renderPage();
 
-    expect(await screen.findByText("Inflation data could not be loaded.")).toBeInTheDocument();
+    // Appears twice -- Current State's own card AND How They Relate
+    // (Increment #23C) each render their own copy of this error.
+    expect((await screen.findAllByText("Inflation data could not be loaded.")).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByRole("heading", { name: "What Changed" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Recent Data Updates" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Releases" })).toBeInTheDocument();
@@ -886,9 +1055,11 @@ describe("partial failure isolation", () => {
     mockedFetchRecent.mockRejectedValue(new Error("down"));
     renderPage();
 
-    expect(await screen.findByText("Inflation data could not be loaded.")).toBeInTheDocument();
+    // Inflation/Labor errors each appear twice -- Current State's own
+    // card AND How They Relate (Increment #23C).
+    expect((await screen.findAllByText("Inflation data could not be loaded.")).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText("What changed could not be loaded.")).toBeInTheDocument();
-    expect(await screen.findByText("Labor data could not be loaded.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Labor data could not be loaded.")).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText("Labor what changed could not be loaded.")).toBeInTheDocument();
     expect(await screen.findByText("Release-processing status is temporarily unavailable.")).toBeInTheDocument();
     expect(await screen.findByText("Upcoming releases could not be loaded.")).toBeInTheDocument();
@@ -906,12 +1077,13 @@ describe("navigation", () => {
     await screen.findByRole("heading", { name: "Current State" });
     expect(screen.getByRole("link", { name: "Open Inflation →" })).toHaveAttribute("href", "/inflation");
     expect(screen.getByRole("link", { name: "Open Labor →" })).toHaveAttribute("href", "/labor");
-    // "View Inflation →"/"View Labor →" now appear twice each -- once
-    // from What Changed, once from Recent Data Updates (§17/§18).
+    // "View Inflation →"/"View Labor →" now appear three times each --
+    // What Changed, Recent Data Updates (#22B), and How They Relate
+    // (Increment #23C).
     const inflationLinks = screen.getAllByRole("link", { name: "View Inflation →" });
     const laborLinks = screen.getAllByRole("link", { name: "View Labor →" });
-    expect(inflationLinks).toHaveLength(2);
-    expect(laborLinks).toHaveLength(2);
+    expect(inflationLinks).toHaveLength(3);
+    expect(laborLinks).toHaveLength(3);
     for (const link of inflationLinks) expect(link).toHaveAttribute("href", "/inflation");
     for (const link of laborLinks) expect(link).toHaveAttribute("href", "/labor");
     expect(screen.queryByRole("link", { name: "See full comparison →" })).not.toBeInTheDocument();
@@ -930,7 +1102,7 @@ describe("page structure", () => {
 
     await screen.findByRole("heading", { name: "Current State" });
     expect(screen.getByRole("heading", { level: 1, name: "Economic Overview" })).toBeInTheDocument();
-    for (const name of ["Current State", "What Changed", "Recent Data Updates", "Releases"]) {
+    for (const name of ["Current State", "How They Relate", "What Changed", "Recent Data Updates", "Releases"]) {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     }
   });

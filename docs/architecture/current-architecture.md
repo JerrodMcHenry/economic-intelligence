@@ -510,7 +510,7 @@ structurally, not just by convention, and were each verified directly
   same, unmodified `EconomicDataService`/`AnalysisService` methods every
   HTTP endpoint already uses.
 
-## Frontend architecture (Increment #19A: Economic Overview UI V1; extended #19C: Latest Data Detected UI; extended #20E.2: Labor UI + Overview Integration; extended #22B: Overview Attention & Navigation, "Latest Data Detected" renamed "Recent Data Updates")
+## Frontend architecture (Increment #19A: Economic Overview UI V1; extended #19C: Latest Data Detected UI; extended #20E.2: Labor UI + Overview Integration; extended #22B: Overview Attention & Navigation, "Latest Data Detected" renamed "Recent Data Updates"; extended #23C: Relate V1 composition)
 
 ```
 Browser
@@ -620,10 +620,14 @@ frontend/
                    content-only slot renderer with no `<section>`/heading of
                    its own; called twice by RecentDataUpdates rather than
                    owning the page's evidence section directly),
-                   UpcomingReleasesPreview, RecentReleasePreview; each only
-                   truncates/formats already-canonical backend values, reusing
-                   Badge/WhyThisState/WhyLaborState/ReleaseRow/ReleaseDateBadge
-                   rather than re-deriving anything
+                   UpcomingReleasesPreview, RecentReleasePreview, HowTheyRelate
+                   (Increment #23C -- Relate V1, one deterministic COMPOSITION
+                   sentence over Inflation's and Labor's own already-canonical
+                   states, reusing the same two useApiResource results
+                   CurrentStateSection already consumes; see "Relate V1" below);
+                   each only truncates/formats/composes already-canonical
+                   backend values, reusing Badge/WhyThisState/WhyLaborState/
+                   ReleaseRow/ReleaseDateBadge rather than re-deriving anything
     content/
       explanations/  curated, static explanation copy -- types.ts (the one
                       Explanation shape, Increment #17C), inflation.ts,
@@ -658,14 +662,21 @@ frontend/
                  frontend constant restating the backend's own seeded
                  release-to-series mapping migrations; deliberately separate
                  from, and never conflated with, releasePresentation.ts's
-                 releaseCategory() broad display tag -- see below)
+                 releaseCategory() broad display tag -- see below),
+                 relateComposition.ts (Increment #23C -- Relate V1's two pure
+                 COMPOSITION functions, composeMonitorRelation/
+                 composeLaborComponents; no backend import, no calculation,
+                 no score -- see "Relate V1" below)
     pages/       one component per route (Overview -- the real Economic
                  Overview, now genuinely multi-domain as of #20E.2; Inflation;
                  Labor, Increment #20E.2; Releases; NotFound)
     styles/      global.css (Tailwind entry + minimal visual foundation)
     test/        Vitest setup, fixtures/, the no-economic-logic,
                  no-release-sync-or-coupling, no-explanation-classification-logic,
-                 and no-overview-mutation architectural guards
+                 no-overview-mutation, and (Increment #23C) no-relate-inference
+                 architectural guards -- the last deliberately scoped to just
+                 the three Relate implementation files rather than the whole
+                 tree (see "Relate V1" below for why)
     App.tsx      route table
     main.tsx     React root, router provider
   public/
@@ -740,7 +751,17 @@ its own `loading`/`success`/`error` state, none fabricated from
 another. Page hierarchy (frozen, 7 sections, no reordering): primary
 Labor state (`LaborHero`, rendering `LaborState` with no directional
 color — see below) → Why This State (`WhyLaborState`, mirroring
-Inflation's `WhyThisState` shape independently) → Employment
+Inflation's `WhyThisState` shape independently — as of Increment #23C,
+also carries one appended Relate V1 COMPOSITION sentence over
+Employment's/Unemployment's own states plus a verbatim report of the
+`LaborState` they feed into, e.g. "Employment is Cooling and
+Unemployment is Deteriorating. Together, Economic Intelligence
+classifies Labor as Cooling." — deliberately placed inside this
+existing disclosure rather than as a new eighth page section, so it
+doesn't duplicate the methodology explanation this component already
+exists to provide; see "How They Relate" above and
+[docs/product/relate-composition-v1.md](../product/relate-composition-v1.md))
+→ Employment
 (`EmploymentSection`: `EmploymentCondition`/`EmploymentMomentum` as two
 independently-reported lines, never three co-equal badges, plus the
 PAYEMS dual-unit presentation — `current_3m_avg_jobs`/
@@ -888,10 +909,13 @@ fabricates any of the other six (proven directly by dedicated
 partial-failure tests, one per resource, plus cross-domain
 failure-isolation tests added in #20E.2 — e.g. Labor failing never
 blanks Inflation's card, and vice versa). Hierarchy is Current State →
-What Changed → Recent Data Updates → Releases (NOW → CHANGED → DETECTED
-→ NEXT — "Recent Data Updates" renamed from "Latest Data Detected" in
-#22B, see below), each still exactly one `<h2>` (proven by the
-`heading-sequence` test, updated for the rename). `components/overview/CurrentStateSection.tsx`
+How They Relate → What Changed → Recent Data Updates → Releases (NOW →
+RELATE → CHANGED → DETECTED → NEXT — "How They Relate" added #23C
+immediately after Current State, since relating is itself a
+current-state question, not a change question; "Recent Data Updates"
+renamed from "Latest Data Detected" in #22B, see below), each still
+exactly one `<h2>` (proven by the `heading-sequence` test, updated for
+both changes). `components/overview/CurrentStateSection.tsx`
 is a thin peer-domain wrapper — one shared `<h2>Current State</h2>`
 over two independently-gated `<div>` sub-cards, `InflationCurrentStateCard`
 and `LaborCurrentStateCard` (Increment #20E.2), neither owning the
@@ -900,6 +924,34 @@ domain label beside it ("Inflation"/"Labor," so the page reads as
 "Inflation is MIXED"/"Labor is COOLING," never "the economy is X"), the
 period, and its own `WhyThisState`/`WhyLaborState` (each reused
 unmodified, including their existing contradictory-evidence guarantees).
+
+**"How They Relate"** (`components/overview/HowTheyRelate.tsx`,
+Increment #23C — Relate V1, frozen by
+[docs/product/relate-composition-v1.md](../product/relate-composition-v1.md))
+reuses the SAME two `useApiResource` results `CurrentStateSection`
+already consumes — no new network call — and renders exactly one
+deterministic COMPOSITION sentence over Inflation's and Labor's own
+already-canonical top-level states
+(`lib/relateComposition.ts`'s `composeMonitorRelation`), plus the two
+existing "View Inflation →"/"View Labor →" CTAs. Five branches, decided
+on state (never on period-nullness alone): same-period ("As of {period},
+Inflation is {state} while Labor is {state}." — "while" used only
+because the periods genuinely coincide), different-period (two
+independent, explicitly period-stamped sentences, deliberately never
+using "while" or any other word implying simultaneity), Inflation-
+insufficient, Labor-insufficient, and both-insufficient. A resource
+error is distinct from a successful `INSUFFICIENT_DATA` response and is
+never composed into a sentence — mirroring `CurrentStateSection`'s own
+failure-isolation discipline, the working side's own fact still renders
+while the failed side shows its own existing error message; no sentence
+renders while either resource is still loading. This is composition,
+never inference: no cross-domain "agrees"/"diverges"/"confirms" word is
+ever used (that vocabulary stays legitimate only for Core CPI vs. Core
+PCE's own existing Confirmation, a same-type, same-concept, same-period
+comparison Inflation vs. Labor structurally is not), and no regime
+label (Goldilocks, bullish, etc.) is ever produced — enforced by a
+dedicated, narrowly-scoped guard
+(`test/no-relate-inference.test.ts`).
 
 `components/overview/WhatChangedPreview.tsx`/`LaborWhatChangedPreview.tsx`
 (Increment #22B, replacing the old flat `.slice(0, 3)` truncation) follow
@@ -1532,3 +1584,50 @@ rerun-and-dismissed) mid-increment and did not reproduce across eight
 subsequent full-suite runs — see the Increment #22B journal entry for
 the exact test name and evidence. Full account:
 docs/ENGINEERING_JOURNAL.md's #22B entry.
+
+**Increment #23A (Relate/Compare — Product, Methodology & Architecture
+Audit)** is a read-only audit — zero production code changed —
+producing
+[docs/product/relate-compare-audit-v1.md](../product/relate-compare-audit-v1.md).
+Audited the existing `/analysis/compare`/`/analysis/pipeline` backend
+capability directly and found it real but product-unsafe as a generic,
+open Series Compare surface today: correlation is computed on raw
+levels by default, with only an `n ≥ 2` sample-size floor (mathematically
+guaranteeing `|r| = 1.0` at exactly two points), and neither endpoint
+knows about frequency, seasonal adjustment (not even persisted in the
+schema), or concept compatibility. Found the minimum useful next step
+is instead deterministic COMPOSITION of already-canonical facts — never
+a score, never a regime label — and froze a composition-vs-inference
+boundary as its own product concept, verified `LaborState` is itself
+already a real relationship-intelligence result (`combine_labor_state`,
+backed by real research), and verified Employment/Unemployment always
+share one evaluation period directly in `app/domain/labor.py`'s own
+function signatures.
+
+**Increment #23B (Relate V1 Composition Contract Freeze)** froze
+[docs/product/relate-composition-v1.md](../product/relate-composition-v1.md):
+exact same-period/different-period sentence templates for an
+Inflation↔Labor Overview surface, an exact Employment/Unemployment/
+LaborState template for `/labor`, an absolute prohibited-vocabulary
+list (no cross-domain "agrees"/"diverges"/"confirms," no regime label),
+exact insufficient-data/resource-error/loading behavior, and exact
+placement decisions — a new "How They Relate" Overview section
+immediately after Current State, and the Labor sentence appended
+inside the *existing* `WhyLaborState` disclosure rather than a new
+eighth page section.
+
+**Increment #23C (Relate V1 Composition Implementation)** implements
+that frozen contract exactly — see "How They Relate" and "The Labor
+page" above for the full breakdown. New: `lib/relateComposition.ts`
+(two pure functions, `composeMonitorRelation`/`composeLaborComponents`,
+72 unit tests), `components/overview/HowTheyRelate.tsx`,
+`test/no-relate-inference.test.ts` (a guard deliberately scoped to just
+the three Relate implementation files, not the whole tree, avoiding the
+exact false-positive class #22B already found once for bare regime
+words appearing in unrelated files' own correct explanatory prose).
+`WhyLaborState.tsx` gained one appended sentence; no new heading, no
+new CTA, no new route. Zero backend production changes — confirmed
+directly and by an unchanged 1,173-passed backend regression run;
+frontend suite grew 731 → 895 (run twice, identical, no transient
+failures this increment), lint and typecheck clean, build succeeds.
+Full account: docs/ENGINEERING_JOURNAL.md's #23C entry.

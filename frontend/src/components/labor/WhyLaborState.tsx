@@ -2,6 +2,7 @@ import type { LaborMonitorResult } from "../../api/labor.types";
 import { laborStateExplanation } from "../../content/explanations/labor";
 import { formatPeriod } from "../../lib/format";
 import { employmentStateLabel, laborStateLabel, unemploymentStateLabel } from "../../lib/laborLabels";
+import { composeLaborComponents } from "../../lib/relateComposition";
 
 /**
  * "Why is Labor {State}?" -- a result explanation, not a concept one:
@@ -15,9 +16,23 @@ import { employmentStateLabel, laborStateLabel, unemploymentStateLabel } from ".
  * docs/architecture/labor-ui-v1.md §11/§14). No `if (metric < ...)`
  * logic exists here or anywhere in this file's import graph -- this
  * mirrors components/inflation/WhyThisState.tsx exactly.
+ *
+ * Increment #23C (Relate V1, frozen by
+ * docs/product/relate-composition-v1.md §16/§18/§19/§22): appended
+ * after the existing evidence `<dl>` and curated explanation text is
+ * one deterministic COMPOSITION sentence
+ * (`lib/relateComposition.ts`'s `composeLaborComponents`) stating
+ * Employment's and Unemployment's own states plus a verbatim report of
+ * the top-level `LaborState` they feed into -- reusing, never
+ * re-deriving, `combine_labor_state`'s own existing backend result.
+ * Deliberately placed inside this ALREADY-EXISTING disclosure rather
+ * than as a new eighth `/labor` page section, so it does not duplicate
+ * the top-level Labor methodology explanation this component already
+ * exists to provide.
  */
 export function WhyLaborState({ result }: { result: LaborMonitorResult }) {
   const explanation = laborStateExplanation(result.state);
+  const relate = composeLaborComponents(result.employment.state, result.unemployment.state, result.state);
 
   return (
     <details className="group mt-3">
@@ -40,6 +55,7 @@ export function WhyLaborState({ result }: { result: LaborMonitorResult }) {
             {explanation.whyItMatters}
           </p>
         )}
+        <p className="mt-3 text-neutral-700">{relate.sentence}</p>
       </div>
     </details>
   );

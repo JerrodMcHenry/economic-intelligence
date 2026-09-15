@@ -1523,7 +1523,7 @@ changed` already holds for Inflation. Never calls
 [docs/architecture/labor-release-integration-v1.md](./labor-release-integration-v1.md)
 for the full frozen contract.
 
-## Flow 33 — `/` Economic Overview Page Load (Increment #19A, extended #19C, extended #20E.2, extended #22B)
+## Flow 33 — `/` Economic Overview Page Load (Increment #19A, extended #19C, extended #20E.2, extended #22B, extended #23C)
 
 `frontend/src/pages/Overview.tsx` calls `useApiResource(getInflationMonitor)`,
 `useApiResource(getInflationWhatChanged)`, `useApiResource(getLaborMonitor)`,
@@ -1576,7 +1576,7 @@ sequenceDiagram
     API-->>H5: 200 ReleaseProcessingStatusResponse (or a network/HTTP failure)
     API-->>H3: 200 ReleaseListResponse (or a network/HTTP failure)
     API-->>H4: 200 ReleaseListResponse (or a network/HTTP failure)
-    Note over B: Each of the seven renders independently --<br/>CurrentStateSection (a peer wrapper over<br/>InflationCurrentStateCard/LaborCurrentStateCard),<br/>WhatChangedPreview/LaborWhatChangedPreview (#22B:<br/>4-tier PRESENTATION salience, never a score),<br/>RecentDataUpdates (#22B: two canonical-monitor-<br/>domain slots), UpcomingReleasesPreview,<br/>RecentReleasePreview format/classify-into-fixed-<br/>tiers only, never reclassify a canonical value or<br/>rank by magnitude.
+    Note over B: Each of the seven renders independently --<br/>CurrentStateSection (a peer wrapper over<br/>InflationCurrentStateCard/LaborCurrentStateCard),<br/>HowTheyRelate (#23C: one COMPOSITION sentence,<br/>reusing H1/H6's own already-fetched data, no new<br/>request), WhatChangedPreview/LaborWhatChangedPreview<br/>(#22B: 4-tier PRESENTATION salience, never a score),<br/>RecentDataUpdates (#22B: two canonical-monitor-<br/>domain slots), UpcomingReleasesPreview,<br/>RecentReleasePreview format/classify/compose only,<br/>never reclassify a canonical value, rank by<br/>magnitude, or infer new economic meaning.
 ```
 
 Rendering is per-resource, identical in shape to Flow 27/30/37's own
@@ -1598,7 +1598,21 @@ already uses), labeled explicitly as "Inflation"; `LaborCurrentStateCard`
 renders `LaborMonitorResult.state` exactly as returned (via `Badge`/
 `WhyLaborState`, Flow 37's own components), labeled explicitly as
 "Labor" — neither is a page-wide "economy" conclusion, and there is no
-combined score anywhere. `WhatChangedPreview`/`LaborWhatChangedPreview`
+combined score anywhere.
+
+`HowTheyRelate` (Increment #23C, frozen by
+[docs/product/relate-composition-v1.md](../product/relate-composition-v1.md))
+reuses H1's and H6's own already-resolved `underlying_momentum.state`/
+`calculation_period` and `state`/`evaluation_period` — no new request,
+no new participant in the diagram above. `lib/relateComposition.ts`'s
+`composeMonitorRelation` selects one of five branches on state (same-
+period, different-period, Inflation-insufficient, Labor-insufficient,
+both-insufficient) and returns one already-composed sentence; the
+component renders nothing until both H1 and H6 have reached a terminal
+state, and composes nothing at all if either terminates in `error`
+(only `INSUFFICIENT_DATA` — a successful `200` response — triggers the
+insufficient-data branches; an infrastructure failure never does).
+`WhatChangedPreview`/`LaborWhatChangedPreview`
 (Increment #22B, replacing the old `.slice(0, 3)` truncation) classify
 each family's own flat, already deterministically-ordered event list
 (`inflation_what_changed_v1.0`/`labor_what_changed_v1.0`) into 4 fixed
@@ -1884,7 +1898,7 @@ accepts or constructs a `FREDClient`, and imports no AI module
 anywhere in its call graph — checked structurally (see
 `tests/test_labor_architecture.py`).
 
-## Flow 37 — `/labor` Page Load (Increment #20E.2)
+## Flow 37 — `/labor` Page Load (Increment #20E.2, extended #23C)
 
 `frontend/src/pages/Labor.tsx` calls `useApiResource(getLaborMonitor)`,
 `useApiResource(getLaborWhatChanged)`, `useApiResource(getEmploymentSituationProcessingStatus)`,
@@ -1940,7 +1954,7 @@ sequenceDiagram
     API-->>H3: 200 ReleaseProcessingStatusResponse, one occurrence<br/>(or a network/HTTP failure at any step)
     API-->>H4: 200 ReleaseListResponse (or a network/HTTP failure)
     API-->>H5: 200 ReleaseListResponse (or a network/HTTP failure)
-    Note over B: Each of the five renders independently --<br/>LaborHero/WhyLaborState/EmploymentSection/<br/>UnemploymentSection/WhatChangedSection/<br/>LatestDataDetected/RelevantRelease format<br/>and filter only, never reclassify.
+    Note over B: Each of the five renders independently --<br/>LaborHero/WhyLaborState (#23C: plus one COMPOSITION<br/>sentence, no new request)/EmploymentSection/<br/>UnemploymentSection/WhatChangedSection/<br/>LatestDataDetected/RelevantRelease format,<br/>filter, and compose only, never reclassify.
 ```
 
 Rendering is per-resource, identical in shape to Flow 27/33's own
@@ -1955,7 +1969,11 @@ Page hierarchy (frozen by `docs/architecture/labor-ui-v1.md`, 7
 sections, never reordered): `LaborHero` (primary `LaborState`, no
 directional color — every real state shares one neutral tone; only
 `MIXED` gets a distinct "caution" tone) → `WhyLaborState` (mirroring
-`WhyThisState`'s own contradictory-evidence guarantee) →
+`WhyThisState`'s own contradictory-evidence guarantee; as of Increment
+#23C, also renders one appended Relate V1 COMPOSITION sentence —
+`lib/relateComposition.ts`'s `composeLaborComponents`, reusing
+`LaborMonitorResult.employment.state`/`unemployment.state`/`state`
+already present on `H1`'s own response above, no new request) →
 `EmploymentSection` (`EmploymentCondition`/`EmploymentMomentum` as two
 independently-reported lines; `formatJobs` for the already-converted
 `current_3m_avg_jobs`/`prior_3m_avg_jobs`/`momentum_delta_jobs`,

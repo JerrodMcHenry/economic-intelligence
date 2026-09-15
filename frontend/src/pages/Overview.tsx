@@ -8,6 +8,7 @@ import { useApiResource } from "../api/useApiResource";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { CurrentStateSection } from "../components/overview/CurrentStateSection";
+import { HowTheyRelate } from "../components/overview/HowTheyRelate";
 import { LaborWhatChangedPreview } from "../components/overview/LaborWhatChangedPreview";
 import { RecentDataUpdates } from "../components/overview/RecentDataUpdates";
 import { RecentReleasePreview } from "../components/overview/RecentReleasePreview";
@@ -36,13 +37,20 @@ const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
  * never hides Labor's card, and vice versa, at every section
  * (docs/architecture/labor-ui-v1.md §33/§38).
  *
- * Hierarchy: Current State -> What Changed -> Recent Data Updates ->
- * Releases. Inflation and Labor are peers within Current State,
+ * Hierarchy: Current State -> How They Relate -> What Changed ->
+ * Recent Data Updates -> Releases. "How They Relate" (Increment #23C,
+ * frozen by docs/product/relate-composition-v1.md) renders exactly one
+ * deterministic COMPOSITION sentence over Inflation's and Labor's own
+ * already-canonical states -- never a new economic conclusion, never
+ * an aggregate score, never a regime label; see
+ * components/overview/HowTheyRelate.tsx and lib/relateComposition.ts.
+ * Inflation and Labor are peers within Current State, How They Relate,
  * What Changed, AND (Increment #22B) Recent Data Updates -- never
  * subordinate to one another, and never combined into an aggregate
  * "Economy State"/score (docs/architecture/labor-ui-v1.md §29/§30's own
  * absolute prohibition, restated and extended by
- * docs/product/overview-attention-model-v1.md). What Changed
+ * docs/product/overview-attention-model-v1.md and
+ * docs/product/relate-composition-v1.md). What Changed
  * (Increment #22B) renders a deterministic 4-tier PRESENTATION
  * salience over each domain's own already-canonical `changes[]`
  * (lib/inflationSalience.ts/lib/laborSalience.ts) instead of a flat
@@ -77,6 +85,11 @@ export function OverviewPage() {
       <div className="mt-8 divide-y divide-neutral-200 [&>*]:pt-8 [&>*:first-child]:pt-0">
         {/* Current State -- Inflation and Labor as independent peers */}
         <CurrentStateSection inflation={monitor} labor={laborMonitor} />
+
+        {/* How They Relate (Increment #23C) -- Relate V1, deterministic
+            COMPOSITION only over the same two already-fetched monitor
+            resources above; see docs/product/relate-composition-v1.md */}
+        <HowTheyRelate inflation={monitor} labor={laborMonitor} />
 
         {/* What Changed -- same peer structure, one shared heading */}
         <section aria-labelledby="overview-what-changed-heading">

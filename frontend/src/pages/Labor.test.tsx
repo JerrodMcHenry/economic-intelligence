@@ -187,6 +187,133 @@ describe("Current State", () => {
   });
 });
 
+describe("Relate V1 composition, inside the existing WhyLaborState disclosure (Increment #23C)", () => {
+  it("appears inside the existing 'Why {state}?' disclosure, not as a new page section", async () => {
+    resolveAll({
+      monitor: buildLaborMonitor({
+        state: "COOLING",
+        employment: buildEmploymentResult({ state: "COOLING" }),
+        unemployment: buildUnemploymentResult({ state: "DETERIORATING" }),
+      }),
+    });
+    renderPage();
+
+    // The frozen 7-section hierarchy (see the "frozen 7-section
+    // hierarchy" describe block above) gains no new heading.
+    await screen.findByRole("heading", { name: "Current state" });
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings).toEqual([
+      "Current state",
+      "Employment",
+      "Unemployment",
+      "What changed",
+      "Latest data detected",
+      "Employment Situation release",
+      "Evidence & methodology",
+    ]);
+
+    const section = await findSection("Current state");
+    within(section).getByText("Why Cooling?").click();
+    expect(await within(section).findByText("Employment is Cooling and Unemployment is Deteriorating. Together, Economic Intelligence classifies Labor as Cooling.")).toBeInTheDocument();
+  });
+
+  it("exact Employment/Unemployment/LaborState clause, verbatim", async () => {
+    resolveAll({
+      monitor: buildLaborMonitor({
+        state: "STRENGTHENING",
+        employment: buildEmploymentResult({ state: "EXPANDING" }),
+        unemployment: buildUnemploymentResult({ state: "IMPROVING" }),
+      }),
+    });
+    renderPage();
+
+    const section = await findSection("Current state");
+    within(section).getByText("Why Strengthening?").click();
+    expect(
+      await within(section).findByText("Employment is Expanding and Unemployment is Improving. Together, Economic Intelligence classifies Labor as Strengthening."),
+    ).toBeInTheDocument();
+  });
+
+  it("the LaborState reported in the sentence is byte-identical to the Hero badge's own state -- never re-derived", async () => {
+    resolveAll({
+      monitor: buildLaborMonitor({
+        state: "MIXED",
+        employment: buildEmploymentResult({ state: "RECOVERING" }),
+        unemployment: buildUnemploymentResult({ state: "STABLE" }),
+      }),
+    });
+    renderPage();
+
+    const section = await findSection("Current state");
+    // The Hero badge itself.
+    expect(within(section).getByText("Mixed", { selector: "span" })).toBeInTheDocument();
+    within(section).getByText("Why Mixed?").click();
+    expect(await within(section).findByText(/classifies Labor as Mixed\.$/)).toBeInTheDocument();
+  });
+
+  it("Employment insufficient: no composed sentence, dedicated fragment only", async () => {
+    resolveAll({
+      monitor: buildLaborMonitor({
+        state: "INSUFFICIENT_DATA",
+        employment: buildEmploymentResult({ state: "INSUFFICIENT_DATA" }),
+        unemployment: buildUnemploymentResult({ state: "DETERIORATING" }),
+      }),
+    });
+    renderPage();
+
+    const section = await findSection("Current state");
+    within(section).getByText("Why Insufficient data?").click();
+    expect(await within(section).findByText("Employment does not currently have enough data to classify its state.")).toBeInTheDocument();
+    expect(within(section).queryByText(/classifies Labor as/i)).not.toBeInTheDocument();
+  });
+
+  it("Unemployment insufficient (Employment sufficient): dedicated fragment only", async () => {
+    resolveAll({
+      monitor: buildLaborMonitor({
+        state: "INSUFFICIENT_DATA",
+        employment: buildEmploymentResult({ state: "STABLE" }),
+        unemployment: buildUnemploymentResult({ state: "INSUFFICIENT_DATA" }),
+      }),
+    });
+    renderPage();
+
+    const section = await findSection("Current state");
+    within(section).getByText("Why Insufficient data?").click();
+    expect(await within(section).findByText("Unemployment does not currently have enough data to classify its state.")).toBeInTheDocument();
+    expect(within(section).queryByText(/classifies Labor as/i)).not.toBeInTheDocument();
+  });
+
+  it("does not remove or replace the existing evidence table -- Employment/Unemployment/evaluation period dl remains the source of truth", async () => {
+    resolveAll({
+      monitor: buildLaborMonitor({
+        state: "COOLING",
+        employment: buildEmploymentResult({ state: "COOLING" }),
+        unemployment: buildUnemploymentResult({ state: "DETERIORATING" }),
+        evaluation_period: "2026-07-01",
+      }),
+    });
+    renderPage();
+
+    const section = await findSection("Current state");
+    within(section).getByText("Why Cooling?").click();
+    expect(await within(section).findByText("Employment")).toBeInTheDocument();
+    expect(within(section).getByText("Unemployment trend")).toBeInTheDocument();
+    expect(within(section).getByText("Evaluation period")).toBeInTheDocument();
+    // Both the dl AND the new composed sentence coexist.
+    expect(within(section).getByText(/Together, Economic Intelligence classifies Labor as/)).toBeInTheDocument();
+  });
+
+  it("no new CTA is introduced by the composition sentence", async () => {
+    resolveAll({ monitor: buildLaborMonitor({ state: "STABLE" }) });
+    renderPage();
+
+    const section = await findSection("Current state");
+    within(section).getByText("Why Stable?").click();
+    await within(section).findByText(/Together, Economic Intelligence classifies Labor as/);
+    expect(within(section).queryByRole("link")).not.toBeInTheDocument();
+  });
+});
+
 describe("Employment", () => {
   it.each(["EXPANDING", "COOLING", "STABLE", "CONTRACTING", "RECOVERING", "INSUFFICIENT_DATA"] as const)(
     "renders canonical EmploymentState %s",

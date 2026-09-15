@@ -8055,3 +8055,104 @@ synthesis, aggregate score, historical context, Compare surface,
 Growth/third domain, chart, AI, notification, or account/save/watchlist
 — all explicitly out of scope per the frozen contract and this
 prompt's own scope guards.
+
+## Increment #23C — Relate V1 Composition Implementation
+
+Implements the frozen `docs/product/relate-composition-v1.md` contract
+(itself downstream of `docs/product/relate-compare-audit-v1.md`'s own
+finding that the minimum useful next step for "how does it relate?" is
+deterministic COMPOSITION of already-canonical facts, never generic
+Series Compare). Zero backend changes — every input this contract
+needs was already present on `InflationMonitorResult`/
+`LaborMonitorResult` as fetched today.
+
+### Composition, not inference — the one rule everything else follows
+
+`lib/relateComposition.ts`'s two pure functions
+(`composeMonitorRelation`, `composeLaborComponents`) do nothing but
+concatenate already-canonical field values, through the SAME label
+functions used everywhere else in the product, into fixed sentence
+templates. Neither function calculates, classifies, thresholds, scores,
+or imports anything backend-shaped. A new, narrowly-scoped architecture
+guard (`test/no-relate-inference.test.ts`) proves the Relate
+implementation's own three files contain no regime label
+(Goldilocks/stagflation/bullish/bearish/risk-on/risk-off/etc.), no
+cross-domain agreement/divergence word, no correlation/spread
+identifier, no backend import, and no invented methodology identifier
+(`relate_v1.0` or similar) — deliberately scoped to just those three
+files rather than the whole tree, since a whole-tree bare-word scan for
+terms like "bullish" would re-trigger the exact false positive #22B
+already found and fixed in this project's own correct, existing prose
+explaining the ABSENCE of that framing.
+
+### Overview — "How They Relate," period-honest by construction
+
+A new section between Current State and What Changed
+(`components/overview/HowTheyRelate.tsx`), reusing the exact same two
+`useApiResource` results `CurrentStateSection` already consumes — no
+new network call. Composes Inflation's `underlying_momentum.state`/
+`calculation_period` with Labor's `state`/`evaluation_period` into one
+of five deterministic branches: same-period ("As of {period}, Inflation
+is {state} while Labor is {state}."), different-period (two
+independent, explicitly period-stamped sentences, "while" never used),
+Inflation-insufficient, Labor-insufficient, or both-insufficient — the
+branch is selected on STATE, never on period-nullness alone, matching
+the frozen contract's own defensive reasoning even though the two are
+verified-coupled in the actual backend domain code. A resource error
+(as opposed to a successful `INSUFFICIENT_DATA` response) never
+composes a sentence at all — the working side's own individual fact
+still renders, mirroring `CurrentStateSection`'s own established
+failure-isolation discipline exactly. No sentence renders while either
+resource is still loading.
+
+### Labor — the composition lives inside the existing "Why" disclosure, not a new section
+
+`components/labor/WhyLaborState.tsx` gained one appended sentence
+(`composeLaborComponents`), after its existing evidence `<dl>` and
+curated explanation text: "Employment is {state} and Unemployment is
+{state}. Together, Economic Intelligence classifies Labor as {state}."
+`LaborState` is a plain input to this function, read directly from
+`LaborMonitorResult.state` — the function contains no combination logic
+of its own and never re-implements `combine_labor_state`'s own existing
+table. The frozen `/labor` 7-section hierarchy is unchanged — no new
+heading, no new CTA; the `WhyLaborState` `<details>` toggle is the only
+interaction. "Together, Economic Intelligence classifies... as..." is
+not invented phrasing — it reuses the exact verb pattern
+`content/explanations/labor.ts`'s own `MIXED` explanation already uses
+for this identical concept.
+
+### A deliberate asymmetry, stated explicitly so it can never be quietly lost
+
+Labor's own sentence may name a real, existing combined conclusion
+(`LaborState`) because one genuinely exists. The Overview cross-domain
+sentence has no such existing combined conclusion to name — Inflation
+and Labor have never been combined into anything — and must never
+acquire one; an analogous "Together, Economic Intelligence classifies
+the economy as X" for Overview would be exactly the forbidden regime
+label. `composeMonitorRelation` contains no such branch, by design, not
+by omission.
+
+### Verification
+
+Frontend: `npx vitest run`, run twice: **895 passed** both times, 0
+skipped, 0 failed (671 baseline at #22A → 731 after #22B → 895 after
+this increment). No transient failures observed this increment.
+`npm run typecheck`: clean. `npm run lint` (oxlint): clean. `npm run
+build`: succeeds. Backend: `TEST_DATABASE_URL=... pytest tests/ -q`:
+**1,173 passed**, unchanged — confirmed zero backend files touched
+(`git status --porcelain -- app/ alembic/ tests/` empty).
+
+### New files
+
+`lib/relateComposition.ts`/`.test.ts` (72 unit tests, including a full
+prohibited-vocabulary sweep across every canonical Inflation × Labor
+state pair), `components/overview/HowTheyRelate.tsx`,
+`test/no-relate-inference.test.ts` (67 guard assertions).
+
+### Deferred (named explicitly, not built here)
+
+Series Compare (open or curated), charts, correlation/spread display,
+cross-domain labels, historical relationships, lead-lag, causal
+inference, investment implications, AI narration, a new economic
+domain, state-history persistence, a `/relate` route, any new
+top-level nav item.
