@@ -182,9 +182,13 @@ class TestServiceNeverClassifiesEconomics:
     #20B's `GET /monitors/labor`; `compute_labor_monitor_result_at` and
     `month_over_month_labor_periods` for #20C.2's
     `GET /monitors/labor/changes`, per
-    LABOR_WHAT_CHANGED_V1_FROZEN_METHODOLOGY.md §12) and must never
-    import the classification primitives directly (`classify_*`,
-    `combine_*`, `compute_employment_result`, `compute_unemployment_result`,
+    LABOR_WHAT_CHANGED_V1_FROZEN_METHODOLOGY.md §12; `month_before` for
+    #24C's own State Duration V1 walk-back, per
+    `docs/product/state-duration-v1.md` §7 -- reusing the domain's own
+    existing exact-calendar-stepping primitive unmodified, never a new
+    calendar utility) and must never import the classification
+    primitives directly (`classify_*`, `combine_*`,
+    `compute_employment_result`, `compute_unemployment_result`,
     `build_jobs_index`, `build_rate_index`, etc.) -- which would
     suggest the service is reimplementing/duplicating logic that
     belongs in the domain layer. Comparison logic is guarded
@@ -201,8 +205,9 @@ class TestServiceNeverClassifiesEconomics:
             "compute_labor_monitor_result",
             "compute_labor_monitor_result_at",
             "month_over_month_labor_periods",
+            "month_before",
         }, (
-            f"app/services/labor.py should import only the three top-level app.domain.labor entry points, "
+            f"app/services/labor.py should import only the four top-level app.domain.labor entry points, "
             f"found: {imported_names}"
         )
 
@@ -231,14 +236,15 @@ class TestServiceNeverComparesEconomics:
         )
 
 
-class TestExactlyTwoLaborRoutes:
-    """Guard: exactly TWO public routes exist for the Labor Monitor --
-    GET /monitors/labor (#20B) and GET /monitors/labor/changes (#20C.2)
-    -- and they are the only routes app/api/labor.py registers. No
-    POST/PUT/PATCH/DELETE route anywhere in the API layer touches
-    Labor."""
+class TestExactlyThreeLaborRoutes:
+    """Guard: exactly THREE public routes exist for the Labor Monitor --
+    GET /monitors/labor (#20B), GET /monitors/labor/changes (#20C.2),
+    and GET /monitors/labor/state-duration (#24C, frozen
+    `docs/product/state-duration-v1.md`) -- and they are the only
+    routes app/api/labor.py registers. No POST/PUT/PATCH/DELETE route
+    anywhere in the API layer touches Labor."""
 
-    def test_labor_route_module_registers_exactly_two_routes(self):
+    def test_labor_route_module_registers_exactly_three_routes(self):
         source = (REPO_ROOT / "app/api/labor.py").read_text()
         tree = ast.parse(source)
         route_decorators = [
@@ -248,13 +254,13 @@ class TestExactlyTwoLaborRoutes:
             and isinstance(node.func, ast.Attribute)
             and node.func.attr in {"get", "post", "put", "patch", "delete"}
         ]
-        assert len(route_decorators) == 2, f"expected exactly two routes, found {len(route_decorators)}"
+        assert len(route_decorators) == 3, f"expected exactly three routes, found {len(route_decorators)}"
 
-    def test_route_paths_are_exactly_labor_and_labor_changes(self):
+    def test_route_paths_are_exactly_labor_changes_and_state_duration(self):
         from app.api.labor import router
 
         paths = [route.path for route in router.routes]
-        assert paths == ["/monitors/labor", "/monitors/labor/changes"]
+        assert paths == ["/monitors/labor", "/monitors/labor/changes", "/monitors/labor/state-duration"]
 
     def test_no_labor_mutation_route_exists_anywhere_in_the_api_layer(self):
         api_dir = REPO_ROOT / "app" / "api"

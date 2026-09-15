@@ -24,6 +24,7 @@ DOMAIN_FILES = [
     Path("app/domain/labor.py"),
     Path("app/domain/labor_what_changed.py"),
     Path("app/domain/labor_release_processing.py"),
+    Path("app/domain/state_duration.py"),
 ]
 
 # Forbidden if an imported module IS one of these, or is a submodule of
@@ -77,7 +78,7 @@ class TestDomainLayerArchitecturalIndependence:
         catches a new, not-yet-forbidden-by-name dependency too, not
         just the ones already known to be risky."""
         allowed_prefixes = ("app.models.",)
-        stdlib_or_builtin_ok = {"typing", "datetime", "__future__", "math"}
+        stdlib_or_builtin_ok = {"typing", "datetime", "__future__", "math", "dataclasses"}
 
         for file_path in DOMAIN_FILES:
             for module_name in _imported_module_names(file_path):
@@ -154,3 +155,32 @@ class TestDomainLayerArchitecturalIndependence:
         imported = _imported_module_names(Path("app/domain/labor_release_processing.py"))
         forbidden = {m for m in imported if m.startswith("app.domain.")}
         assert forbidden == set(), f"app/domain/labor_release_processing.py must not import another domain module: {forbidden}"
+
+    def test_state_duration_domain_module_imports_no_other_domain_module(self):
+        """Increment #24C: app/domain/state_duration.py -- the pure,
+        domain-agnostic sequence/counting helper behind State Duration
+        V1 (`docs/product/state-duration-v1.md` §29) -- must not import
+        app.domain.inflation, app.domain.labor, or any other domain
+        module. It must not know how Core PCE momentum, PAYEMS/UNRATE
+        deadbands, or either monitor's own state tables work, only how
+        to walk an already-built sequence of (period, state) points and
+        compare state values for equality -- the same "each domain
+        module independent of every other one" discipline every other
+        guard in this file already proves, extended to this new,
+        narrowly-justified shared pure helper."""
+        imported = _imported_module_names(Path("app/domain/state_duration.py"))
+        forbidden = {m for m in imported if m.startswith("app.domain.")}
+        assert forbidden == set(), f"app/domain/state_duration.py must not import another domain module: {forbidden}"
+
+    def test_state_duration_domain_module_imports_no_app_models(self):
+        """Stricter than every other guard in this file: unlike every
+        other domain module (which legitimately imports its own
+        `app.models.*` result shapes), `app/domain/state_duration.py`
+        imports NO `app.models` module at all -- it has zero series,
+        methodology, or result-shape knowledge of any kind, only
+        standard-library sequence/dataclass primitives (frozen contract
+        §29: "no economic logic, no series knowledge, no methodology
+        knowledge inside it")."""
+        imported = _imported_module_names(Path("app/domain/state_duration.py"))
+        forbidden = {m for m in imported if m.startswith("app.models.") or m == "app.models"}
+        assert forbidden == set(), f"app/domain/state_duration.py must not import app.models: {forbidden}"

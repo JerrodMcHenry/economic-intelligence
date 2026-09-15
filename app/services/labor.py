@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from app.domain.labor import (
     compute_labor_monitor_result,
     compute_labor_monitor_result_at,
+    month_before,
     month_over_month_labor_periods,
 )
 from app.domain.labor_what_changed import (
@@ -37,9 +38,12 @@ from app.domain.labor_what_changed import (
     compare_labor_state,
     compare_unemployment_section,
 )
+from app.domain.state_duration import StateDurationPoint, evaluate_state_duration
 from app.models.labor import (
     CONDITION_DEADBAND_JOBS,
+    DATA_BASIS,
     LaborMonitorResult,
+    METHODOLOGY_ID,
     MOMENTUM_DEADBAND_JOBS,
     PAYEMS_SERIES_ID,
     UNEMPLOYMENT_DEADBAND_PP,
@@ -47,7 +51,15 @@ from app.models.labor import (
 )
 from app.models.labor_what_changed import LaborWhatChangedResult
 from app.models.series import Observation
+from app.models.state_duration import HISTORY_TYPE, StateDurationAvailable, StateDurationCurrentInsufficient, StateDurationResult
 from app.repositories.series_repository import SeriesRepository
+
+# Frozen (`docs/product/state-duration-v1.md` §11): the identical 60
+# calendar months as `InflationMonitorService`'s own constant, defined
+# independently here (not imported from a shared location) -- same
+# "no shared calendar/policy utility" discipline as `month_before`'s
+# own per-domain duplication (§7/§11).
+_STATE_DURATION_LOOKBACK_BOUND_MONTHS = 60
 
 
 class LaborMonitorService:
@@ -138,6 +150,69 @@ class LaborMonitorService:
             employment_changes=employment_changes,
             unemployment_changes=unemployment_changes,
             current_labor_result=current_result,
+        )
+
+    def get_state_duration_result(self, session: Session) -> StateDurationResult:
+        """The complete canonical State Duration V1 result
+        (`docs/product/state-duration-v1.md`) for Labor's own top-level
+        canonical state -- `LaborMonitorResult.state` (`LaborState`),
+        the current anchor period being `LaborMonitorResult.evaluation_period`
+        (frozen contract §4/§5). Latest-revised reconstruction only
+        (§1): every reconstructed point below is produced by
+        `compute_labor_monitor_result_at`, unmodified, never a new
+        formula or a second methodology. Reads only PAYEMS's and
+        UNRATE's own observations, already-loaded once (§30, below).
+        """
+        repo = SeriesRepository(session)
+        payems_observations = self._load(repo, PAYEMS_SERIES_ID)
+        unrate_observations = self._load(repo, UNRATE_SERIES_ID)
+
+        current = compute_labor_monitor_result(
+            payems_observations=payems_observations,
+            unrate_observations=unrate_observations,
+            condition_deadband_jobs=CONDITION_DEADBAND_JOBS,
+            momentum_deadband_jobs=MOMENTUM_DEADBAND_JOBS,
+            unemployment_deadband_pp=UNEMPLOYMENT_DEADBAND_PP,
+        )
+        if current.state == "INSUFFICIENT_DATA" or current.evaluation_period is None:
+            # Unified per §14: a null current period always co-occurs
+            # with INSUFFICIENT_DATA in this domain's existing code; no
+            # duration is computed or implied in this case.
+            return StateDurationCurrentInsufficient(methodology_id=METHODOLOGY_ID, data_basis=DATA_BASIS)
+
+        anchor_period = current.evaluation_period
+
+        # Load-once strategy (§30): `payems_observations`/
+        # `unrate_observations` were already fetched by the two `_load`
+        # calls above (one call per required series); every point below
+        # is a pure, in-memory `_at` call over those same lists -- zero
+        # additional database round-trips.
+        sequence: list[StateDurationPoint] = []
+        for months_back in range(_STATE_DURATION_LOOKBACK_BOUND_MONTHS):
+            period = month_before(anchor_period, months_back)
+            result_at = compute_labor_monitor_result_at(
+                payems_observations,
+                unrate_observations,
+                period,
+                CONDITION_DEADBAND_JOBS,
+                MOMENTUM_DEADBAND_JOBS,
+                UNEMPLOYMENT_DEADBAND_PP,
+            )
+            sequence.append(StateDurationPoint(period=period, state=result_at.state))
+
+        evaluation = evaluate_state_duration(sequence, _STATE_DURATION_LOOKBACK_BOUND_MONTHS)
+
+        return StateDurationAvailable(
+            state=current.state,
+            evaluation_period=anchor_period,
+            duration_months=evaluation.duration_months,
+            earliest_confirmed_period=evaluation.earliest_confirmed_period,
+            boundary_type=evaluation.boundary_type,
+            previous_state=evaluation.previous_state,
+            previous_period=evaluation.previous_period,
+            methodology_id=METHODOLOGY_ID,
+            data_basis=DATA_BASIS,
+            history_type=HISTORY_TYPE,
         )
 
     @staticmethod

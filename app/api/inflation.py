@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.db.session import session_scope
 from app.models.inflation import InflationMonitorResult
 from app.models.inflation_what_changed import InflationWhatChangedResult
+from app.models.state_duration import StateDurationResult
 from app.services.inflation import InflationMonitorService
 
 router = APIRouter(prefix="/monitors", tags=["monitors"])
@@ -81,3 +82,37 @@ def get_inflation_what_changed() -> InflationWhatChangedResult:
         raise HTTPException(status_code=503, detail="Database is currently unavailable.")
     except SQLAlchemyError:
         raise HTTPException(status_code=500, detail="Database error while reading inflation what-changed data.")
+
+
+@router.get("/inflation/state-duration", response_model=StateDurationResult)
+def get_inflation_state_duration() -> StateDurationResult:
+    """The canonical State Duration V1 result
+    (`docs/product/state-duration-v1.md`) for Inflation's own top-level
+    canonical state (`underlying_momentum.state`) -- a **latest-revised
+    reconstruction only** (§1 of the frozen contract): never recorded
+    history, never a reconstruction of what was knowable at the time.
+    Computed entirely from
+    already-persisted Core PCE observations, by re-evaluating
+    `inflation_v1.0`'s own existing, unmodified classification rule
+    (`compute_series_momentum_at`) at explicit prior calendar periods --
+    never a second methodology.
+
+    The current state itself being `INSUFFICIENT_DATA` (or having no
+    evaluable period) is NOT an error: it is reported as
+    `status: "CURRENT_INSUFFICIENT"` within a normal 200 response.
+    Every other outcome (`EXACT`/`DATA_BOUNDED`/`LOOKBACK_BOUNDED`
+    boundary types) is also a normal 200 response. Only a genuine
+    database/infrastructure failure returns a non-200 response.
+    """
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Database is not configured on this server.")
+
+    service = InflationMonitorService()
+
+    try:
+        with session_scope() as session:
+            return service.get_state_duration_result(session)
+    except OperationalError:
+        raise HTTPException(status_code=503, detail="Database is currently unavailable.")
+    except SQLAlchemyError:
+        raise HTTPException(status_code=500, detail="Database error while reading inflation state duration data.")

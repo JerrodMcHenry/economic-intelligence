@@ -26,6 +26,9 @@ from sqlalchemy.orm import Session
 
 from app.domain.inflation import (
     compute_inflation_monitor_result,
+    compute_series_momentum,
+    compute_series_momentum_at,
+    month_before,
     month_over_month_confirmation,
     month_over_month_series_momentum,
     month_over_month_target,
@@ -36,16 +39,29 @@ from app.domain.inflation_what_changed import (
     compare_series_momentum_section,
     compare_target_section,
 )
+from app.domain.state_duration import StateDurationPoint, evaluate_state_duration
 from app.models.inflation import (
     CONFIRMATION_SERIES_ID,
+    DATA_BASIS,
     HEADLINE_CPI_SERIES_ID,
     InflationMonitorResult,
+    METHODOLOGY_ID,
     PRIMARY_SERIES_ID,
     TARGET_SERIES_ID,
 )
 from app.models.inflation_what_changed import InflationWhatChangedResult
 from app.models.series import Observation
+from app.models.state_duration import HISTORY_TYPE, StateDurationAvailable, StateDurationCurrentInsufficient, StateDurationResult
 from app.repositories.series_repository import SeriesRepository
+
+# Frozen (`docs/product/state-duration-v1.md` §11): 60 calendar months,
+# the same order-of-magnitude tradeoff already defended and shipped by
+# `app.domain.release_processing.five_year_observation_start`. Defined
+# independently here (not imported from a shared location) -- the same
+# "no shared calendar/policy utility, each domain computes its own"
+# discipline `month_before`'s own per-domain duplication already
+# established (§7/§11).
+_STATE_DURATION_LOOKBACK_BOUND_MONTHS = 60
 
 
 class InflationMonitorService:
@@ -161,6 +177,56 @@ class InflationMonitorService:
             headline_pce_changes=headline_pce_changes,
             headline_cpi_changes=headline_cpi_changes,
             current_monitor_result=current_monitor_result,
+        )
+
+    def get_state_duration_result(self, session: Session) -> StateDurationResult:
+        """The complete canonical State Duration V1 result
+        (`docs/product/state-duration-v1.md`) for Inflation's own
+        top-level canonical state -- `underlying_momentum.state`
+        (`InflationState`), the current anchor period being
+        `underlying_momentum.calculation_period` (frozen contract §4/§5).
+        Latest-revised reconstruction only (§1): every reconstructed
+        point below is produced by `compute_series_momentum_at`,
+        unmodified, never a new formula or a second methodology. Reads
+        only Core PCE's (`PCEPILFE`) own observations -- Confirmation's,
+        Target's, and Headline's own availability never affect this
+        result (§24), and this method never touches those series.
+        """
+        repo = SeriesRepository(session)
+        primary_observations = self._load(repo, PRIMARY_SERIES_ID)
+
+        current = compute_series_momentum(primary_observations, PRIMARY_SERIES_ID)
+        if current.state == "INSUFFICIENT_DATA" or current.calculation_period is None:
+            # Unified per §14: a null current period always co-occurs
+            # with INSUFFICIENT_DATA in this domain's existing code; no
+            # duration is computed or implied in this case.
+            return StateDurationCurrentInsufficient(methodology_id=METHODOLOGY_ID, data_basis=DATA_BASIS)
+
+        anchor_period = current.calculation_period
+
+        # Load-once strategy (§30): `primary_observations` was already
+        # fetched by the single `_load` call above; every point below
+        # is a pure, in-memory `_at` call over that same list -- zero
+        # additional database round-trips.
+        sequence: list[StateDurationPoint] = []
+        for months_back in range(_STATE_DURATION_LOOKBACK_BOUND_MONTHS):
+            period = month_before(anchor_period, months_back)
+            result_at = compute_series_momentum_at(primary_observations, PRIMARY_SERIES_ID, period)
+            sequence.append(StateDurationPoint(period=period, state=result_at.state))
+
+        evaluation = evaluate_state_duration(sequence, _STATE_DURATION_LOOKBACK_BOUND_MONTHS)
+
+        return StateDurationAvailable(
+            state=current.state,
+            evaluation_period=anchor_period,
+            duration_months=evaluation.duration_months,
+            earliest_confirmed_period=evaluation.earliest_confirmed_period,
+            boundary_type=evaluation.boundary_type,
+            previous_state=evaluation.previous_state,
+            previous_period=evaluation.previous_period,
+            methodology_id=METHODOLOGY_ID,
+            data_basis=DATA_BASIS,
+            history_type=HISTORY_TYPE,
         )
 
     @staticmethod
