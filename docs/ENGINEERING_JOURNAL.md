@@ -9643,3 +9643,115 @@ content and backend behavior, not design-system defects; candidates for
   database hid the one width defect that mattered: a `1fr` column is
   harmless when every row reads "unavailable", and broken once real
   deltas appear.
+
+## Increment #28 — Product Discovery & Data Feasibility (implementation deliberately paused)
+
+Research and product definition only. No production code, no architecture
+change, no SRS, no database touched, nothing committed. Baseline: HEAD
+`225b5f6` (#27B), clean tree.
+
+### Why implementation stopped
+
+Eight increments produced a deterministic economic-intelligence engine that
+works. What none of them established is **that anyone wants it**. #27A
+surfaced a broader thesis — cross-market intelligence across economy, rates,
+equities, FX and crypto — and the honest response to a thesis that large was
+to test it before building on it, not after. Writing an SRS first would have
+encoded assumptions this increment then proved false.
+
+Two of those assumptions were false in ways that would have been expensive to
+discover in code:
+
+1. **Two of the five proposed domains cannot be licensed at $0.** Equity index
+   levels are licensed products with no free commercial tier, and — verified in
+   the CTA plan's own policy — delayed data receives *no* relief for index
+   information. The free equity sources with usable closes (Stooq, Yahoo)
+   carry express written prohibitions, not ambiguity. Crypto is capped at ~365
+   days of history on the commercially-licensed aggregators, or needs a signed
+   agreement of unknown cost.
+2. **The "expected vs actual" frame is legally unavailable.** Release-level
+   economist consensus and analyst EPS consensus have no free commercial
+   source, and CME licenses *derived* data — so recomputing FedWatch-style
+   probabilities from settlement prices is barred just as republishing them is.
+   A UI promising an "Expected" column could not have been filled.
+
+### What the research established
+
+- **Free-to-access is not free-to-use.** Only public-domain US government data
+  (BLS, Board of Governors, Treasury) and a small set of explicit grants (NY
+  Fed rates, ECB reference rates, Treasury Fiscal Data) are usable in a paid
+  product. FRED specifically carries three problems: a prohibition on apps that
+  "replicate the essential user experience", a per-user API-key clause that sits
+  badly with multi-tenant SaaS, and ~210,000 series whose grant covers internal
+  commercial use rather than public redistribution.
+- **A load-bearing design consequence:** breakevens and curve spreads are
+  arithmetic over public-domain inputs. Computing them in-house instead of
+  consuming FRED's `T10YIE`/`T10Y2Y` converts an amber dependency into a clean
+  one at zero cost. The same reasoning removes FRED from the critical path
+  generally: source direct from BLS/Board/Treasury, use ALFRED for vintages.
+- **The competitive position is weak.** ORCA's Macro Dashboard ($29-35/mo)
+  already ships regime classification with cross-asset confirmation, historical
+  analogs with forward-return probabilities, and per-signal hit rates.
+  MacroMicro (~$27-30/mo) is bundling "traceable, verifiable" AI into existing
+  subscriptions free. A hobbyist site answers "what is today's regime and what
+  changed" for $0. The investor pool is flat (FINRA: new-investor inflow fell
+  21% → 8%), and the $10-50 band is the most crowded shelf in the category
+  while the actual target customer demonstrably pays $55-165/mo elsewhere.
+
+### The one finding that reuses what already exists
+
+No reviewed product handles **point-in-time correctness** — what was knowable
+when, and how a revision changed the answer. ALFRED has vintages but no
+analysis; every analysis product silently uses revised data, including in
+backtests. That is precisely the discipline this repository already enforces:
+`NEW`/`REVISED`/`UNCHANGED` classification, append-only recorded results,
+release-processing audit rows, and a shipped disclosure that refuses to pass a
+reconstruction off as a real-time record.
+
+It is a real moat and an unproven purchase reason. Both halves are stated in
+the artifact.
+
+### Boundary work, reusing an already-frozen decision
+
+`relate-compare-audit-v1.md` §11 and `relate-composition-v1.md` §2 already
+prohibit cross-domain "confirms"/"diverges" language as inference. #28 did not
+reopen that. Instead it found that **"market vs data" is same-concept
+confirmation (Class A), not cross-domain (Class C)**: a breakeven and a
+realized CPI rate measure one concept by two constructions, exactly as Core PCE
+and Core CPI already do. So "are markets pricing the same inflation story?" is
+canonical, while "are equities confirming labor?" stays prohibited — and would
+stay prohibited even if the equity data were free.
+
+Related: market series should get **percentiles, not invented thresholds**. The
+existing neutral bands (0.10pp; 50,000 jobs) are frozen constants asserted by
+methodology — defensible for a monthly aggregate, much less so for a daily
+market series whose volatility varies by regime. "Larger than 94% of 5-session
+moves since 2003" needs no threshold and says more.
+
+### Verdict
+
+**NO-GO on the current thesis.** Not because the engineering is weak, but
+because the market research does not support it, and choosing GO on the
+strength of work already invested is exactly the failure this increment
+existed to prevent. A narrower thesis — revision-aware, evidence-first
+inflation-and-rates intelligence — survives feasibility and is buildable at $0,
+but is unvalidated as a business. The artifact's §25 names five cheap
+validation steps, two of which (licensing letters, a hand-written concierge
+brief) can kill or redirect the project without any code.
+
+### Artifact
+
+`docs/product/macrochipz-product-discovery-data-feasibility-v1.md` — 26
+sections, every licensing and pricing claim sourced to official documentation
+with access dates, and unresolved items marked UNKNOWN — REQUIRES VERIFICATION
+rather than guessed. No ADR: this increment made no durable architectural
+decision. No SRS and no architecture change, both deliberately deferred.
+
+### Lesson
+
+**Feasibility research is cheaper than a rewrite, and the licensing question is
+the one most likely to be skipped.** "Free to access" and "free to use in a
+commercial product" differ on almost every source that matters, and the
+difference is only visible in terms-of-use pages nobody reads until something
+depends on them. Two days of reading changed the domain scope, removed a
+headline feature, and reversed the build decision.
