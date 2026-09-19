@@ -554,7 +554,7 @@ structurally, not just by convention, and were each verified directly
   same, unmodified `EconomicDataService`/`AnalysisService` methods every
   HTTP endpoint already uses.
 
-## Frontend architecture (Increment #19A: Economic Overview UI V1; extended #19C: Latest Data Detected UI; extended #20E.2: Labor UI + Overview Integration; extended #22B: Overview Attention & Navigation, "Latest Data Detected" renamed "Recent Data Updates"; extended #23C: Relate V1 composition; extended #24D: State Duration V1 UI; extended #25H: Since Last Visit V1 return experience)
+## Frontend architecture (Increment #19A: Economic Overview UI V1; extended #19C: Latest Data Detected UI; extended #20E.2: Labor UI + Overview Integration; extended #22B: Overview Attention & Navigation, "Latest Data Detected" renamed "Recent Data Updates"; extended #23C: Relate V1 composition; extended #24D: State Duration V1 UI; extended #25H: Since Last Visit V1 return experience; extended #27B: MacroChipz design system, shell, Home, theme)
 
 ```
 Browser
@@ -603,7 +603,57 @@ response objects). Tailwind gives a lightweight styling foundation with
 no component-library or design-token system to invent yet. Vitest +
 React Testing Library provide frontend regression coverage using the
 same Vite toolchain, rather than a second, separately-configured test
-runner.
+runner. (The "no design-token system yet" position above was superseded
+by Increment #27B — see the next section.)
+
+**MacroChipz design foundation (Increment #27B).** The public brand
+(MacroChipz, with "Economic Intelligence" as its category descriptor)
+lives only at the presentation layer: document title, shell wordmark,
+footer, and Home. Repository, package, API, database, storage-key, and
+in-product engine copy ("Economic Intelligence classifies…") are
+deliberately unchanged.
+
+- *Semantic tokens* — `frontend/src/styles/globals.css` defines one
+  token layer (`--mc-*`) twice, for `:root` (light) and
+  `:root[data-theme="dark"]`, each value chosen independently (never an
+  inversion), and binds it to Tailwind utilities (`bg-canvas`,
+  `bg-surface*`, `text-fg*`, `border-line*`, `bg-brand`, `feedback-*`,
+  `state-*`). Components consume these names, never raw palette
+  utilities, for anything carrying meaning. Four disjoint families:
+  structure (surfaces/text/borders), brand/interaction, generic
+  **feedback** (success/error/warning/info), and **economic state**
+  (cool/neutral/warm/caution/unavailable). Economic state tokens are
+  never defined in terms of feedback tokens — a classification is not a
+  verdict — enforced by `frontend/src/design/stateTone.test.ts`.
+  `frontend/src/design/stateTone.ts` owns the `Tone` type and its
+  token-backed class maps (re-exported from `lib/inflationLabels.ts` so
+  domain imports are unchanged; every canonical-state → tone mapping is
+  unmodified).
+- *Typography* — system font stack (no web font), with named roles as
+  Tailwind `@utility` classes (`type-display`, `type-page-title`,
+  `type-section-heading`, `type-card-heading`, `type-label`,
+  `type-meta`, `type-numeric`); tables and `<time>`/`<data>` use tabular
+  numerals globally.
+- *Shell and width* — `layouts/AppShell.tsx` owns background, header
+  (brand, primary nav, theme control), main landmark, page spacing, and
+  footer. `components/PageContainer.tsx` (`max-w-app`, 76rem) is the ONE
+  width authority; the former per-page `max-w-3xl` wrappers (#27A's
+  "double width constraint") are removed; only content that needs a reading
+  measure caps itself (`max-w-prose` paragraphs, the What Changed
+  comparison tables at `max-w-3xl`), never a whole page. Pages share
+  `components/PageHeader.tsx`. Primary navigation is exactly Home ·
+  Overview · Inflation · Labor · Releases; below `md` the same single
+  list collapses behind an `aria-expanded` Menu button (Escape closes).
+- *Routes* — `/` is Home (`pages/Home.tsx`, static: no fetch, no live
+  economic conclusion); Overview moved from `/` to `/overview`.
+- *Theme* — Light / Dark / System. `frontend/index.html` carries a small
+  inline script that resolves the persisted preference (localStorage key
+  `economic-intelligence:theme`, untrusted → `system`) or
+  `prefers-color-scheme` and sets `data-theme` before first paint;
+  `theme/ThemeProvider.tsx` then keeps it in sync (including live OS
+  changes while on System). `theme/theme.test.ts` executes the inline
+  script itself to keep the two implementations in agreement. Theme
+  changes token values only — never which state, label, or tone renders.
 
 **Directory structure:**
 
@@ -625,6 +675,7 @@ frontend/
                                      re-fetches on its own write (see "Since Last Visit V1" below)
     components/
       PageContainer.tsx, Disclosure.tsx, LoadingSkeleton.tsx, ErrorMessage.tsx
+      PageHeader.tsx, Section.tsx, Card.tsx, ThemeToggle.tsx   Increment #27B shell/Home primitives
       explanations/  ExplanationTrigger.tsx -- the one reusable "i" progressive-
                       disclosure primitive both product surfaces below reuse
                       (Increment #17C)
@@ -688,9 +739,11 @@ frontend/
                       labor.ts (Increment #20E.2, mirroring inflation.ts's
                       exact lookup-by-canonical-value shape independently),
                       releases.ts, processingStatus.ts
-    layouts/     the application shell (AppShell: header, nav, main) --
-                 nav order Overview → Inflation → Labor → Releases
-                 (Increment #20E.2), no placeholder items for future domains
+    layouts/     the application shell (AppShell: header, nav, theme
+                 control, main, footer) -- nav order Home → Overview →
+                 Inflation → Labor → Releases (Increment #27B; Labor between
+                 Inflation and Releases since #20E.2), no placeholder items
+                 for future domains
     lib/         format.ts (presentation-only formatting, plus the
                  domain-agnostic humanizeEnumValue fallback added in
                  #20E.2), inflationLabels.ts (Inflation state/relationship →
@@ -728,10 +781,16 @@ frontend/
                  pure copy templates over the already-categorized backend
                  response, mirroring stateDurationCopy.ts's own "zero economic
                  content" boundary)
-    pages/       one component per route (Overview -- the real Economic
-                 Overview, now genuinely multi-domain as of #20E.2; Inflation;
+    pages/       one component per route (Home -- `/`, Increment #27B;
+                 Overview -- the real Economic Overview at `/overview`
+                 since #27B, genuinely multi-domain as of #20E.2; Inflation;
                  Labor, Increment #20E.2; Releases; NotFound)
-    styles/      global.css (Tailwind entry + minimal visual foundation)
+    design/      stateTone.ts (Increment #27B -- the domain-neutral Tone
+                 taxonomy's token-backed class maps)
+    theme/       theme.ts, ThemeProvider.tsx, themeContext.ts (Increment
+                 #27B -- Light/Dark/System preference)
+    styles/      globals.css (Tailwind entry + the #27B semantic token
+                 layer, typography roles, base styles)
     test/        Vitest setup, fixtures/, the no-economic-logic,
                  no-release-sync-or-coupling, no-explanation-classification-logic,
                  no-overview-mutation, (Increment #23C) no-relate-inference, and
@@ -959,7 +1018,8 @@ applying it to every existing page in this increment.
 **The Economic Overview page** (`frontend/src/pages/Overview.tsx`,
 Increment #19A, extended by #19C, restructured to a genuine multi-domain
 peer layout by #20E.2, extended again by #22B's attention/navigation
-work) is the real `/` route, replacing the Increment #16A placeholder.
+work) was the real `/` route, replacing the Increment #16A placeholder,
+until Increment #27B moved it to `/overview` (Home now owns `/`).
 It composes seven existing, unmodified canonical read functions —
 `getInflationMonitor`/`getInflationWhatChanged`/`getLaborMonitor`/
 `getLaborWhatChanged`/`fetchReleaseProcessingStatus`/`fetchUpcomingReleases`/

@@ -24,20 +24,20 @@ export function ExplanationTrigger({ explanation }: { explanation: Explanation }
     <details className="group inline-block align-middle">
       <summary
         aria-label={`What does ${explanation.title} mean?`}
-        className="inline-flex h-4 w-4 cursor-pointer select-none list-none items-center justify-center rounded-full text-[0.65rem] font-semibold leading-none text-neutral-400 ring-1 ring-inset ring-neutral-300 hover:text-neutral-600 hover:ring-neutral-400 group-open:bg-neutral-100 group-open:text-neutral-700 [&::-webkit-details-marker]:hidden"
+        className="inline-flex h-4 w-4 cursor-pointer select-none list-none items-center justify-center rounded-full text-[0.65rem] font-semibold leading-none text-fg-muted ring-1 ring-inset ring-line-strong hover:text-fg-secondary hover:ring-fg-muted group-open:bg-surface-secondary group-open:text-fg-secondary [&::-webkit-details-marker]:hidden"
       >
         i
       </summary>
-      <div className="mt-2 max-w-sm rounded-md border border-neutral-200 bg-white p-3 text-sm">
-        <p className="font-semibold text-neutral-900">{explanation.title}</p>
-        <p className="mt-1 text-neutral-700">{explanation.definition}</p>
+      <div className="mt-2 max-w-sm rounded-md border border-line bg-surface p-3 text-sm">
+        <p className="font-semibold text-fg">{explanation.title}</p>
+        <p className="mt-1 text-fg-secondary">{explanation.definition}</p>
         {explanation.whyItMatters && (
-          <p className="mt-2 text-neutral-600">
-            <span className="font-medium text-neutral-500">Why it matters: </span>
+          <p className="mt-2 text-fg-secondary">
+            <span className="font-medium text-fg-muted">Why it matters: </span>
             {explanation.whyItMatters}
           </p>
         )}
-        {explanation.sourceNote && <p className="mt-2 text-xs text-neutral-400">{explanation.sourceNote}</p>}
+        {explanation.sourceNote && <p className="mt-2 text-xs text-fg-muted">{explanation.sourceNote}</p>}
       </div>
     </details>
   );

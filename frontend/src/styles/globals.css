@@ -1,25 +1,305 @@
-/* Global visual foundation for Economic Intelligence.
+/* MacroChipz design foundation (Increment #27B).
  *
- * Deliberately small: Tailwind's own default neutral palette and
- * spacing scale are used directly in components rather than an
- * extended/custom `@theme` -- there is nothing product-specific to
- * encode yet. Economic-state color/iconography (COOLING/STABLE/
- * HEATING/MIXED/INSUFFICIENT_DATA) is explicitly deferred to the
- * Inflation Monitor UI (#16B) -- see docs/architecture/current-architecture.md.
+ * One semantic token layer, defined twice -- once per theme -- and
+ * exposed to Tailwind as color utilities (`bg-surface`, `text-fg-muted`,
+ * `border-line`, `text-state-cool`, ...). Components consume these
+ * semantic names, never raw palette utilities (`text-neutral-500`,
+ * `bg-sky-50`) for anything carrying meaning; raw utilities remain fine
+ * for pure layout (spacing, flex, grid). See
+ * docs/product/product-ui-ux-v1.md §14-18 for the contract.
+ *
+ * Four deliberately disjoint token families:
+ *
+ *   1. Surfaces / text / borders -- structure and hierarchy.
+ *   2. Brand / interaction       -- the one accent, focus, selection.
+ *   3. Feedback                  -- generic UI outcomes (success/error/
+ *                                   warning/info). Never economic meaning.
+ *   4. Economic state            -- the five domain-neutral tones
+ *                                   (cool/neutral/warm/caution/unavailable).
+ *
+ * HARD RULE: family 4 is never defined in terms of family 3 (or vice
+ * versa). "Cooling" is not success and "Heating" is not error -- an
+ * economic state is a classification, not a verdict. Guarded by
+ * src/design/stateTone.test.ts.
+ *
+ * Theme selection: `data-theme="light" | "dark"` on <html>, set before
+ * first paint by the inline script in index.html and kept in sync by
+ * src/theme/ThemeProvider.tsx. Dark values are chosen independently for
+ * contrast, never produced by inverting light values.
  */
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------ */
+/* Light theme (default)                                                */
+/* ------------------------------------------------------------------ */
 :root {
   color-scheme: light;
+
+  /* Surfaces: an off-white canvas with cards a step lighter, so
+     hierarchy comes from luminance + hairline borders, not shadows. */
+  --mc-canvas: oklch(0.972 0.003 255);
+  --mc-surface: oklch(0.995 0.001 255);
+  --mc-surface-secondary: oklch(0.948 0.004 255);
+  --mc-surface-elevated: oklch(1 0 0);
+  --mc-surface-subtle: oklch(0.982 0.002 255);
+
+  /* Text */
+  --mc-fg: oklch(0.22 0.018 262);
+  --mc-fg-secondary: oklch(0.39 0.016 262);
+  --mc-fg-muted: oklch(0.5 0.014 262);
+  --mc-fg-faint: oklch(0.74 0.008 262); /* decorative glyphs only -- never readable text */
+  --mc-fg-inverse: oklch(0.985 0.002 255);
+
+  /* Borders */
+  --mc-line: oklch(0.9 0.006 258);
+  --mc-line-strong: oklch(0.79 0.01 258);
+  --mc-line-subtle: oklch(0.935 0.004 258);
+
+  /* Brand / interaction: a restrained ink-indigo, kept well away from
+     the state-cool hue so the brand never reads as an economic signal. */
+  --mc-brand: oklch(0.43 0.13 274);
+  --mc-brand-hover: oklch(0.37 0.13 274);
+  --mc-brand-fg: oklch(0.99 0.003 274);
+  --mc-brand-subtle: oklch(0.95 0.022 274);
+  --mc-focus: oklch(0.5 0.17 274);
+  --mc-selected: oklch(0.93 0.03 274);
+  --mc-selected-fg: oklch(0.33 0.12 274);
+
+  /* Feedback (generic UI outcomes only) */
+  --mc-feedback-success: oklch(0.46 0.11 150);
+  --mc-feedback-success-subtle: oklch(0.965 0.03 150);
+  --mc-feedback-success-line: oklch(0.83 0.07 150);
+  --mc-feedback-error: oklch(0.5 0.18 25);
+  --mc-feedback-error-subtle: oklch(0.967 0.018 25);
+  --mc-feedback-error-line: oklch(0.84 0.07 25);
+  --mc-feedback-warning: oklch(0.5 0.12 62);
+  --mc-feedback-warning-subtle: oklch(0.967 0.03 70);
+  --mc-feedback-warning-line: oklch(0.84 0.08 70);
+  --mc-feedback-info: oklch(0.47 0.1 250);
+  --mc-feedback-info-subtle: oklch(0.965 0.017 250);
+  --mc-feedback-info-line: oklch(0.84 0.05 250);
+
+  /* Economic state (domain-neutral classifications). Deliberately
+     earthier / lower-chroma than feedback colors: calm reinforcement of
+     a text label, never an alarm. */
+  --mc-state-cool: oklch(0.45 0.09 228);
+  --mc-state-cool-subtle: oklch(0.962 0.018 228);
+  --mc-state-cool-line: oklch(0.83 0.045 228);
+  --mc-state-neutral: oklch(0.39 0.014 262);
+  --mc-state-neutral-subtle: oklch(0.95 0.004 262);
+  --mc-state-neutral-line: oklch(0.83 0.01 262);
+  --mc-state-warm: oklch(0.47 0.11 45);
+  --mc-state-warm-subtle: oklch(0.962 0.022 48);
+  --mc-state-warm-line: oklch(0.84 0.055 48);
+  --mc-state-caution: oklch(0.46 0.085 80);
+  --mc-state-caution-subtle: oklch(0.965 0.032 88);
+  --mc-state-caution-line: oklch(0.84 0.065 85);
+  --mc-state-unavailable: oklch(0.5 0.01 262);
+  --mc-state-unavailable-subtle: oklch(0.975 0.002 262);
+  --mc-state-unavailable-line: oklch(0.87 0.005 262);
+}
+
+/* ------------------------------------------------------------------ */
+/* Dark theme -- same roles, independently chosen values               */
+/* ------------------------------------------------------------------ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --mc-canvas: oklch(0.17 0.008 262);
+  --mc-surface: oklch(0.205 0.01 262);
+  --mc-surface-secondary: oklch(0.25 0.012 262);
+  --mc-surface-elevated: oklch(0.235 0.011 262);
+  --mc-surface-subtle: oklch(0.187 0.009 262);
+
+  --mc-fg: oklch(0.94 0.006 262);
+  --mc-fg-secondary: oklch(0.81 0.01 262);
+  --mc-fg-muted: oklch(0.69 0.012 262);
+  --mc-fg-faint: oklch(0.46 0.01 262);
+  --mc-fg-inverse: oklch(0.18 0.01 262);
+
+  --mc-line: oklch(0.3 0.01 262);
+  --mc-line-strong: oklch(0.4 0.012 262);
+  --mc-line-subtle: oklch(0.255 0.009 262);
+
+  --mc-brand: oklch(0.76 0.1 276);
+  --mc-brand-hover: oklch(0.82 0.08 276);
+  --mc-brand-fg: oklch(0.2 0.03 276);
+  --mc-brand-subtle: oklch(0.27 0.04 276);
+  --mc-focus: oklch(0.78 0.12 276);
+  --mc-selected: oklch(0.3 0.045 276);
+  --mc-selected-fg: oklch(0.9 0.04 276);
+
+  --mc-feedback-success: oklch(0.78 0.12 150);
+  --mc-feedback-success-subtle: oklch(0.25 0.035 150);
+  --mc-feedback-success-line: oklch(0.42 0.07 150);
+  --mc-feedback-error: oklch(0.76 0.13 25);
+  --mc-feedback-error-subtle: oklch(0.25 0.04 25);
+  --mc-feedback-error-line: oklch(0.44 0.09 25);
+  --mc-feedback-warning: oklch(0.8 0.11 70);
+  --mc-feedback-warning-subtle: oklch(0.26 0.035 70);
+  --mc-feedback-warning-line: oklch(0.45 0.07 70);
+  --mc-feedback-info: oklch(0.78 0.09 250);
+  --mc-feedback-info-subtle: oklch(0.25 0.03 250);
+  --mc-feedback-info-line: oklch(0.43 0.06 250);
+
+  --mc-state-cool: oklch(0.8 0.08 228);
+  --mc-state-cool-subtle: oklch(0.25 0.03 228);
+  --mc-state-cool-line: oklch(0.43 0.055 228);
+  --mc-state-neutral: oklch(0.82 0.01 262);
+  --mc-state-neutral-subtle: oklch(0.255 0.01 262);
+  --mc-state-neutral-line: oklch(0.42 0.012 262);
+  --mc-state-warm: oklch(0.8 0.095 50);
+  --mc-state-warm-subtle: oklch(0.26 0.035 48);
+  --mc-state-warm-line: oklch(0.45 0.065 48);
+  --mc-state-caution: oklch(0.83 0.09 85);
+  --mc-state-caution-subtle: oklch(0.26 0.035 85);
+  --mc-state-caution-line: oklch(0.46 0.06 85);
+  --mc-state-unavailable: oklch(0.66 0.01 262);
+  --mc-state-unavailable-subtle: oklch(0.2 0.008 262);
+  --mc-state-unavailable-line: oklch(0.33 0.01 262);
+}
+
+/* ------------------------------------------------------------------ */
+/* Tailwind bindings                                                    */
+/* ------------------------------------------------------------------ */
+@theme {
+  /* The ONE application content width (#27A §12). PageContainer is its
+     only consumer; pages never re-constrain themselves to a narrower
+     article column except for a genuinely prose-shaped element. */
+  --container-app: 76rem;
+}
+
+@theme inline {
+  --color-canvas: var(--mc-canvas);
+  --color-surface: var(--mc-surface);
+  --color-surface-secondary: var(--mc-surface-secondary);
+  --color-surface-elevated: var(--mc-surface-elevated);
+  --color-surface-subtle: var(--mc-surface-subtle);
+
+  --color-fg: var(--mc-fg);
+  --color-fg-secondary: var(--mc-fg-secondary);
+  --color-fg-muted: var(--mc-fg-muted);
+  --color-fg-faint: var(--mc-fg-faint);
+  --color-fg-inverse: var(--mc-fg-inverse);
+
+  --color-line: var(--mc-line);
+  --color-line-strong: var(--mc-line-strong);
+  --color-line-subtle: var(--mc-line-subtle);
+
+  --color-brand: var(--mc-brand);
+  --color-brand-hover: var(--mc-brand-hover);
+  --color-brand-fg: var(--mc-brand-fg);
+  --color-brand-subtle: var(--mc-brand-subtle);
+  --color-focus: var(--mc-focus);
+  --color-selected: var(--mc-selected);
+  --color-selected-fg: var(--mc-selected-fg);
+
+  --color-feedback-success: var(--mc-feedback-success);
+  --color-feedback-success-subtle: var(--mc-feedback-success-subtle);
+  --color-feedback-success-line: var(--mc-feedback-success-line);
+  --color-feedback-error: var(--mc-feedback-error);
+  --color-feedback-error-subtle: var(--mc-feedback-error-subtle);
+  --color-feedback-error-line: var(--mc-feedback-error-line);
+  --color-feedback-warning: var(--mc-feedback-warning);
+  --color-feedback-warning-subtle: var(--mc-feedback-warning-subtle);
+  --color-feedback-warning-line: var(--mc-feedback-warning-line);
+  --color-feedback-info: var(--mc-feedback-info);
+  --color-feedback-info-subtle: var(--mc-feedback-info-subtle);
+  --color-feedback-info-line: var(--mc-feedback-info-line);
+
+  --color-state-cool: var(--mc-state-cool);
+  --color-state-cool-subtle: var(--mc-state-cool-subtle);
+  --color-state-cool-line: var(--mc-state-cool-line);
+  --color-state-neutral: var(--mc-state-neutral);
+  --color-state-neutral-subtle: var(--mc-state-neutral-subtle);
+  --color-state-neutral-line: var(--mc-state-neutral-line);
+  --color-state-warm: var(--mc-state-warm);
+  --color-state-warm-subtle: var(--mc-state-warm-subtle);
+  --color-state-warm-line: var(--mc-state-warm-line);
+  --color-state-caution: var(--mc-state-caution);
+  --color-state-caution-subtle: var(--mc-state-caution-subtle);
+  --color-state-caution-line: var(--mc-state-caution-line);
+  --color-state-unavailable: var(--mc-state-unavailable);
+  --color-state-unavailable-subtle: var(--mc-state-unavailable-subtle);
+  --color-state-unavailable-line: var(--mc-state-unavailable-line);
+}
+
+/* ------------------------------------------------------------------ */
+/* Typography roles (#27A §18) -- system font stack, no web font.       */
+/* Color is applied separately so each role composes with any token.  */
+/* ------------------------------------------------------------------ */
+@utility type-display {
+  font-size: clamp(2rem, 1.35rem + 2.2vw, 3.25rem);
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+@utility type-page-title {
+  font-size: clamp(1.625rem, 1.4rem + 0.8vw, 2rem);
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+}
+
+@utility type-section-heading {
+  font-size: 1.25rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+@utility type-card-heading {
+  font-size: 1rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+@utility type-label {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+@utility type-meta {
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+/* Economic values: aligned, instantly scannable columns of figures. */
+@utility type-numeric {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ------------------------------------------------------------------ */
+/* Base                                                                 */
+/* ------------------------------------------------------------------ */
+html {
+  background-color: var(--mc-canvas);
 }
 
 body {
-  @apply bg-neutral-50 text-neutral-900 antialiased;
+  @apply bg-canvas text-fg antialiased;
+}
+
+/* Tabular evidence and machine-readable values always align. */
+table,
+time,
+data {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Visible keyboard focus everywhere -- state must never be conveyed by
    color alone, and that starts with focus itself being unmistakable. */
 :focus-visible {
-  outline: 2px solid #171717;
+  outline: 2px solid var(--mc-focus);
   outline-offset: 2px;
+}
+
+::selection {
+  background-color: var(--mc-selected);
+  color: var(--mc-fg);
 }

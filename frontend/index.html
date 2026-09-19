@@ -4,7 +4,36 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Economic Intelligence</title>
+    <meta
+      name="description"
+      content="MacroChipz turns trusted macroeconomic data into reproducible economic analysis — what changed, how conditions are evolving, and the evidence behind each conclusion."
+    />
+    <meta name="color-scheme" content="light dark" />
+    <title>MacroChipz — Economic Intelligence</title>
+    <!--
+      Theme, applied before first paint (no flash of the wrong theme).
+      Mirrors src/theme/theme.ts (THEME_STORAGE_KEY + resolveTheme);
+      src/theme/theme.test.ts keeps the two in agreement. Storage is
+      untrusted: any failure falls back to the system preference.
+    -->
+    <script>
+      (function () {
+        var preference = "system";
+        try {
+          var stored = window.localStorage.getItem("economic-intelligence:theme");
+          if (stored === "light" || stored === "dark" || stored === "system") preference = stored;
+        } catch (e) {}
+        var dark = preference === "dark";
+        if (preference === "system") {
+          try {
+            dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          } catch (e) {}
+        }
+        var root = document.documentElement;
+        root.dataset.theme = dark ? "dark" : "light";
+        root.style.colorScheme = dark ? "dark" : "light";
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

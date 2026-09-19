@@ -8,13 +8,13 @@
  */
 export function ErrorMessage({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div role="alert" className="rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-700">
+    <div role="alert" className="rounded-lg border border-line bg-surface p-4 text-sm text-fg-secondary">
       <p>{message}</p>
       {onRetry && (
         <button
           type="button"
           onClick={onRetry}
-          className="mt-2 rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          className="mt-2 rounded-md border border-line-strong px-3 py-1.5 text-sm font-medium text-fg-secondary hover:bg-surface-subtle"
         >
           Retry
         </button>

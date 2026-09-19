@@ -30,16 +30,16 @@ export function ReleaseCalendarSection({
   return (
     <section aria-labelledby={headingId}>
       <div className="flex items-center gap-1.5">
-        <h2 id={headingId} className="text-sm font-medium text-neutral-500">
+        <h2 id={headingId} className="text-sm font-medium text-fg-muted">
           {heading}
         </h2>
         <ExplanationTrigger explanation={SCHEDULED_DATE} />
       </div>
 
       {groups.length === 0 ? (
-        <p className="mt-3 text-sm text-neutral-500">{emptyMessage}</p>
+        <p className="mt-3 text-sm text-fg-muted">{emptyMessage}</p>
       ) : (
-        <ol className="mt-3 divide-y divide-neutral-200">
+        <ol className="mt-3 divide-y divide-line">
           {groups.map((group) => (
             <li key={group.scheduled_date} className="flex gap-4 py-4 first:pt-0">
               <ReleaseDateBadge date={group.scheduled_date} />

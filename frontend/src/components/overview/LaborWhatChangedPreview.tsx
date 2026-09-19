@@ -35,7 +35,7 @@ function AvailabilitySentence({ event }: { event: LaborChangeEvent }) {
   const fieldLabel = laborChangeFieldLabel(event.field);
   const verb = event.event_type === "AVAILABILITY_LOST" ? "became unavailable" : "became available";
   return (
-    <p className="text-sm text-neutral-700">
+    <p className="text-sm text-fg-secondary">
       {componentLabel} {fieldLabel.toLowerCase()} analysis {verb}.
     </p>
   );
@@ -47,9 +47,9 @@ function Tier1Line({ event }: { event: LaborChangeEvent }) {
     return <AvailabilitySentence event={event} />;
   }
   return (
-    <p className="text-sm font-semibold text-neutral-900">
+    <p className="text-sm font-semibold text-fg">
       Labor state: {formatChangeValue(event, event.previous_value)}
-      <span aria-hidden="true" className="mx-1.5 text-neutral-400">
+      <span aria-hidden="true" className="mx-1.5 text-fg-muted">
         →
       </span>
       {formatChangeValue(event, event.current_value)}
@@ -69,14 +69,14 @@ function StructuralRow({ event }: { event: LaborChangeEvent }) {
   }
   return (
     <li className="text-sm">
-      <span className="text-neutral-500">
+      <span className="text-fg-muted">
         {laborChangeComponentLabelOrRaw(event.component)} {laborChangeFieldLabel(event.field)}:{" "}
       </span>
-      <span className="font-medium text-neutral-900">{formatChangeValue(event, event.previous_value)}</span>
-      <span aria-hidden="true" className="mx-1.5 text-neutral-300">
+      <span className="font-medium text-fg">{formatChangeValue(event, event.previous_value)}</span>
+      <span aria-hidden="true" className="mx-1.5 text-fg-faint">
         →
       </span>
-      <span className="font-medium text-neutral-900">{formatChangeValue(event, event.current_value)}</span>
+      <span className="font-medium text-fg">{formatChangeValue(event, event.current_value)}</span>
     </li>
   );
 }
@@ -85,12 +85,12 @@ function StructuralRow({ event }: { event: LaborChangeEvent }) {
 function MetricRow({ event }: { event: LaborChangeEvent }) {
   return (
     <li className="text-sm">
-      <span className="text-neutral-500">
+      <span className="text-fg-muted">
         {laborChangeComponentLabelOrRaw(event.component)} {laborChangeFieldLabel(event.field)}
       </span>
-      <span className="ml-2 tabular-nums text-neutral-700">
+      <span className="ml-2 tabular-nums text-fg-secondary">
         {formatChangeValue(event, event.previous_value)}
-        <span aria-hidden="true" className="mx-1.5 text-neutral-300">
+        <span aria-hidden="true" className="mx-1.5 text-fg-faint">
           →
         </span>
         {formatChangeValue(event, event.current_value)}
@@ -126,15 +126,15 @@ export function LaborWhatChangedPreview({ events, comparisonAvailable }: { event
 
   return (
     <div>
-      <p className="text-sm font-semibold text-neutral-700">Labor</p>
+      <p className="text-sm font-semibold text-fg-secondary">Labor</p>
 
       {!comparisonAvailable ? (
-        <p className="mt-3 text-sm text-neutral-500">Previous-period comparison unavailable.</p>
+        <p className="mt-3 text-sm text-fg-muted">Previous-period comparison unavailable.</p>
       ) : events.length === 0 ? (
-        <p className="mt-3 text-sm text-neutral-500">No canonical Labor changes were reported for this comparison.</p>
+        <p className="mt-3 text-sm text-fg-muted">No canonical Labor changes were reported for this comparison.</p>
       ) : (
         <div className="mt-3 space-y-2">
-          {!hasStructural && <p className="text-sm text-neutral-500">No structural change.</p>}
+          {!hasStructural && <p className="text-sm text-fg-muted">No structural change.</p>}
 
           {tier1.map((event, index) => (
             <Tier1Line key={`tier1-${index}`} event={event} />
@@ -160,7 +160,7 @@ export function LaborWhatChangedPreview({ events, comparisonAvailable }: { event
         </div>
       )}
 
-      <Link to="/labor" className="mt-4 inline-block text-sm font-medium text-neutral-700 hover:text-neutral-900">
+      <Link to="/labor" className="mt-4 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
         View Labor →
       </Link>
     </div>

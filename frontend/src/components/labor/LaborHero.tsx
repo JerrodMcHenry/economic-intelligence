@@ -42,7 +42,7 @@ export function LaborHero({
   return (
     <section aria-labelledby="labor-current-state-heading">
       <div className="flex items-center gap-1.5">
-        <h2 id="labor-current-state-heading" className="text-sm font-medium text-neutral-500">
+        <h2 id="labor-current-state-heading" className="text-sm font-medium text-fg-muted">
           Current state
         </h2>
         <ExplanationTrigger explanation={LABOR_MONITOR} />
@@ -50,7 +50,7 @@ export function LaborHero({
       <div className="mt-3">
         <Badge label={laborStateLabel(result.state)} tone={laborStateTone(result.state)} size="xl" />
       </div>
-      <p className="mt-2 text-sm text-neutral-500">
+      <p className="mt-2 text-sm text-fg-muted">
         Labor{result.evaluation_period ? ` · ${formatPeriod(result.evaluation_period)}` : ""}
       </p>
       <StateDurationLine resource={stateDuration} errorMessage={STATE_DURATION_ERROR_MESSAGE} resolveStateLabel={resolveLaborStateLabel} />

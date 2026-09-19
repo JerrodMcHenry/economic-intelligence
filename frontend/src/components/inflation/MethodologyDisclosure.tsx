@@ -19,29 +19,29 @@ export function MethodologyDisclosure({
 }) {
   return (
     <section aria-labelledby="evidence-methodology-heading">
-      <h2 id="evidence-methodology-heading" className="text-sm font-medium text-neutral-500">
+      <h2 id="evidence-methodology-heading" className="text-sm font-medium text-fg-muted">
         Evidence &amp; methodology
       </h2>
       <div className="mt-3">
         <Disclosure summary="Methodology and coverage detail">
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-neutral-600">
+          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
             {monitor && (
               <>
-                <dt className="text-neutral-400">Monitor methodology</dt>
+                <dt className="text-fg-muted">Monitor methodology</dt>
                 <dd>{monitor.methodology_id}</dd>
-                <dt className="text-neutral-400">Data basis</dt>
+                <dt className="text-fg-muted">Data basis</dt>
                 <dd>{monitor.data_basis}</dd>
-                <dt className="text-neutral-400">Latest common period</dt>
+                <dt className="text-fg-muted">Latest common period</dt>
                 <dd>{formatPeriod(monitor.periods.latest_common_period)}</dd>
-                <dt className="text-neutral-400">Data through</dt>
+                <dt className="text-fg-muted">Data through</dt>
                 <dd>{formatPeriod(monitor.periods.data_through)}</dd>
               </>
             )}
             {whatChanged && (
               <>
-                <dt className="text-neutral-400">Comparison methodology</dt>
+                <dt className="text-fg-muted">Comparison methodology</dt>
                 <dd>{whatChanged.comparison_contract_id}</dd>
-                <dt className="text-neutral-400">Comparison type</dt>
+                <dt className="text-fg-muted">Comparison type</dt>
                 <dd>{whatChanged.comparison_type}</dd>
               </>
             )}

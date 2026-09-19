@@ -10,7 +10,7 @@ export function LoadingSkeleton({ heightClassName = "h-24", label }: { heightCla
     <div
       role="status"
       aria-label={label}
-      className={`animate-pulse rounded-lg border border-neutral-200 bg-neutral-100 ${heightClassName}`}
+      className={`animate-pulse rounded-lg motion-reduce:animate-none border border-line bg-surface-secondary ${heightClassName}`}
     />
   );
 }

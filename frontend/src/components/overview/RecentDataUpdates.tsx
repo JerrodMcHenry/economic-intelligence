@@ -43,23 +43,23 @@ export function RecentDataUpdates({ items }: { items: readonly ReleaseProcessing
 
   return (
     <section aria-labelledby="overview-recent-data-updates-heading">
-      <h2 id="overview-recent-data-updates-heading" className="text-sm font-medium text-neutral-500">
+      <h2 id="overview-recent-data-updates-heading" className="text-sm font-medium text-fg-muted">
         Recent Data Updates
       </h2>
 
       <div className="mt-3 space-y-6">
         <div>
-          <p className="text-sm font-semibold text-neutral-700">Inflation</p>
+          <p className="text-sm font-semibold text-fg-secondary">Inflation</p>
           <LatestDataDetected items={inflationItems} />
-          <Link to="/inflation" className="mt-4 inline-block text-sm font-medium text-neutral-700 hover:text-neutral-900">
+          <Link to="/inflation" className="mt-4 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
             View Inflation →
           </Link>
         </div>
 
         <div>
-          <p className="text-sm font-semibold text-neutral-700">Labor</p>
+          <p className="text-sm font-semibold text-fg-secondary">Labor</p>
           <LatestDataDetected items={laborItems} />
-          <Link to="/labor" className="mt-4 inline-block text-sm font-medium text-neutral-700 hover:text-neutral-900">
+          <Link to="/labor" className="mt-4 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
             View Labor →
           </Link>
         </div>

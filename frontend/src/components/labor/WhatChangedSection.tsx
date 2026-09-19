@@ -48,7 +48,7 @@ function AvailabilitySentence({ event }: { event: LaborChangeEvent }) {
   // "became unavailable"/"became available", never "improved"/"worsened".
   const verb = event.event_type === "AVAILABILITY_LOST" ? "became unavailable" : "became available";
   return (
-    <p className="text-sm text-neutral-700">
+    <p className="text-sm text-fg-secondary">
       {componentLabel} {fieldLabel.toLowerCase()} analysis {verb}.
     </p>
   );
@@ -59,14 +59,14 @@ function StateChangeRow({ event }: { event: LaborChangeEvent }) {
   const fieldLabel = laborChangeFieldLabel(event.field);
   return (
     <li className="text-sm">
-      <span className="text-neutral-500">
+      <span className="text-fg-muted">
         {componentLabel} {fieldLabel}:{" "}
       </span>
-      <span className="font-medium text-neutral-900">{formatEventValue(event, event.previous_value)}</span>
-      <span aria-hidden="true" className="mx-1.5 text-neutral-300">
+      <span className="font-medium text-fg">{formatEventValue(event, event.previous_value)}</span>
+      <span aria-hidden="true" className="mx-1.5 text-fg-faint">
         →
       </span>
-      <span className="font-medium text-neutral-900">{formatEventValue(event, event.current_value)}</span>
+      <span className="font-medium text-fg">{formatEventValue(event, event.current_value)}</span>
     </li>
   );
 }
@@ -74,12 +74,12 @@ function StateChangeRow({ event }: { event: LaborChangeEvent }) {
 function MetricChangeRow({ event }: { event: LaborChangeEvent }) {
   return (
     <li className="text-sm">
-      <span className="text-neutral-500">
+      <span className="text-fg-muted">
         {laborChangeComponentLabelOrRaw(event.component)} {laborChangeFieldLabel(event.field)}:{" "}
       </span>
-      <span className="tabular-nums text-neutral-700">
+      <span className="tabular-nums text-fg-secondary">
         {formatEventValue(event, event.previous_value)}
-        <span aria-hidden="true" className="mx-1.5 text-neutral-300">
+        <span aria-hidden="true" className="mx-1.5 text-fg-faint">
           →
         </span>
         {formatEventValue(event, event.current_value)}
@@ -115,25 +115,25 @@ export function WhatChangedSection({ whatChanged }: { whatChanged: LaborWhatChan
 
   return (
     <section aria-labelledby="labor-what-changed-heading">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 id="labor-what-changed-heading" className="text-sm font-medium text-neutral-500">
+      <div className="flex max-w-3xl flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 id="labor-what-changed-heading" className="text-sm font-medium text-fg-muted">
           What changed
         </h2>
-        {whatChanged.comparison_available && <span className="text-xs font-medium tabular-nums text-neutral-400">{periodPair}</span>}
+        {whatChanged.comparison_available && <span className="text-xs font-medium tabular-nums text-fg-muted">{periodPair}</span>}
       </div>
 
       {!whatChanged.comparison_available ? (
-        <p className="mt-3 text-sm text-neutral-500">Previous-period comparison unavailable.</p>
+        <p className="mt-3 text-sm text-fg-muted">Previous-period comparison unavailable.</p>
       ) : events.length === 0 ? (
-        <p className="mt-3 text-sm text-neutral-500">No canonical Labor changes were reported for this comparison.</p>
+        <p className="mt-3 text-sm text-fg-muted">No canonical Labor changes were reported for this comparison.</p>
       ) : (
-        <div className="mt-3 space-y-4">
+        <div className="mt-3 max-w-3xl space-y-4">
           {/* Tier 1: top-level LABOR state/availability */}
           {laborTier.map((event, index) =>
             event.event_type === "STATE_CHANGED" ? (
-              <p key={index} className="text-sm font-semibold text-neutral-900">
+              <p key={index} className="text-sm font-semibold text-fg">
                 Labor state: {formatEventValue(event, event.previous_value)}
-                <span aria-hidden="true" className="mx-1.5 text-neutral-400">
+                <span aria-hidden="true" className="mx-1.5 text-fg-muted">
                   →
                 </span>
                 {formatEventValue(event, event.current_value)}

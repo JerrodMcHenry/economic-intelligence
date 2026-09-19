@@ -18,10 +18,10 @@ export function ReleaseDateBadge({ date }: { date: string }) {
       dateTime={date}
       aria-label={fullDate}
       title={fullDate}
-      className="flex w-14 flex-none flex-col items-center rounded-md border border-neutral-200 bg-white py-1.5 leading-none"
+      className="flex w-14 flex-none flex-col items-center rounded-md border border-line bg-surface py-1.5 leading-none"
     >
-      <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-neutral-400">{month}</span>
-      <span className="mt-0.5 text-lg font-semibold text-neutral-900">{day}</span>
+      <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-fg-muted">{month}</span>
+      <span className="mt-0.5 text-lg font-semibold text-fg">{day}</span>
     </time>
   );
 }

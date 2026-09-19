@@ -26,16 +26,16 @@ import { WhyLaborState } from "../labor/WhyLaborState";
 export function LaborCurrentStateCard({ result }: { result: LaborMonitorResult }) {
   return (
     <div>
-      <p className="text-sm font-semibold text-neutral-700">Labor</p>
+      <p className="text-sm font-semibold text-fg-secondary">Labor</p>
       <div className="mt-1.5">
         <Badge label={laborStateLabel(result.state)} tone={laborStateTone(result.state)} size="xl" />
       </div>
-      <p className="mt-2 text-sm text-neutral-500">
+      <p className="mt-2 text-sm text-fg-muted">
         Labor{result.evaluation_period ? ` · ${formatPeriod(result.evaluation_period)}` : ""}
       </p>
       <WhyLaborState result={result} />
 
-      <Link to="/labor" className="mt-4 inline-block text-sm font-medium text-neutral-700 hover:text-neutral-900">
+      <Link to="/labor" className="mt-4 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
         Open Labor →
       </Link>
     </div>

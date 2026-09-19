@@ -8,6 +8,10 @@ import type { ScheduleStatus } from "../../api/releases.types";
  * status is good or bad news, so neither gets a saturated "trading"
  * color; PAST_DUE never implies a claim about whether data actually
  * arrived (see docs/architecture/release-intelligence-v1.md #2/#13).
+ *
+ * A schedule status is release *logistics*, not an economic reading, so
+ * it uses the generic informational feedback token -- never an economic
+ * `state-*` tone (it previously shared the "cool" state's sky palette).
  */
 const STATUS_LABEL: Record<ScheduleStatus, string> = {
   SCHEDULED: "Scheduled",
@@ -15,8 +19,8 @@ const STATUS_LABEL: Record<ScheduleStatus, string> = {
 };
 
 const STATUS_CLASSES: Record<ScheduleStatus, string> = {
-  SCHEDULED: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-600/20",
-  PAST_DUE: "bg-neutral-100 text-neutral-600 ring-1 ring-inset ring-neutral-500/20",
+  SCHEDULED: "bg-feedback-info-subtle text-feedback-info ring-1 ring-inset ring-feedback-info-line",
+  PAST_DUE: "bg-surface-secondary text-fg-secondary ring-1 ring-inset ring-line-strong",
 };
 
 export function ScheduleStatusBadge({ status }: { status: ScheduleStatus }) {

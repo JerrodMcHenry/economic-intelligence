@@ -26,7 +26,7 @@ export function EmploymentSection({ employment, methodologyId, dataBasis }: { em
   return (
     <section aria-labelledby="employment-heading">
       <div className="flex items-center gap-1.5">
-        <h2 id="employment-heading" className="text-sm font-medium text-neutral-500">
+        <h2 id="employment-heading" className="text-sm font-medium text-fg-muted">
           Employment
         </h2>
         <ExplanationTrigger explanation={EMPLOYMENT} />
@@ -36,14 +36,14 @@ export function EmploymentSection({ employment, methodologyId, dataBasis }: { em
         <Badge label={employmentStateLabel(employment.state)} tone={employmentStateTone(employment.state)} size="lg" />
       </div>
 
-      <dl className="mt-3 space-y-1 text-sm text-neutral-600">
+      <dl className="mt-3 space-y-1 text-sm text-fg-secondary">
         <div className="flex items-center gap-1.5">
-          <dt className="text-neutral-400">Current hiring condition:</dt>
+          <dt className="text-fg-muted">Current hiring condition:</dt>
           <dd>{employmentConditionLabel(employment.condition)}</dd>
           <ExplanationTrigger explanation={employmentConditionExplanation(employment.condition)} />
         </div>
         <div className="flex items-center gap-1.5">
-          <dt className="text-neutral-400">Momentum:</dt>
+          <dt className="text-fg-muted">Momentum:</dt>
           <dd>{employmentMomentumLabel(employment.momentum)}</dd>
           <ExplanationTrigger explanation={employmentMomentumExplanation(employment.momentum)} />
         </div>
@@ -51,15 +51,15 @@ export function EmploymentSection({ employment, methodologyId, dataBasis }: { em
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
         {METRICS.map(({ key, label }) => (
-          <div key={key} className="rounded-lg border border-neutral-200 bg-white p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">{label}</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">{formatJobs(employment[key])}</p>
-            <p className="mt-1 text-xs text-neutral-500">jobs</p>
+          <div key={key} className="rounded-lg border border-line bg-surface p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">{label}</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-fg">{formatJobs(employment[key])}</p>
+            <p className="mt-1 text-xs text-fg-muted">jobs</p>
           </div>
         ))}
       </div>
 
-      <div className="mt-3 text-xs text-neutral-400">
+      <div className="mt-3 text-xs text-fg-muted">
         {employment.observations.length > 0 && (
           <p>Evaluated using {employment.observations.length} required monthly observations{formatPeriodRange(employment)}.</p>
         )}

@@ -3,6 +3,7 @@ import { useApiResource } from "../api/useApiResource";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { ExplanationTrigger } from "../components/explanations/ExplanationTrigger";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
+import { PageHeader } from "../components/PageHeader";
 import { ReleaseCalendarSection } from "../components/releases/ReleaseCalendarSection";
 import { ReleaseScheduleDisclosure } from "../components/releases/ReleaseScheduleDisclosure";
 import { ECONOMIC_RELEASE } from "../content/explanations/releases";
@@ -25,21 +26,16 @@ export function ReleasesPage() {
   const recent = useApiResource(fetchRecentReleases);
 
   return (
-    <div className="max-w-3xl">
-      <header>
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Economic Releases</h1>
-          <ExplanationTrigger explanation={ECONOMIC_RELEASE} />
-        </div>
-        <p className="mt-2 max-w-prose text-neutral-600">
-          Scheduled dates for the economic releases Economic Intelligence tracks.
-        </p>
-        <div className="mt-3">
-          <ReleaseScheduleDisclosure />
-        </div>
-      </header>
+    <div>
+      <PageHeader
+        title="Economic Releases"
+        titleAdornment={<ExplanationTrigger explanation={ECONOMIC_RELEASE} />}
+        description="Scheduled dates for the economic releases Economic Intelligence tracks."
+      >
+        <ReleaseScheduleDisclosure />
+      </PageHeader>
 
-      <div className="mt-8 divide-y divide-neutral-200 [&>*]:pt-8 [&>*:first-child]:pt-0">
+      <div className="mt-8 divide-y divide-line [&>*]:py-8 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
         {upcoming.status === "loading" && <LoadingSkeleton label="Loading upcoming releases" heightClassName="h-40" />}
         {upcoming.status === "error" && <ErrorMessage message={UPCOMING_ERROR_MESSAGE} onRetry={upcoming.reload} />}
         {upcoming.status === "success" && (

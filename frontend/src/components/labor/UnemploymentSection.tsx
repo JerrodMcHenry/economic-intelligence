@@ -20,7 +20,7 @@ export function UnemploymentSection({ unemployment, methodologyId, dataBasis }: 
   return (
     <section aria-labelledby="unemployment-heading">
       <div className="flex items-center gap-1.5">
-        <h2 id="unemployment-heading" className="text-sm font-medium text-neutral-500">
+        <h2 id="unemployment-heading" className="text-sm font-medium text-fg-muted">
           Unemployment
         </h2>
         <ExplanationTrigger explanation={UNEMPLOYMENT} />
@@ -31,26 +31,26 @@ export function UnemploymentSection({ unemployment, methodologyId, dataBasis }: 
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border border-neutral-200 bg-white p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Current 3M avg</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">{formatPercent(unemployment.current_3m_avg)}</p>
+        <div className="rounded-lg border border-line bg-surface p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">Current 3M avg</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-fg">{formatPercent(unemployment.current_3m_avg)}</p>
         </div>
-        <div className="rounded-lg border border-neutral-200 bg-white p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Prior-year 3M avg</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">{formatPercent(unemployment.prior_year_3m_avg)}</p>
+        <div className="rounded-lg border border-line bg-surface p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">Prior-year 3M avg</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-fg">{formatPercent(unemployment.prior_year_3m_avg)}</p>
         </div>
-        <div className="rounded-lg border border-neutral-200 bg-white p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Delta</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">{formatPercentagePoints(unemployment.delta_pp)}</p>
+        <div className="rounded-lg border border-line bg-surface p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">Delta</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-fg">{formatPercentagePoints(unemployment.delta_pp)}</p>
         </div>
       </div>
 
-      <p className="mt-3 max-w-prose text-sm text-neutral-500">
+      <p className="mt-3 max-w-prose text-sm text-fg-muted">
         Labor combines this unemployment trend with the Employment section above into one overall Labor state.
       </p>
 
       {unemployment.observations.length > 0 && (
-        <p className="mt-2 text-xs text-neutral-400">
+        <p className="mt-2 text-xs text-fg-muted">
           Evaluated using {unemployment.observations.length} required monthly observations.
         </p>
       )}

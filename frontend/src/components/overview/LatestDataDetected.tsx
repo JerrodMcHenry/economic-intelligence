@@ -72,7 +72,7 @@ export function LatestDataDetected({ items }: { items: readonly ReleaseProcessin
   const selected = selectLatestDataDetectedItem(items);
 
   return selected === null ? (
-    <p className="mt-3 text-sm text-neutral-500">No tracked release processing records are available yet.</p>
+    <p className="mt-3 text-sm text-fg-muted">No tracked release processing records are available yet.</p>
   ) : (
     <SelectedOccurrence item={selected} />
   );
@@ -94,33 +94,33 @@ function SelectedOccurrence({ item }: { item: ReleaseProcessingStatusItem }) {
 
   return (
     <div className="mt-3">
-      <p className="text-xs text-neutral-400">Most recent detected update</p>
+      <p className="text-xs text-fg-muted">Most recent detected update</p>
 
-      <p className="mt-1 text-sm font-semibold text-neutral-700">{item.release.name}</p>
-      <p className="text-xs text-neutral-500">{formatFullDate(item.scheduled_date)}</p>
+      <p className="mt-1 text-sm font-semibold text-fg-secondary">{item.release.name}</p>
+      <p className="text-xs text-fg-muted">{formatFullDate(item.scheduled_date)}</p>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <span className="text-sm font-medium text-neutral-800">{processingStatusLabel(latestCheck.status)}</span>
+        <span className="text-sm font-medium text-fg">{processingStatusLabel(latestCheck.status)}</span>
         <ExplanationTrigger explanation={processingStatusExplanation(latestCheck.status)} />
       </div>
 
       {latestCheck.status === "PARTIAL_CHECK" && (
-        <p className="mt-1 text-sm text-neutral-500">Some associated series could not be checked.</p>
+        <p className="mt-1 text-sm text-fg-muted">Some associated series could not be checked.</p>
       )}
       {latestCheck.status === "CHECK_FAILED" && (
-        <p className="mt-1 text-sm text-neutral-500">Economic Intelligence could not complete the latest provider check.</p>
+        <p className="mt-1 text-sm text-fg-muted">Economic Intelligence could not complete the latest provider check.</p>
       )}
       {latestCheck.checked_at !== null && (
-        <p className="mt-1 text-xs text-neutral-400">Checked {formatCheckedAt(latestCheck.checked_at)}</p>
+        <p className="mt-1 text-xs text-fg-muted">Checked {formatCheckedAt(latestCheck.checked_at)}</p>
       )}
 
       {evidenceIsFromAnEarlierRun && (
-        <p className="mt-2 text-xs text-neutral-500">Earlier changes were detected for this release occurrence.</p>
+        <p className="mt-2 text-xs text-fg-muted">Earlier changes were detected for this release occurrence.</p>
       )}
 
       {observationChanges.length > 0 && (
         <div className="mt-3">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-400">Source data changes</h3>
+          <h3 className="text-xs font-medium uppercase tracking-wide text-fg-muted">Source data changes</h3>
           <ul className="mt-2 space-y-2.5">
             {observationChanges.map((change, index) => (
               <ObservationChangeRow key={`${change.series_id}-${change.observation_date}-${index}`} change={change} />
@@ -128,7 +128,7 @@ function SelectedOccurrence({ item }: { item: ReleaseProcessingStatusItem }) {
           </ul>
           <div className="mt-2">
             <Disclosure summary={DETECTED_CHANGES_DATA_BASIS.title}>
-              <p className="max-w-prose text-sm text-neutral-500">{DETECTED_CHANGES_DATA_BASIS.definition}</p>
+              <p className="max-w-prose text-sm text-fg-muted">{DETECTED_CHANGES_DATA_BASIS.definition}</p>
             </Disclosure>
           </div>
         </div>
@@ -136,7 +136,7 @@ function SelectedOccurrence({ item }: { item: ReleaseProcessingStatusItem }) {
 
       {(analysisChanges.length > 0 || observationChanges.length > 0) && (
         <div className="mt-3">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-400">Tracked analysis changes</h3>
+          <h3 className="text-xs font-medium uppercase tracking-wide text-fg-muted">Tracked analysis changes</h3>
           {analysisChanges.length > 0 ? (
             <ul className="mt-2 space-y-2.5">
               {analysisChanges.map((change, index) => (
@@ -144,7 +144,7 @@ function SelectedOccurrence({ item }: { item: ReleaseProcessingStatusItem }) {
               ))}
             </ul>
           ) : (
-            <p className="mt-2 text-sm text-neutral-500">No tracked evidence changed during this processing history.</p>
+            <p className="mt-2 text-sm text-fg-muted">No tracked evidence changed during this processing history.</p>
           )}
         </div>
       )}
@@ -160,15 +160,15 @@ export function ObservationChangeRow({ change }: { change: DetectedObservationCh
 
   return (
     <li className="text-sm">
-      <span className="font-medium text-neutral-800">{change.series_title ?? change.series_id}</span>
-      <div className="text-neutral-500">
+      <span className="font-medium text-fg">{change.series_title ?? change.series_id}</span>
+      <div className="text-fg-muted">
         {observationChangeTypeLabel(change.change_type)} · {formatFullDate(change.observation_date)}
       </div>
-      <div className="tabular-nums text-neutral-700">
+      <div className="tabular-nums text-fg-secondary">
         {showPreviousValue && (
           <>
             {formatObservationValue(change.previous_value, change.units)}
-            <span aria-hidden="true" className="mx-1.5 text-neutral-300">
+            <span aria-hidden="true" className="mx-1.5 text-fg-faint">
               →
             </span>
           </>
@@ -185,23 +185,23 @@ export function ObservationChangeRow({ change }: { change: DetectedObservationCh
 export function AnalysisChangeRow({ change }: { change: DetectedAnalysisChange }) {
   return (
     <li className="text-sm">
-      <div className="text-neutral-500">
+      <div className="text-fg-muted">
         {analysisComponentLabel(change.component)} · {changeEventTypeLabel(change.event_type)} · {analysisFieldLabel(change.field)}
       </div>
-      <div className="tabular-nums text-neutral-700">
+      <div className="tabular-nums text-fg-secondary">
         {formatAnalysisValue(change.field, change.previous_value)}
-        <span aria-hidden="true" className="mx-1.5 text-neutral-300">
+        <span aria-hidden="true" className="mx-1.5 text-fg-faint">
           →
         </span>
         {formatAnalysisValue(change.field, change.current_value)}
       </div>
-      <div className="text-xs text-neutral-400">{formatFullDate(change.evaluation_period)}</div>
+      <div className="text-xs text-fg-muted">{formatFullDate(change.evaluation_period)}</div>
       <div className="mt-1">
         <Disclosure summary="Details">
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-neutral-600">
-            <dt className="text-neutral-400">Methodology</dt>
+          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
+            <dt className="text-fg-muted">Methodology</dt>
             <dd>{change.methodology_id}</dd>
-            <dt className="text-neutral-400">Data basis</dt>
+            <dt className="text-fg-muted">Data basis</dt>
             <dd>{change.data_basis}</dd>
           </dl>
         </Disclosure>

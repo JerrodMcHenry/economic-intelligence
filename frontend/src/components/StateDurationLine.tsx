@@ -51,8 +51,8 @@ export function StateDurationLine({
 
   return (
     <div className="mt-2">
-      <p className="text-sm text-neutral-500">{copy.headline}</p>
-      {copy.previousStateNote && <p className="mt-0.5 text-xs text-neutral-400">{copy.previousStateNote}</p>}
+      <p className="text-sm text-fg-muted">{copy.headline}</p>
+      {copy.previousStateNote && <p className="mt-0.5 text-xs text-fg-muted">{copy.previousStateNote}</p>}
     </div>
   );
 }

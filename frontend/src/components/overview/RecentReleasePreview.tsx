@@ -26,9 +26,9 @@ export function RecentReleasePreview({ releases }: { releases: readonly ReleaseO
   const shortened = isShortenedLabel(item);
 
   return (
-    <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-500">
-      <span className="font-medium text-neutral-400">Recently</span>
-      <span className="text-neutral-700" {...(shortened ? { title: item.name, "aria-label": item.name } : {})}>
+    <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
+      <span className="font-medium text-fg-muted">Recently</span>
+      <span className="text-fg-secondary" {...(shortened ? { title: item.name, "aria-label": item.name } : {})}>
         {releaseDisplayLabel(item)}
       </span>
       <span>

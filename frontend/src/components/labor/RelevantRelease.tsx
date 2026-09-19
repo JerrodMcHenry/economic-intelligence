@@ -43,19 +43,19 @@ export function RelevantRelease({
 
   return (
     <section aria-labelledby="labor-relevant-release-heading">
-      <h2 id="labor-relevant-release-heading" className="text-sm font-medium text-neutral-500">
+      <h2 id="labor-relevant-release-heading" className="text-sm font-medium text-fg-muted">
         Employment Situation release
       </h2>
 
       {next === null && mostRecent === null ? (
-        bothLoaded && <p className="mt-3 text-sm text-neutral-500">No scheduled Employment Situation release in the current window.</p>
+        bothLoaded && <p className="mt-3 text-sm text-fg-muted">No scheduled Employment Situation release in the current window.</p>
       ) : (
         <ul className="mt-3 space-y-4">
           {next && (
             <li className="flex gap-4">
               <ReleaseDateBadge date={next.scheduled_date} />
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Next scheduled</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">Next scheduled</p>
                 <div className="mt-1">
                   <ReleaseRow item={next} />
                 </div>
@@ -66,7 +66,7 @@ export function RelevantRelease({
             <li className="flex gap-4">
               <ReleaseDateBadge date={mostRecent.scheduled_date} />
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Most recent</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">Most recent</p>
                 <div className="mt-1">
                   <ReleaseRow item={mostRecent} />
                 </div>

@@ -22,20 +22,20 @@ export function MomentumMetrics({ momentum }: { momentum: SeriesMomentumResult }
 
   return (
     <section aria-labelledby="momentum-metrics-heading">
-      <h2 id="momentum-metrics-heading" className="text-sm font-medium text-neutral-500">
+      <h2 id="momentum-metrics-heading" className="text-sm font-medium text-fg-muted">
         Core PCE momentum
       </h2>
       <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
         {METRICS.map(({ key, evidenceKey, label, explanation }) => (
-          <div key={key} className="rounded-lg border border-neutral-200 bg-white p-4">
+          <div key={key} className="rounded-lg border border-line bg-surface p-4">
             <div className="flex items-center gap-1.5">
-              <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">{label}</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">{label}</p>
               <ExplanationTrigger explanation={explanation} />
             </div>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">{formatPercent(momentum[key])}</p>
-            <p className="mt-1 text-xs text-neutral-500">{formatPeriod(momentum.calculation_period)}</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-fg">{formatPercent(momentum[key])}</p>
+            <p className="mt-1 text-xs text-fg-muted">{formatPeriod(momentum.calculation_period)}</p>
             {key === "r_12m" && hasBand && (
-              <p className="mt-1 text-xs text-neutral-400">
+              <p className="mt-1 text-xs text-fg-muted">
                 Neutral band: {formatPercent(momentum.lower_boundary)} to {formatPercent(momentum.upper_boundary)} (
                 {momentum.neutral_band_pp} pp)
               </p>
@@ -47,7 +47,7 @@ export function MomentumMetrics({ momentum }: { momentum: SeriesMomentumResult }
         ))}
       </div>
       {momentum.r_1m_annualized !== null && (
-        <p className="mt-3 text-sm text-neutral-500">1M annualized (context only): {formatPercent(momentum.r_1m_annualized)}</p>
+        <p className="mt-3 text-sm text-fg-muted">1M annualized (context only): {formatPercent(momentum.r_1m_annualized)}</p>
       )}
     </section>
   );

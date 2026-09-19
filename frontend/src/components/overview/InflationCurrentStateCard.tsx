@@ -37,16 +37,16 @@ import { WhyThisState } from "../inflation/WhyThisState";
 export function InflationCurrentStateCard({ momentum }: { momentum: SeriesMomentumResult }) {
   return (
     <div>
-      <p className="text-sm font-semibold text-neutral-700">Inflation</p>
+      <p className="text-sm font-semibold text-fg-secondary">Inflation</p>
       <div className="mt-1.5">
         <Badge label={inflationStateLabel(momentum.state)} tone={inflationStateTone(momentum.state)} size="xl" />
       </div>
-      <p className="mt-2 text-sm text-neutral-500">
+      <p className="mt-2 text-sm text-fg-muted">
         Core PCE{momentum.calculation_period ? ` · ${formatPeriod(momentum.calculation_period)}` : ""}
       </p>
       <WhyThisState momentum={momentum} />
 
-      <Link to="/inflation" className="mt-4 inline-block text-sm font-medium text-neutral-700 hover:text-neutral-900">
+      <Link to="/inflation" className="mt-4 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
         Open Inflation →
       </Link>
     </div>

@@ -28,48 +28,115 @@ describe("App", () => {
     // testing environment's role computation -- getAllByRole scopes to
     // the outer, site-wide one deliberately, first in document order.
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
-    renderAt("/");
+    renderAt("/overview");
     expect(screen.getAllByRole("banner")[0]).toBeInTheDocument();
     expect(screen.getByRole("main")).toBeInTheDocument();
+    expect(screen.getByRole("contentinfo")).toBeInTheDocument();
   });
 
-  it("shows the application name in the header", () => {
+  it("shows the MacroChipz brand in the header, linking Home, with Economic Intelligence as its category", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
-    renderAt("/");
-    // "Economic Intelligence" (the site name) is unique on the page --
-    // Overview's own <h1> reads "Economic Overview", a different string.
-    expect(screen.getByText("Economic Intelligence")).toBeInTheDocument();
+    renderAt("/overview");
+    // Increment #27B: MacroChipz is the public brand; "Economic
+    // Intelligence" remains the category descriptor beside it.
+    const header = screen.getAllByRole("banner")[0]!;
+    const brandLink = within(header).getByRole("link", { name: /MacroChipz/ });
+    expect(brandLink).toHaveAttribute("href", "/");
+    expect(brandLink).toHaveTextContent("MacroChipz");
+    expect(brandLink).toHaveTextContent("Economic Intelligence");
   });
 
   it("exposes accessible, keyboard-reachable primary navigation", async () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/");
     const nav = screen.getByRole("navigation", { name: "Primary" });
+    const homeLink = within(nav).getByRole("link", { name: "Home" });
     const overviewLink = within(nav).getByRole("link", { name: "Overview" });
     const inflationLink = within(nav).getByRole("link", { name: "Inflation" });
     const laborLink = within(nav).getByRole("link", { name: "Labor" });
     const releasesLink = within(nav).getByRole("link", { name: "Releases" });
 
-    expect(overviewLink).toHaveAttribute("href", "/");
+    expect(homeLink).toHaveAttribute("href", "/");
+    expect(overviewLink).toHaveAttribute("href", "/overview");
     expect(inflationLink).toHaveAttribute("href", "/inflation");
     expect(laborLink).toHaveAttribute("href", "/labor");
     expect(releasesLink).toHaveAttribute("href", "/releases");
-    // Labor sits between Inflation and Releases (docs/architecture/labor-ui-v1.md §33) --
-    // no placeholder items for future Growth/Housing/etc.
+    // Exactly the five real destinations, in order (docs/product/product-ui-ux-v1.md §11) --
+    // Labor still sits between Inflation and Releases (labor-ui-v1.md §33), and
+    // there are no placeholder items for future Growth/Housing/Markets/etc.
     const navOrder = within(nav).getAllByRole("link").map((link) => link.textContent);
-    expect(navOrder).toEqual(["Overview", "Inflation", "Labor", "Releases"]);
+    expect(navOrder).toEqual(["Home", "Overview", "Inflation", "Labor", "Releases"]);
 
     const user = userEvent.setup();
     await user.tab(); // skip link first
-    await user.tab(); // then into nav
-    expect(overviewLink).toHaveFocus();
+    await user.tab(); // then the MacroChipz brand link
+    expect(within(screen.getAllByRole("banner")[0]!).getByRole("link", { name: /MacroChipz/ })).toHaveFocus();
+    // Theme control and the (mobile-only) menu toggle come before the
+    // nav list in DOM order; tabbing onward reaches the nav's first link.
+    await user.tab(); // theme radio group (one tab stop for the whole group)
+    await user.tab(); // menu toggle button
+    expect(screen.getByRole("button", { name: "Menu" })).toHaveFocus();
+    await user.tab();
+    expect(homeLink).toHaveFocus();
   });
 
-  it("renders the Overview route at /", () => {
+  it("marks exactly the current destination as the active navigation item", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    renderAt("/inflation");
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    expect(within(nav).getByRole("link", { name: "Inflation" })).toHaveAttribute("aria-current", "page");
+    for (const name of ["Home", "Overview", "Labor", "Releases"]) {
+      expect(within(nav).getByRole("link", { name })).not.toHaveAttribute("aria-current");
+    }
+  });
+
+  it("marks Home active only on the Home route, never on every page", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    renderAt("/overview");
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    expect(within(nav).getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByRole("link", { name: "Home" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("collapses navigation behind an accessible menu toggle that Escape closes", async () => {
+    renderAt("/");
+    const user = userEvent.setup();
+    const toggle = screen.getByRole("button", { name: "Menu" });
+    const list = document.getElementById(toggle.getAttribute("aria-controls")!);
+    expect(list).not.toBeNull();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    await user.keyboard("{Escape}");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveFocus();
+  });
+
+  it("closes the mobile menu after a navigation choice", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    renderAt("/");
+    const user = userEvent.setup();
+    const toggle = screen.getByRole("button", { name: "Menu" });
+    await user.click(toggle);
+    await user.click(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("link", { name: "Labor" }));
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("heading", { level: 1, name: "Labor" })).toBeInTheDocument();
+  });
+
+  it("renders the Home route at /", () => {
+    renderAt("/");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Know what changed in the economy — and prove why." }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the Overview route at /overview", () => {
     // Only routing is under test here -- pages/Overview.test.tsx covers
     // the page's own data loading and rendering behavior in full.
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
-    renderAt("/");
+    renderAt("/overview");
     expect(screen.getByRole("heading", { level: 1, name: "Economic Overview" })).toBeInTheDocument();
   });
 
@@ -104,6 +171,7 @@ describe("App", () => {
   it("renders a deterministic not-found page for an unknown route", () => {
     renderAt("/this-route-does-not-exist");
     expect(screen.getByRole("heading", { level: 1, name: "Page not found" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Go to Home/ })).toHaveAttribute("href", "/");
   });
 
   it("renders the same not-found page deterministically for a second unknown route", () => {

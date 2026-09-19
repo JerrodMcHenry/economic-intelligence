@@ -29,13 +29,13 @@ export function UpcomingReleasesPreview({ releases }: { releases: readonly Relea
   const preview = releases.slice(0, MAX_UPCOMING);
 
   if (preview.length === 0) {
-    return <p className="mt-3 text-sm text-neutral-500">No scheduled releases in this window.</p>;
+    return <p className="mt-3 text-sm text-fg-muted">No scheduled releases in this window.</p>;
   }
 
   const groups = groupReleasesByDate(preview);
 
   return (
-    <ol className="mt-3 divide-y divide-neutral-200">
+    <ol className="mt-3 divide-y divide-line">
       {groups.map((group) => (
         <li key={group.scheduled_date} className="flex gap-4 py-3 first:pt-0">
           <ReleaseDateBadge date={group.scheduled_date} />

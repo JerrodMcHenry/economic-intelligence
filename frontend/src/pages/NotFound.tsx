@@ -1,8 +1,14 @@
+import { Link } from "react-router-dom";
+
+import { PageHeader } from "../components/PageHeader";
+
 export function NotFoundPage() {
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Page not found</h1>
-      <p className="mt-3 text-neutral-600">The page you&rsquo;re looking for doesn&rsquo;t exist.</p>
+    <div>
+      <PageHeader title="Page not found" description={<>The page you&rsquo;re looking for doesn&rsquo;t exist.</>} />
+      <Link to="/" className="mt-6 inline-block text-sm font-semibold text-brand hover:text-brand-hover">
+        Go to Home <span aria-hidden="true">→</span>
+      </Link>
     </div>
   );
 }

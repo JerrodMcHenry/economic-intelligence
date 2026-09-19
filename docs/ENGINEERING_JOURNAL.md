@@ -9379,3 +9379,267 @@ Reproducible CI needs both: one committed runtime-version file consumed
 by every environment (never a second hardcoded version in workflow YAML),
 and engine checks that fail installation rather than warn. A green
 `npm ci` is not evidence the toolchain can run.
+
+## Increment #27B — MacroChipz Design System + Application Shell + Home + Theme
+
+Baseline: HEAD `78e0edd` (the frontend CI runtime fix), clean tree,
+aligned with `origin/main`. Node v24.21.0 / npm 11.19.0 via `.nvmrc`
+(the machine's global Node is 24.4.1, below the contract, so every
+command ran through `fnm exec --using=24.21.0`). Frontend baseline
+1,137/1,137. Implements `docs/product/product-ui-ux-v1.md` (#27A)
+§5-20, with this increment's own instructions overriding #27A where
+they differ (below).
+
+### Why MacroChipz lives only at the presentation layer
+
+MacroChipz is the public brand; "Economic Intelligence" remains the
+category and the name of the engine. The brand appears where a visitor
+meets the product — document title, shell wordmark, footer, Home — and
+nowhere else. Repository, Python package, API, database, storage keys,
+architecture docs, and historical entries are unchanged. So is in-product
+explanation copy that names the engine ("Together, Economic Intelligence
+classifies Labor as Mixed"): about 40 such strings exist, several are
+frozen and test-asserted (the #23B composed sentence), and they read
+correctly as the engine's name. Whether any should say "MacroChipz"
+belongs to #27C's copy pass, not a mechanical rename.
+
+**#27A overridden here, by explicit instruction:** the hero does not say
+"continuously monitors" (scheduled maintenance is designed, not activated
+— ADR-029); a single CTA, "Explore the Overview", with no secondary CTA;
+economic-state tokens are named `state-*`, never #27A §14's
+`--color-positive/--color-negative`.
+
+### Design system
+
+One semantic token layer (`--mc-*`, OKLCH) in
+`frontend/src/styles/globals.css`, defined for `:root` (light) and
+`:root[data-theme="dark"]`, bound to Tailwind as `bg-canvas`,
+`bg-surface{,-secondary,-elevated,-subtle}`,
+`text-fg{,-secondary,-muted,-faint,-inverse}`,
+`border-line{,-strong,-subtle}`, `brand*`/`focus`/`selected*`,
+`feedback-{success,error,warning,info}*`, and
+`state-{cool,neutral,warm,caution,unavailable}{,-subtle,-line}`. Dark
+values are chosen independently (luminance steps for depth, softer
+near-white text, lower-chroma state colors), never inverted. Brand is a
+restrained ink-indigo, kept away from the state-cool hue so the brand
+never reads as an economic signal. Every text/background pair was
+checked with a WCAG script: all 70 pairs pass AA in both themes. The
+old `text-neutral-400` metadata (about 2.5:1) became `fg-muted` (5.5:1
+or better). `fg-faint` is used only on `aria-hidden` glyphs.
+
+Existing components moved to the tokens by a mechanical,
+one-to-one class substitution (44 files, no markup or hierarchy change):
+`neutral-900/800 → fg`, `700/600 → fg-secondary`, `500/400 → fg-muted`,
+`bg-white → bg-surface`, `border-neutral-200 → border-line`, and so on.
+Without this, dark mode would have shown white cards on a dark canvas.
+No raw palette color utility remains in `frontend/src`.
+
+Typography: system font stack (no web-font dependency or licensing
+cost); named roles as `@utility` classes (`type-display`,
+`type-page-title`, `type-section-heading`, `type-card-heading`,
+`type-label`, `type-meta`, `type-numeric`); tabular numerals globally
+for `table`/`time`/`data`.
+
+### Economic-state vs. feedback separation
+
+The five-tone taxonomy was already domain-neutral (#27A §20); only its
+palette was raw Tailwind. `Tone` and its class maps moved to
+`frontend/src/design/stateTone.ts` (re-exported from
+`lib/inflationLabels.ts`, so no domain import changed) and now use only
+`state-*` tokens. Every canonical-state → tone mapping is unchanged.
+Labor's states, including EXPANDING/CONTRACTING and
+IMPROVING/DETERIORATING, remain `neutral`.
+
+`design/stateTone.test.ts` guards the separation four ways:
+
+- each tone's classes reference only that tone's own `state-*` tokens,
+  and never a feedback, verdict, or color-word token;
+- each theme's state tokens are literal colors, never a `var()` alias;
+- no state token shares a value with any feedback token (explicitly
+  `state-cool ≠ feedback-success` and `state-warm ≠ feedback-error`);
+- no source line mixes `state-*` with `feedback-*`.
+
+I proved it by injecting three regressions (cool → success classes,
+warm aliased to the error variable, cool given success's exact value).
+Each one failed the guard; the originals were then restored.
+
+One existing leak was fixed along the way: `ScheduleStatusBadge`'s
+SCHEDULED pill shared the "cool" state's sky palette. A schedule status
+is release logistics, not an economic reading, so it now uses
+`feedback-info`.
+
+### Shell and width strategy
+
+`layouts/AppShell.tsx` owns the global background, a sticky header
+(wordmark linking Home, primary nav, theme control), the main landmark,
+page padding, and a quiet footer ("Source data: FRED®, Federal Reserve
+Bank of St. Louis."). `components/PageContainer.tsx` (`max-w-app` =
+76rem, defined once in CSS) is the single width authority. The four
+per-page `max-w-3xl` wrappers were removed, fixing #27A's double
+constraint: desktop content went from about 768px to 1,152px at a
+1440px viewport. Prose keeps `max-w-prose` as a per-paragraph reading
+measure, not a page width. Pages now share `components/PageHeader.tsx`.
+Their section structure is untouched, apart from one spacing fix: each
+`divide-y` section gains bottom padding, so the rule no longer sits
+directly under the section's last link (more visible at the new width).
+
+A second width fix came from the populated-data review, not the empty
+database. The What Changed comparison rows (Inflation's field ·
+previous → current · delta grid, and Labor's header and period pair)
+use a `1fr` column. At full width, that pushed each delta about 700px
+away from the values it belongs to. These blocks now cap themselves at
+`max-w-3xl`, a content-type reading width for a table that has to be
+read across in pairs. It is the documented exception, not a
+reintroduced page width; the section's own divider stays full-width.
+
+Navigation is exactly Home · Overview · Inflation · Labor · Releases,
+with `aria-current="page"` from `NavLink` and a tinted `selected` pill.
+Below `md`, the *same* single `<ul>` collapses behind an `aria-expanded`
+Menu button, rather than shrinking the desktop row. Escape closes it and
+returns focus; choosing a link closes it. `/` is now Home and Overview
+moved to `/overview`. No in-app link pointed to `/` as Overview.
+
+### Home
+
+`pages/Home.tsx` is deliberately static: it makes no fetch, so it has no
+loading or error states and states no live economic conclusion (current
+states live on Overview). It covers:
+
+- a hero (MacroChipz / Economic Intelligence, the positioning line, the
+  supporting copy, one CTA);
+- the three questions, each mapped to its product answer;
+- the five-step how-it-works flow as an ordered list (vertical on
+  mobile, horizontal on large screens);
+- the trust model: "Facts are sourced. Calculations are deterministic.
+  AI is interpretive.", six principles, and the canonical
+  `LATEST_REVISED_DATA` copy reused verbatim in the existing
+  `Disclosure`;
+- current coverage for exactly Inflation and Labor;
+- a closing Overview CTA.
+
+New primitives, each with a real consumer: `PageHeader`, `Section`,
+`Card`, `ThemeToggle`. Deferred, not built: #27A §49's optional "About
+the engineering" link. The empty right half of the desktop hero is left
+as-is rather than filled with an invented visual.
+
+### Theme architecture
+
+Light / Dark / System, default System, persisted under
+`economic-intelligence:theme`. This follows the project's existing
+storage-key convention and its untrusted-storage discipline: any
+unknown value or storage exception degrades to System.
+
+- **Before first paint:** a ~15-line inline script in `index.html`
+  resolves the preference (or `prefers-color-scheme`) and sets
+  `data-theme` and `color-scheme` on `<html>`. A React effect would
+  flash the wrong theme.
+- **After load:** `theme/ThemeProvider.tsx` (mounted inside `App`)
+  keeps the attribute in sync and follows live OS changes while on
+  System.
+- **The control:** `ThemeToggle` is a native radio group in a
+  `fieldset` with a legend "Theme". Arrow keys, checked state, and
+  names come from the platform; the icons carry visually hidden text
+  names plus tooltips.
+- **Keeping two implementations in agreement:** the script necessarily
+  duplicates `resolveTheme`, so `theme/theme.test.ts` extracts it from
+  `index.html`, executes it against a fake window/document for every
+  stored value × OS preference × failure mode, and asserts agreement.
+- **Scope:** theme changes token values only, never which state, label,
+  or tone renders.
+- **Motion:** no theme-switch animation was added. The existing pulse
+  skeleton and disclosure chevron now respect `prefers-reduced-motion`.
+
+### Tradeoffs
+
+- The inline script is a second copy of `resolveTheme`. I accepted it
+  because pre-paint correctness requires it, and it is pinned by an
+  executing test. A future strict Content-Security-Policy would need a
+  hash for it.
+- The full-width domain pages are still single-column. At 1,152px they
+  read as a wide left column with space on the right. This is honest
+  inheritance, not a redesign: card grids and side-by-side pairs are
+  #27C (#27A §23-40).
+- `text-neutral-500` and `-400` both collapsed into `fg-muted`, losing a
+  sub-AA tier of hierarchy. Readable contrast won.
+- Labor was not touched. Its methodology, data-sufficiency handling, and
+  components are unchanged apart from token classes and the reading
+  width above. The development database was later bootstrapped through
+  the existing `releases/sync` + `process_release` workflow as machine
+  setup, outside this increment's diff.
+
+### Verification
+
+Frontend, Node v24.21.0 / npm 11.19.0, from a clean `npm ci`. The final
+run did the clean install in a byte-identical copy of `frontend/`, so the
+developer's running Vite server and its `node_modules` were never
+touched; the suite was also run in the real working tree.
+
+- tests: **44 files, 1,189 passed**, run twice with identical results
+  (+52 cases: new suites for Home, ThemeToggle, theme, and the
+  state-tone guard; `App.test` expanded; and per-file cases the existing
+  architecture guards generate for the new source files);
+- `tsc -b --noEmit` clean; `oxlint` 0 warnings / 0 errors (one
+  fast-refresh warning found mid-increment was fixed); `vite build`
+  clean;
+- the only install output is npm 11's pre-existing `install-scripts`
+  notice for macOS-only `fsevents`.
+
+Backend (Python 3.12.13, local PostgreSQL 14.20): **1,603 passed,
+2 skipped**, unchanged. Both skips are research tests needing gitignored
+cached FRED data. No backend file changed.
+
+Visual review happened in two passes, both using real headless Chrome
+via `puppeteer-core` in a scratch directory, and GET requests only:
+
+1. **Empty database** (the isolated test database): 12 captures. Found
+   and fixed the `divide-y` spacing.
+2. **Populated development database**, after the machine was
+   bootstrapped. Real states: Inflation *Mixed* (July 2026), Labor
+   *Mixed* (August 2026). 21 captures:
+   - desktop, 1440px: Home light/dark, Overview light/dark, Inflation
+     light/dark, Labor light/dark, Releases light/dark;
+   - tablet, 820px: Home, Overview;
+   - mobile, 390px: Home light/dark with the menu open, Overview
+     light/dark, Inflation;
+   - OS dark preference with System selected.
+
+   Found and fixed the What Changed reading-width defect above.
+
+Across all 21 populated captures: zero horizontal overflow, menu open
+included, and `data-theme` already `dark` at DOM-interactive, before
+the React bundle runs.
+
+State coloring with real data: *Mixed* uses the caution tone.
+Employment *Cooling* and Unemployment *Stable* use the neutral tone,
+labor-ui-v1 §8. Release *Scheduled* uses the info tone and *Past due*
+the neutral surface. Nothing economic renders in success or error
+colors, in either theme.
+
+No `.env` or secret value was read or displayed.
+
+**Found with populated data, deliberately NOT fixed here** (pre-existing
+content and backend behavior, not design-system defects; candidates for
+#27C or a dedicated fix):
+
+- Recent Data Updates prints unformatted floats in "tracked analysis
+  changes" (e.g. `3.353016322755642`).
+- The Labor bootstrap's analysis-change records carry evaluation
+  periods a year ahead (e.g. "Prior-year 3M avg … August 1, 2027").
+- Labor's "Latest data detected" names a future occurrence (December 4,
+  2026) as "Not yet checked".
+
+### Lessons
+
+- **A second width constraint is invisible in code review and obvious
+  on a screen.** Give layout exactly one width owner and make pages
+  structurally unable to add another.
+- **"Domain-neutral" has to be enforced at the token layer, not just in
+  naming.** The tone *names* were already neutral, yet an unrelated
+  badge had quietly borrowed the "cool" palette. A guard that compares
+  actual values catches what naming discipline cannot.
+- **When logic must be duplicated outside the bundle, test the copy by
+  executing it,** not by re-describing it.
+- **Review layout with real data, not only empty states.** The empty
+  database hid the one width defect that mattered: a `1fr` column is
+  harmless when every row reads "unavailable", and broken once real
+  deltas appear.

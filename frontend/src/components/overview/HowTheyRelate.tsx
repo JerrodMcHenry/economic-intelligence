@@ -47,7 +47,7 @@ export function HowTheyRelate({
 
   return (
     <section aria-labelledby="overview-how-they-relate-heading">
-      <h2 id="overview-how-they-relate-heading" className="text-sm font-medium text-neutral-500">
+      <h2 id="overview-how-they-relate-heading" className="text-sm font-medium text-fg-muted">
         How They Relate
       </h2>
 
@@ -58,7 +58,7 @@ export function HowTheyRelate({
         {!stillLoading && labor.status === "error" && <ErrorMessage message={LABOR_ERROR_MESSAGE} onRetry={labor.reload} />}
 
         {!stillLoading && inflation.status === "success" && labor.status === "success" && (
-          <p className="text-sm text-neutral-700">
+          <p className="text-sm text-fg-secondary">
             {
               composeMonitorRelation(
                 { state: inflation.data.underlying_momentum.state, period: inflation.data.underlying_momentum.calculation_period },
@@ -69,10 +69,10 @@ export function HowTheyRelate({
         )}
 
         <div className="flex gap-4">
-          <Link to="/inflation" className="inline-block text-sm font-medium text-neutral-700 hover:text-neutral-900">
+          <Link to="/inflation" className="inline-block text-sm font-medium text-fg-secondary hover:text-fg">
             View Inflation →
           </Link>
-          <Link to="/labor" className="inline-block text-sm font-medium text-neutral-700 hover:text-neutral-900">
+          <Link to="/labor" className="inline-block text-sm font-medium text-fg-secondary hover:text-fg">
             View Labor →
           </Link>
         </div>

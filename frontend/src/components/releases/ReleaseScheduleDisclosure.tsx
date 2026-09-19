@@ -11,7 +11,7 @@
  */
 export function ReleaseScheduleDisclosure() {
   return (
-    <p className="max-w-prose text-xs text-neutral-400">
+    <p className="max-w-prose text-xs text-fg-muted">
       Release dates indicate scheduled publication dates. They do not confirm that new data has been published,
       ingested, or reflected in Economic Intelligence analysis.
     </p>

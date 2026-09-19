@@ -43,18 +43,18 @@ export function ReleaseRow({ item, showMonitorCta = false }: { item: ReleaseOccu
 
   return (
     <div>
-      {category && <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">{category}</p>}
+      {category && <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">{category}</p>}
       {/* <details> (inside ExplanationTrigger) is block-level content and
           cannot legally nest inside <p>, so these rows use <div> even
           though they hold a single line of text -- same reason
           Disclosure.tsx never nests inside a <p> either. */}
       <div className="mt-0.5 flex items-center gap-1.5">
-        <span className="font-medium text-neutral-900" {...(shortened ? { title: item.name, "aria-label": item.name } : {})}>
+        <span className="font-medium text-fg" {...(shortened ? { title: item.name, "aria-label": item.name } : {})}>
           {label}
         </span>
         {typeExplanation && <ExplanationTrigger explanation={typeExplanation} />}
       </div>
-      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-500">
+      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
         <span>{item.provider}</span>
         <span className="inline-flex items-center gap-1">
           <ScheduleStatusBadge status={item.schedule_status} />
@@ -62,7 +62,7 @@ export function ReleaseRow({ item, showMonitorCta = false }: { item: ReleaseOccu
         </span>
       </div>
       {showMonitorCta && (
-        <Link to={monitorCta.to} className="mt-1 inline-block text-sm font-medium text-neutral-700 hover:text-neutral-900">
+        <Link to={monitorCta.to} className="mt-1 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
           {monitorCta.label}
         </Link>
       )}

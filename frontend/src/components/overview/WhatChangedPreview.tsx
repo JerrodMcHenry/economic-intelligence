@@ -34,7 +34,7 @@ function AvailabilitySentence({ event }: { event: ChangeEvent }) {
   const fieldLabel = changeFieldLabel(event.field);
   const verb = event.event_type === "AVAILABILITY_LOST" ? "became unavailable" : "became available";
   return (
-    <p className="text-sm text-neutral-700">
+    <p className="text-sm text-fg-secondary">
       {componentLabel} {fieldLabel.toLowerCase()} analysis {verb}.
     </p>
   );
@@ -48,9 +48,9 @@ function Tier1Line({ event }: { event: ChangeEvent }) {
     return <AvailabilitySentence event={event} />;
   }
   return (
-    <p className="text-sm font-semibold text-neutral-900">
+    <p className="text-sm font-semibold text-fg">
       Inflation state: {formatChangeValue(event.field, event.previous_value)}
-      <span aria-hidden="true" className="mx-1.5 text-neutral-400">
+      <span aria-hidden="true" className="mx-1.5 text-fg-muted">
         →
       </span>
       {formatChangeValue(event.field, event.current_value)}
@@ -73,12 +73,12 @@ function StructuralRow({ event }: { event: ChangeEvent }) {
   const label = event.event_type === "CONFIRMATION_CHANGED" ? CHANGE_COMPONENT_LABELS[event.component] : `${CHANGE_COMPONENT_LABELS[event.component]} ${changeFieldLabel(event.field)}`;
   return (
     <li className="text-sm">
-      <span className="text-neutral-500">{label}: </span>
-      <span className="font-medium text-neutral-900">{formatChangeValue(event.field, event.previous_value)}</span>
-      <span aria-hidden="true" className="mx-1.5 text-neutral-300">
+      <span className="text-fg-muted">{label}: </span>
+      <span className="font-medium text-fg">{formatChangeValue(event.field, event.previous_value)}</span>
+      <span aria-hidden="true" className="mx-1.5 text-fg-faint">
         →
       </span>
-      <span className="font-medium text-neutral-900">{formatChangeValue(event.field, event.current_value)}</span>
+      <span className="font-medium text-fg">{formatChangeValue(event.field, event.current_value)}</span>
     </li>
   );
 }
@@ -88,12 +88,12 @@ function StructuralRow({ event }: { event: ChangeEvent }) {
 function MetricRow({ event }: { event: ChangeEvent }) {
   return (
     <li className="text-sm">
-      <span className="text-neutral-500">
+      <span className="text-fg-muted">
         {CHANGE_COMPONENT_LABELS[event.component]} {changeFieldLabel(event.field)}
       </span>
-      <span className="ml-2 tabular-nums text-neutral-700">
+      <span className="ml-2 tabular-nums text-fg-secondary">
         {formatChangeValue(event.field, event.previous_value)}
-        <span aria-hidden="true" className="mx-1.5 text-neutral-300">
+        <span aria-hidden="true" className="mx-1.5 text-fg-faint">
           →
         </span>
         {formatChangeValue(event.field, event.current_value)}
@@ -141,15 +141,15 @@ export function WhatChangedPreview({ events, comparisonAvailable }: { events: re
 
   return (
     <div>
-      <p className="text-sm font-semibold text-neutral-700">Inflation</p>
+      <p className="text-sm font-semibold text-fg-secondary">Inflation</p>
 
       {!comparisonAvailable ? (
-        <p className="mt-3 text-sm text-neutral-500">Previous-period comparison unavailable.</p>
+        <p className="mt-3 text-sm text-fg-muted">Previous-period comparison unavailable.</p>
       ) : events.length === 0 ? (
-        <p className="mt-3 text-sm text-neutral-500">No canonical Inflation changes were reported for this comparison.</p>
+        <p className="mt-3 text-sm text-fg-muted">No canonical Inflation changes were reported for this comparison.</p>
       ) : (
         <div className="mt-3 space-y-2">
-          {!hasStructural && <p className="text-sm text-neutral-500">No structural change.</p>}
+          {!hasStructural && <p className="text-sm text-fg-muted">No structural change.</p>}
 
           {tier1.map((event, index) => (
             <Tier1Line key={`tier1-${index}`} event={event} />
@@ -175,7 +175,7 @@ export function WhatChangedPreview({ events, comparisonAvailable }: { events: re
         </div>
       )}
 
-      <Link to="/inflation" className="mt-4 inline-block text-sm font-medium text-neutral-700 hover:text-neutral-900">
+      <Link to="/inflation" className="mt-4 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
         View Inflation →
       </Link>
     </div>

@@ -36,15 +36,15 @@ function ChangeEventList({ events }: { events: ChangeEvent[] }) {
         const isContextOnly = event.field === "r_1m_annualized";
         return (
           <Fragment key={`${event.component}-${event.event_type}-${event.field}-${index}`}>
-            <span className={isContextOnly ? "text-neutral-400" : "text-neutral-500"}>{changeFieldLabel(event.field)}</span>
-            <span className={`tabular-nums ${isContextOnly ? "text-neutral-400" : "text-neutral-700"}`}>
+            <span className="text-fg-muted">{changeFieldLabel(event.field)}</span>
+            <span className={`tabular-nums ${isContextOnly ? "text-fg-muted" : "text-fg-secondary"}`}>
               {formatMetricValueOrUnavailable(event.previous_value)}
-              <span aria-hidden="true" className="mx-1.5 text-neutral-300">
+              <span aria-hidden="true" className="mx-1.5 text-fg-faint">
                 →
               </span>
               {formatMetricValueOrUnavailable(event.current_value)}
             </span>
-            <span className={`text-right tabular-nums ${isContextOnly ? "text-neutral-300" : "text-neutral-400"}`}>
+            <span className="text-right tabular-nums text-fg-muted">
               {event.delta !== null ? formatPercentagePoints(event.delta) : null}
             </span>
           </Fragment>
@@ -57,8 +57,8 @@ function ChangeEventList({ events }: { events: ChangeEvent[] }) {
 function SectionHeader({ label, periodPair }: { label: string; periodPair: string }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-      <h3 className="text-sm font-semibold text-neutral-900">{label}</h3>
-      <span className="text-xs font-medium tabular-nums text-neutral-400">{periodPair}</span>
+      <h3 className="text-sm font-semibold text-fg">{label}</h3>
+      <span className="text-xs font-medium tabular-nums text-fg-muted">{periodPair}</span>
     </div>
   );
 }
@@ -84,8 +84,8 @@ function MomentumSectionSummary({ label, section }: { label: string; section: Se
   if (!section.comparison_available) {
     return (
       <SubsectionBlock tone="unavailable">
-        <h3 className="text-sm font-semibold text-neutral-900">{label}</h3>
-        <p className="mt-1 text-sm text-neutral-500">Previous-period comparison unavailable.</p>
+        <h3 className="text-sm font-semibold text-fg">{label}</h3>
+        <p className="mt-1 text-sm text-fg-muted">Previous-period comparison unavailable.</p>
       </SubsectionBlock>
     );
   }
@@ -94,7 +94,7 @@ function MomentumSectionSummary({ label, section }: { label: string; section: Se
   const metricEvents = section.changes.filter((event) => event.field !== "state");
 
   let headline: string;
-  let headlineClass = "text-neutral-500";
+  let headlineClass = "text-fg-muted";
   let borderTone: Tone = section.current_evidence ? inflationStateTone(section.current_evidence.state) : "neutral";
 
   if (stateEvent) {
@@ -143,8 +143,8 @@ function ConfirmationSectionSummary({ section }: { section: ConfirmationSectionC
   if (!section.comparison_available) {
     return (
       <SubsectionBlock tone="unavailable">
-        <h3 className="text-sm font-semibold text-neutral-900">Confirmation</h3>
-        <p className="mt-1 text-sm text-neutral-500">Previous-period comparison unavailable.</p>
+        <h3 className="text-sm font-semibold text-fg">Confirmation</h3>
+        <p className="mt-1 text-sm text-fg-muted">Previous-period comparison unavailable.</p>
       </SubsectionBlock>
     );
   }
@@ -161,7 +161,7 @@ function ConfirmationSectionSummary({ section }: { section: ConfirmationSectionC
   const borderTone: Tone = section.current_relationship ? confirmationRelationshipTone(section.current_relationship) : "neutral";
   const headlineClass = relationshipChanged && section.current_relationship
     ? `font-semibold ${TONE_TEXT_CLASSES[confirmationRelationshipTone(section.current_relationship)]}`
-    : "text-neutral-500";
+    : "text-fg-muted";
 
   return (
     <SubsectionBlock tone={borderTone}>
@@ -180,8 +180,8 @@ function TargetSectionSummary({ section }: { section: TargetSectionChanges }) {
   if (!section.comparison_available) {
     return (
       <SubsectionBlock tone="unavailable">
-        <h3 className="text-sm font-semibold text-neutral-900">Target</h3>
-        <p className="mt-1 text-sm text-neutral-500">Previous-period comparison unavailable.</p>
+        <h3 className="text-sm font-semibold text-fg">Target</h3>
+        <p className="mt-1 text-sm text-fg-muted">Previous-period comparison unavailable.</p>
       </SubsectionBlock>
     );
   }
@@ -190,7 +190,7 @@ function TargetSectionSummary({ section }: { section: TargetSectionChanges }) {
     <SubsectionBlock tone="neutral">
       <SectionHeader label="Target" periodPair={formatPeriodPair(section.previous_period, section.current_period)} />
       {section.changes.length === 0 ? (
-        <p className="mt-1 text-sm text-neutral-500">No canonical changes detected.</p>
+        <p className="mt-1 text-sm text-fg-muted">No canonical changes detected.</p>
       ) : (
         <ChangeEventList events={section.changes} />
       )}
@@ -209,10 +209,10 @@ function TargetSectionSummary({ section }: { section: TargetSectionChanges }) {
 export function WhatChangedSection({ whatChanged }: { whatChanged: InflationWhatChangedResult }) {
   return (
     <section aria-labelledby="what-changed-heading">
-      <h2 id="what-changed-heading" className="text-sm font-medium text-neutral-500">
+      <h2 id="what-changed-heading" className="text-sm font-medium text-fg-muted">
         What changed
       </h2>
-      <div className="mt-4 space-y-6">
+      <div className="mt-4 max-w-3xl space-y-6">
         <MomentumSectionSummary label="Core PCE" section={whatChanged.primary_momentum_changes} />
         <ConfirmationSectionSummary section={whatChanged.confirmation_changes} />
         <TargetSectionSummary section={whatChanged.target_changes} />

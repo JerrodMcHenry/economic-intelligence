@@ -50,7 +50,7 @@ export function InflationHero({
   return (
     <section aria-labelledby="underlying-momentum-heading">
       <div className="flex items-center gap-1.5">
-        <h2 id="underlying-momentum-heading" className="text-sm font-medium text-neutral-500">
+        <h2 id="underlying-momentum-heading" className="text-sm font-medium text-fg-muted">
           Underlying momentum
         </h2>
         <ExplanationTrigger explanation={MOMENTUM} />
@@ -59,7 +59,7 @@ export function InflationHero({
         <Badge label={inflationStateLabel(momentum.state)} tone={inflationStateTone(momentum.state)} size="xl" />
       </div>
       <div className="mt-2 flex items-center gap-1.5">
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-fg-muted">
           Core PCE{momentum.calculation_period ? ` · ${formatPeriod(momentum.calculation_period)}` : ""}
         </p>
         <ExplanationTrigger explanation={CORE_PCE} />
@@ -70,14 +70,14 @@ export function InflationHero({
       <dl className="mt-6 flex flex-wrap gap-x-10 gap-y-3">
         {HERO_METRICS.map(({ key, label }) => (
           <div key={key}>
-            <dt className="text-xs font-medium uppercase tracking-wide text-neutral-400">{label}</dt>
-            <dd className="mt-0.5 text-lg font-semibold tabular-nums text-neutral-900">{formatPercent(momentum[key])}</dd>
+            <dt className="text-xs font-medium uppercase tracking-wide text-fg-muted">{label}</dt>
+            <dd className="mt-0.5 text-lg font-semibold tabular-nums text-fg">{formatPercent(momentum[key])}</dd>
           </div>
         ))}
       </dl>
 
       {momentum.missing_required_metrics.length > 0 && (
-        <p className="mt-3 text-sm text-neutral-500">Missing required data: {momentum.missing_required_metrics.join(", ")}</p>
+        <p className="mt-3 text-sm text-fg-muted">Missing required data: {momentum.missing_required_metrics.join(", ")}</p>
       )}
     </section>
   );

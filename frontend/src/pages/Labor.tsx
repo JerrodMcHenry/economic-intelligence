@@ -11,6 +11,7 @@ import { MethodologyDisclosure } from "../components/labor/MethodologyDisclosure
 import { RelevantRelease } from "../components/labor/RelevantRelease";
 import { UnemploymentSection } from "../components/labor/UnemploymentSection";
 import { WhatChangedSection } from "../components/labor/WhatChangedSection";
+import { PageHeader } from "../components/PageHeader";
 
 const MONITOR_ERROR_MESSAGE = "Labor data could not be loaded.";
 const CHANGES_ERROR_MESSAGE = "What changed could not be loaded.";
@@ -49,18 +50,15 @@ export function LaborPage() {
   const recent = useApiResource(fetchRecentReleases);
 
   return (
-    <div className="max-w-3xl">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Labor</h1>
-        <p className="mt-2 max-w-prose text-neutral-600">
-          Track U.S. labor market conditions -- payroll employment, the unemployment trend, and the evidence behind each conclusion.
-        </p>
-        <div className="mt-3">
-          <DataBasisNote />
-        </div>
-      </header>
+    <div>
+      <PageHeader
+        title="Labor"
+        description="Track U.S. labor market conditions -- payroll employment, the unemployment trend, and the evidence behind each conclusion."
+      >
+        <DataBasisNote />
+      </PageHeader>
 
-      <div className="mt-8 divide-y divide-neutral-200 [&>*]:pt-8 [&>*:first-child]:pt-0">
+      <div className="mt-8 divide-y divide-line [&>*]:py-8 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
         {/* 1. Current State */}
         {monitor.status === "loading" && <LoadingSkeleton label="Loading current state" heightClassName="h-32" />}
         {monitor.status === "error" && <ErrorMessage message={MONITOR_ERROR_MESSAGE} onRetry={monitor.reload} />}

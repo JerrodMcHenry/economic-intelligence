@@ -16,6 +16,7 @@ import { RecentReleasePreview } from "../components/overview/RecentReleasePrevie
 import { SinceLastVisit } from "../components/overview/SinceLastVisit";
 import { UpcomingReleasesPreview } from "../components/overview/UpcomingReleasesPreview";
 import { WhatChangedPreview } from "../components/overview/WhatChangedPreview";
+import { PageHeader } from "../components/PageHeader";
 import { ReleaseScheduleDisclosure } from "../components/releases/ReleaseScheduleDisclosure";
 
 const CHANGES_ERROR_MESSAGE = "What changed could not be loaded.";
@@ -88,13 +89,10 @@ export function OverviewPage() {
   const recent = useApiResource(fetchRecentReleases);
 
   return (
-    <div className="max-w-3xl">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Economic Overview</h1>
-        <p className="mt-2 max-w-prose text-neutral-600">Know what changed in the economy — and prove why.</p>
-      </header>
+    <div>
+      <PageHeader title="Economic Overview" description="Know what changed in the economy — and prove why." />
 
-      <div className="mt-8 divide-y divide-neutral-200 [&>*]:pt-8 [&>*:first-child]:pt-0">
+      <div className="mt-8 divide-y divide-line [&>*]:py-8 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
         {/* Since Your Last Check (Increment #25H) -- deliberately first;
             see this page's own docstring for why. */}
         <SinceLastVisit sinceLastVisit={sinceLastVisit} />
@@ -109,7 +107,7 @@ export function OverviewPage() {
 
         {/* What Changed -- same peer structure, one shared heading */}
         <section aria-labelledby="overview-what-changed-heading">
-          <h2 id="overview-what-changed-heading" className="text-sm font-medium text-neutral-500">
+          <h2 id="overview-what-changed-heading" className="text-sm font-medium text-fg-muted">
             What Changed
           </h2>
 
@@ -142,7 +140,7 @@ export function OverviewPage() {
 
         {/* Releases -- one section, two independently-loading parts */}
         <section aria-labelledby="overview-releases-heading">
-          <h2 id="overview-releases-heading" className="text-sm font-medium text-neutral-500">
+          <h2 id="overview-releases-heading" className="text-sm font-medium text-fg-muted">
             Releases
           </h2>
 
@@ -158,7 +156,7 @@ export function OverviewPage() {
             <ReleaseScheduleDisclosure />
           </div>
 
-          <Link to="/releases" className="mt-3 inline-block text-sm font-medium text-neutral-700 hover:text-neutral-900">
+          <Link to="/releases" className="mt-3 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
             View release calendar →
           </Link>
         </section>

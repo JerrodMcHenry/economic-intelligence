@@ -20,14 +20,14 @@ export function ConfirmationPanel({ confirmation }: { confirmation: Confirmation
 
   return (
     <section aria-labelledby="confirmation-heading">
-      <h2 id="confirmation-heading" className="text-sm font-medium text-neutral-500">
+      <h2 id="confirmation-heading" className="text-sm font-medium text-fg-muted">
         Confirmation
       </h2>
-      <p className="mt-1 text-xs text-neutral-400">Core PCE is primary. Core CPI confirms or diverges from it.</p>
+      <p className="mt-1 text-xs text-fg-muted">Core PCE is primary. Core CPI confirms or diverges from it.</p>
 
       <div className="mt-4">
         <div className="flex items-center gap-1.5">
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Core CPI confirmation</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">Core CPI confirmation</p>
           <ExplanationTrigger explanation={CONFIRMATION} />
         </div>
         <div className="mt-1.5">
@@ -37,15 +37,15 @@ export function ConfirmationPanel({ confirmation }: { confirmation: Confirmation
 
       <dl className="mt-4 flex flex-wrap gap-x-10 gap-y-3">
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-neutral-400">Core CPI state</dt>
+          <dt className="text-xs font-medium uppercase tracking-wide text-fg-muted">Core CPI state</dt>
           <dd className="mt-1.5 flex items-center gap-1.5">
             <Badge label={inflationStateLabel(confirmation_latest.state)} tone={inflationStateTone(confirmation_latest.state)} />
             <ExplanationTrigger explanation={CORE_CPI} />
           </dd>
         </div>
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-neutral-400">Confirmation period</dt>
-          <dd className="mt-1.5 text-sm text-neutral-700">{formatPeriod(latest_common_period)}</dd>
+          <dt className="text-xs font-medium uppercase tracking-wide text-fg-muted">Confirmation period</dt>
+          <dd className="mt-1.5 text-sm text-fg-secondary">{formatPeriod(latest_common_period)}</dd>
         </div>
       </dl>
     </section>

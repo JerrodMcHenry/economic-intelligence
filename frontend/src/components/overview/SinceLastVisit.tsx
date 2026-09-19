@@ -45,7 +45,7 @@ export function SinceLastVisit({ sinceLastVisit }: { sinceLastVisit: ApiResource
     <section aria-labelledby="overview-since-last-visit-heading">
       {sinceLastVisit.status === "loading" && (
         <>
-          <h2 id="overview-since-last-visit-heading" className="text-sm font-medium text-neutral-500">
+          <h2 id="overview-since-last-visit-heading" className="text-sm font-medium text-fg-muted">
             {sinceLastVisitHeading(true)}
           </h2>
           <div className="mt-3">
@@ -56,7 +56,7 @@ export function SinceLastVisit({ sinceLastVisit }: { sinceLastVisit: ApiResource
 
       {sinceLastVisit.status === "error" && (
         <>
-          <h2 id="overview-since-last-visit-heading" className="text-sm font-medium text-neutral-500">
+          <h2 id="overview-since-last-visit-heading" className="text-sm font-medium text-fg-muted">
             {sinceLastVisitHeading(true)}
           </h2>
           <div className="mt-3">
@@ -75,13 +75,13 @@ function SinceLastVisitContent({ response }: { response: SinceLastVisitResponse 
 
   return (
     <>
-      <h2 id="overview-since-last-visit-heading" className="text-sm font-medium text-neutral-500">
+      <h2 id="overview-since-last-visit-heading" className="text-sm font-medium text-fg-muted">
         {heading}
       </h2>
 
       <div className="mt-3 space-y-4">
-        {response.first_visit && <p className="text-sm text-neutral-600">{FIRST_VISIT_ORIENTATION_COPY}</p>}
-        {response.lookback_clamped && <p className="text-sm text-neutral-600">{LOOKBACK_CLAMPED_COPY}</p>}
+        {response.first_visit && <p className="text-sm text-fg-secondary">{FIRST_VISIT_ORIENTATION_COPY}</p>}
+        {response.lookback_clamped && <p className="text-sm text-fg-secondary">{LOOKBACK_CLAMPED_COPY}</p>}
 
         <DomainRecapBlock recap={response.inflation} />
         <DomainRecapBlock recap={response.labor} />
@@ -100,10 +100,10 @@ function DomainRecapBlock({ recap }: { recap: DomainRecap }) {
 
   return (
     <div>
-      <p className="text-sm font-semibold text-neutral-800">{label}</p>
-      <div className="mt-1 space-y-1 text-sm text-neutral-700">
-        {lastChecked && <p className="text-xs text-neutral-500">{lastChecked}</p>}
-        {coverageNote && <p className="text-neutral-600">{coverageNote}</p>}
+      <p className="text-sm font-semibold text-fg">{label}</p>
+      <div className="mt-1 space-y-1 text-sm text-fg-secondary">
+        {lastChecked && <p className="text-xs text-fg-muted">{lastChecked}</p>}
+        {coverageNote && <p className="text-fg-secondary">{coverageNote}</p>}
 
         {recap.structural_changes.map((item) => (
           <p key={`structural-${item.release_check_run_id}-${item.monitor}-${item.field}`}>{structuralChangeCopy(item)}</p>
@@ -117,7 +117,7 @@ function DomainRecapBlock({ recap }: { recap: DomainRecap }) {
 
         {zeroState && <p>{zeroState}</p>}
       </div>
-      <Link to={cta.to} className="mt-2 inline-block text-sm font-medium text-neutral-700 hover:text-neutral-900">
+      <Link to={cta.to} className="mt-2 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
         {cta.label}
       </Link>
     </div>

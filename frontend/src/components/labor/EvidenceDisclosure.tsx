@@ -32,14 +32,14 @@ export function EvidenceDisclosure({
   dataBasis: string;
 }) {
   if (observations.length === 0) {
-    return <p className="text-sm text-neutral-400">No evidence available.</p>;
+    return <p className="text-sm text-fg-muted">No evidence available.</p>;
   }
 
   return (
     <Disclosure summary={`View evidence: ${label}`}>
-      <table className="w-full text-left text-sm text-neutral-600">
+      <table className="w-full text-left text-sm text-fg-secondary">
         <thead>
-          <tr className="text-xs text-neutral-400">
+          <tr className="text-xs text-fg-muted">
             <th scope="col" className="pr-4 font-medium">
               Period
             </th>
@@ -57,12 +57,12 @@ export function EvidenceDisclosure({
           ))}
         </tbody>
       </table>
-      <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-neutral-600">
-        <dt className="text-neutral-400">Series</dt>
+      <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
+        <dt className="text-fg-muted">Series</dt>
         <dd>{observations[0]?.series_id}</dd>
-        <dt className="text-neutral-400">Methodology</dt>
+        <dt className="text-fg-muted">Methodology</dt>
         <dd>{methodologyId}</dd>
-        <dt className="text-neutral-400">Data basis</dt>
+        <dt className="text-fg-muted">Data basis</dt>
         <dd>{dataBasis}</dd>
       </dl>
     </Disclosure>

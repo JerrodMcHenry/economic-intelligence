@@ -8,36 +8,13 @@
  * evidence must never look like an economic conclusion.
  */
 import type { ChangeComponent, ChangeEventType, ConfirmationRelationship, InflationState } from "../api/inflation.types";
+import type { Tone } from "../design/stateTone";
 
-export type Tone = "cool" | "neutral" | "warm" | "caution" | "unavailable";
-
-export const TONE_CLASSES: Record<Tone, string> = {
-  cool: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-600/20",
-  neutral: "bg-neutral-100 text-neutral-700 ring-1 ring-inset ring-neutral-500/20",
-  warm: "bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-600/20",
-  caution: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-600/20",
-  unavailable: "bg-neutral-50 text-neutral-400 ring-1 ring-inset ring-neutral-300",
-};
-
-/** Same five tones as TONE_CLASSES, as plain text color only -- for
- * headline sentences that need tone reinforcement without a pill. */
-export const TONE_TEXT_CLASSES: Record<Tone, string> = {
-  cool: "text-sky-700",
-  neutral: "text-neutral-700",
-  warm: "text-orange-700",
-  caution: "text-amber-800",
-  unavailable: "text-neutral-400",
-};
-
-/** Same five tones, as a quiet left-border accent color for grouping a
- * block of related content (e.g. one What Changed subsection). */
-export const TONE_BORDER_CLASSES: Record<Tone, string> = {
-  cool: "border-sky-300",
-  neutral: "border-neutral-300",
-  warm: "border-orange-300",
-  caution: "border-amber-300",
-  unavailable: "border-neutral-200",
-};
+// The tone taxonomy and its token-backed class maps live in the design
+// layer (Increment #27B); re-exported here so existing domain imports
+// keep working unchanged.
+export type { Tone } from "../design/stateTone";
+export { TONE_BORDER_CLASSES, TONE_CLASSES, TONE_TEXT_CLASSES } from "../design/stateTone";
 
 const INFLATION_STATE_LABELS: Record<InflationState, string> = {
   COOLING: "Cooling",

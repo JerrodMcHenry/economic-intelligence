@@ -10,6 +10,7 @@ import { MethodologyDisclosure } from "../components/inflation/MethodologyDisclo
 import { MomentumMetrics } from "../components/inflation/MomentumMetrics";
 import { TargetPanel } from "../components/inflation/TargetPanel";
 import { WhatChangedSection } from "../components/inflation/WhatChangedSection";
+import { PageHeader } from "../components/PageHeader";
 
 const MONITOR_ERROR_MESSAGE = "Inflation data could not be loaded.";
 const CHANGES_ERROR_MESSAGE = "What changed could not be loaded.";
@@ -33,18 +34,15 @@ export function InflationPage() {
   const stateDuration = useApiResource(getInflationStateDuration);
 
   return (
-    <div className="max-w-3xl">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">Inflation</h1>
-        <p className="mt-2 max-w-prose text-neutral-600">
-          Track inflation levels, underlying momentum, confirmation, and the evidence behind each conclusion.
-        </p>
-        <div className="mt-3">
-          <DataBasisNote />
-        </div>
-      </header>
+    <div>
+      <PageHeader
+        title="Inflation"
+        description="Track inflation levels, underlying momentum, confirmation, and the evidence behind each conclusion."
+      >
+        <DataBasisNote />
+      </PageHeader>
 
-      <div className="mt-8 divide-y divide-neutral-200 [&>*]:pt-8 [&>*:first-child]:pt-0">
+      <div className="mt-8 divide-y divide-line [&>*]:py-8 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
         {/* 2. Primary underlying momentum state */}
         {monitor.status === "loading" && <LoadingSkeleton label="Loading underlying momentum" heightClassName="h-32" />}
         {monitor.status === "error" && <ErrorMessage message={MONITOR_ERROR_MESSAGE} onRetry={monitor.reload} />}

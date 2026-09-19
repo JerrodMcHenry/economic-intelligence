@@ -36,7 +36,7 @@ export function CurrentStateSection({
 }) {
   return (
     <section aria-labelledby="overview-current-state-heading">
-      <h2 id="overview-current-state-heading" className="text-sm font-medium text-neutral-500">
+      <h2 id="overview-current-state-heading" className="text-sm font-medium text-fg-muted">
         Current State
       </h2>
 
