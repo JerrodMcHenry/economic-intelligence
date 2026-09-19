@@ -9291,3 +9291,91 @@ sweep-level locking (no observed need); persisted manual-vs-scheduled
 sweep origin (no identified product requirement); production bootstrap
 and the real backup/restore rehearsal (#26F); economic methodology;
 AI; product analytics; onboarding; notifications; accounts.
+
+## CI Reliability Fix — Frontend Node Runtime Contract (pre-#27B)
+
+### Symptom
+
+GitHub Actions' `frontend` job failed at `npm test -- --run` while
+`npm ci` succeeded. Vitest reported `Test Files: no tests`,
+`Tests: no tests`, `Errors: 40 errors` — every error the same:
+`TypeError: webidl.util.markAsUncloneable is not a function`, raised from
+`undici/lib/web/cache/cachestorage.js` ← `undici/index.js` ←
+`jsdom/lib/api.js` during Vitest worker startup. This was not 40 failing
+application tests; zero tests ever ran.
+
+### Root cause
+
+`ci.yml` hardcoded `node-version: "20"` (resolving to 20.20.2, EOL since
+April 2026). The locked test chain requires a newer runtime:
+
+| Package (locked) | `engines.node` |
+|---|---|
+| vitest 5.0.0 | `^22.12.0 \|\| ^24.0.0 \|\| >=26.0.0` |
+| jsdom 30.0.1 | `^22.22.2 \|\| ^24.15.0 \|\| >=26.0.0` |
+| undici 8.10.2 (jsdom dependency) | `>=22.19.0` |
+| whatwg-url 17.1.1 | `^22.14.0 \|\| >=24.0.0` |
+
+undici 8 binds `webidl.util.markAsUncloneable` directly to
+`require('node:worker_threads').markAsUncloneable`, which does not exist
+on Node 20 (`typeof` → `undefined` on 20.20.2; `function` on 24.x).
+Constructing undici's `CacheStorage` at module load therefore throws the
+moment jsdom is imported.
+
+### Why no tests executed
+
+`environment: "jsdom"` makes every Vitest worker import jsdom before
+loading its test file. The suite has 40 test files → 40 worker startups
+→ 40 identical import-time crashes → no test body ever ran.
+
+### Why `npm ci` didn't catch it
+
+`npm ci` reproduced the lockfile faithfully (identical versions locally
+and in CI). npm only *warns* on `EBADENGINE` by default, so the runtime
+mismatch was visible in the install log but never failed the job. The
+project also had no single Node runtime contract: no `.nvmrc`/
+`.node-version`, no `engines`, and CI's `"20"` contradicted the Node
+v26.7.0 the frontend was originally scaffolded and verified on (Increment
+016A). A fresh development machine here ran Node
+24.4.1 — *also* below jsdom's `^24.15.0` floor, merely lucky enough to
+have `markAsUncloneable`.
+
+### Fix
+
+- `/.nvmrc` = `24.21.0` (Node 24 "Krypton", Active LTS) — the single
+  runtime contract. Read by nvm/fnm locally, by `actions/setup-node` via
+  `node-version-file` in CI, and by Render (which reads `.nvmrc` from the
+  repo root) for the Static Site build.
+- `frontend/package.json` `engines.node: "^24.15.0"` (bounded range whose
+  floor is jsdom's own requirement; mirrored into the lockfile's root
+  entry only — no dependency changed).
+- `frontend/.npmrc` `engine-strict=true`, so an unsupported Node now fails
+  `npm ci` immediately with an explicit `EBADENGINE` error instead of a
+  cryptic worker crash later.
+- `actions/checkout`, `actions/setup-node`, `actions/setup-python`
+  bumped to `@v7` (all `node24` runtimes, clearing the Node 20
+  Actions-runtime deprecation warnings). Reviewed v5–v7 release notes:
+  no breaking change affects this workflow's inputs.
+
+No test, assertion, dependency version, or Vitest setting was changed.
+
+### Verification (local; GitHub Actions itself not runnable locally)
+
+- Reproduced the exact CI failure under Node 20.20.2 + npm 10.8.2 with the
+  unmodified lockfile: `no tests`, `40 errors`, same stack.
+- With the fix, Node 20.20.2 and the machine's Node 24.4.1 both fail
+  `npm ci` at once with `EBADENGINE` (`Required: {"node":"^24.15.0"}`).
+- Under Node 24.21.0 + npm 11.19.0, from a clean `node_modules`:
+  `npm ci` OK; tests **40 files / 1,137 passed** (run twice, identical);
+  `tsc -b --noEmit`, `oxlint`, `vite build` all clean.
+- Backend (Python 3.12.13, local PostgreSQL 14.20):
+  **1,603 passed, 2 skipped** — both skips are research tests requiring
+  gitignored cached FRED data absent from a fresh clone; unrelated.
+
+### Lesson
+
+A lockfile pins *packages*, not the *runtime* that executes them.
+Reproducible CI needs both: one committed runtime-version file consumed
+by every environment (never a second hardcoded version in workflow YAML),
+and engine checks that fail installation rather than warn. A green
+`npm ci` is not evidence the toolchain can run.

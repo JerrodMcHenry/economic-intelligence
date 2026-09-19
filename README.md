@@ -93,6 +93,7 @@ The frontend acts as a presentation client and does not independently calculate 
 
 ### Frontend
 
+- Node.js 24 LTS (exact version pinned in `.nvmrc`)
 - TypeScript
 - React
 - Vite
@@ -188,11 +189,20 @@ http://localhost:8000
 
 ### Frontend
 
+The frontend's Node.js runtime is pinned in the repository-root `.nvmrc`
+(currently `24.21.0`, Node 24 LTS). That single file is the runtime contract
+for local development, GitHub Actions CI (`actions/setup-node`'s
+`node-version-file`), and Render's Static Site build. `frontend/package.json`
+declares the supported range (`engines.node: ^24.15.0`, the floor required by
+the locked `jsdom`), and `frontend/.npmrc` sets `engine-strict=true`, so
+`npm ci` fails immediately on an unsupported Node rather than later inside
+the test runner. With nvm or fnm, run `nvm use` / `fnm use`.
+
 Install dependencies and start the frontend:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 

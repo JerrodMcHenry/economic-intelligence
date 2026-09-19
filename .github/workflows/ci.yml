@@ -46,9 +46,9 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -78,11 +78,14 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      # Node version comes from the repository's single runtime contract
+      # (/.nvmrc) -- the same file local nvm/fnm and Render's Static Site
+      # build read -- never a separately hardcoded major here.
+      - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version-file: ".nvmrc"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
