@@ -421,3 +421,63 @@ describe("RatesPage accessibility semantics", () => {
     }
   });
 });
+
+describe("RatesPage emits valid HTML nesting", () => {
+  /**
+   * Regression for a pre-#33 defect found while reviewing the Analyst
+   * UI: the page header wrapped `ExplanationTrigger` -- a native
+   * `<details>/<summary>` disclosure -- in a `<p>`. A paragraph may
+   * contain only phrasing content, so React logged four invalid-nesting
+   * errors (`<details>`, `<summary>`, `<div>` and `<p>` inside `<p>`)
+   * and warned of a hydration mismatch.
+   *
+   * These assert the rendered DOM rather than the source, so they fail
+   * whichever component reintroduces the problem -- not only the one
+   * that caused it the first time.
+   */
+  const FORBIDDEN_IN_PARAGRAPH = ["details", "summary", "div", "p", "ul", "ol", "section", "table"];
+
+  async function renderLoadedPage() {
+    mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
+    const { container } = renderPage();
+    await screen.findByRole("region", { name: "Treasury yields" });
+    return container;
+  }
+
+  it("never nests flow content inside a paragraph", async () => {
+    const container = await renderLoadedPage();
+
+    const offenders: string[] = [];
+    for (const paragraph of container.querySelectorAll("p")) {
+      for (const tag of FORBIDDEN_IN_PARAGRAPH) {
+        if (paragraph.querySelector(tag)) {
+          offenders.push(`<p> contains <${tag}>: ${paragraph.textContent?.slice(0, 60)}`);
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("renders the data-freshness note and its explanation as siblings, not nested in a paragraph", async () => {
+    const container = await renderLoadedPage();
+
+    const trigger = screen.getByLabelText("What does Observation date mean?");
+    expect(trigger.closest("p")).toBeNull();
+    // The note itself still renders, so the fix did not remove content.
+    expect(screen.getByText(/Latest available:/)).toBeInTheDocument();
+    expect(container.querySelector("details")).not.toBeNull();
+  });
+
+  it("keeps the freshness explanation operable from the keyboard", async () => {
+    await renderLoadedPage();
+
+    const trigger = screen.getByLabelText("What does Observation date mean?");
+    const details = trigger.closest("details") as HTMLElement;
+    expect(details).not.toHaveAttribute("open");
+
+    await userEvent.click(trigger);
+
+    expect(details).toHaveAttribute("open");
+  });
+});

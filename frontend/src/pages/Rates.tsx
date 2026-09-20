@@ -271,11 +271,20 @@ export function RatesPage() {
         title="Rates Intelligence"
         description="Track U.S. Treasury yields, curve structure, real yields, and market-implied inflation compensation."
       >
+        {/* A <div>, not a <p>: `ExplanationTrigger` renders a native
+            <details>/<summary> disclosure, and <p> may contain only
+            phrasing content. Nesting it produced four invalid-nesting
+            errors on this page (<details>, <summary>, <div> and <p>
+            inside <p>) and, in a server-rendered build, a hydration
+            mismatch. The element is `display:flex` either way and
+            Tailwind's preflight zeroes paragraph margins, so the
+            rendering is unchanged. Guarded by the no-invalid-nesting
+            test in Rates.test.tsx. */}
         {monitor.status === "success" && monitor.data.as_of_date !== null && (
-          <p className="flex items-center gap-1.5 type-meta text-fg-muted">
+          <div className="flex items-center gap-1.5 type-meta text-fg-muted">
             <span>Latest available: {formatObservationDate(monitor.data.as_of_date)}</span>
             <ExplanationTrigger explanation={DATA_FRESHNESS} />
-          </p>
+          </div>
         )}
       </PageHeader>
 
