@@ -352,7 +352,13 @@ class ReleaseProcessingService:
             # contract §10/§64).
             for record in observation_changes:
                 economic_series = repo.get_series_by_series_id(record.series_id)
-                repo.write_observation(economic_series.id, record.observation_date, record.new_value)
+                # `detected_at` (Increment #31) is the instant this value
+                # was actually detected -- the most honest `recorded_from`
+                # for its system-time version, and already a single clock
+                # read per series check.
+                repo.write_observation(
+                    economic_series.id, record.observation_date, record.new_value, recorded_at=record.detected_at
+                )
             return [], []
 
         before_observations = _load_canonical_observations(repo) if affected_pairs else {}
@@ -362,7 +368,9 @@ class ReleaseProcessingService:
 
         for record in observation_changes:
             economic_series = repo.get_series_by_series_id(record.series_id)
-            repo.write_observation(economic_series.id, record.observation_date, record.new_value)
+            repo.write_observation(
+                economic_series.id, record.observation_date, record.new_value, recorded_at=record.detected_at
+            )
 
         after_observations = _load_canonical_observations(repo) if affected_pairs else {}
         after_evidence = {pair: _evaluate_component_at(after_observations, pair[0], pair[1]) for pair in affected_pairs}

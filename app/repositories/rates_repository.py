@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import EconomicObservation, EconomicSeries, ObservationProvenance, RatesIngestionRun
+from app.repositories.observation_versions import ORIGIN_RATES_INGESTION, ObservationVersionWriter
 
 UpsertOutcome = Literal["INSERTED", "REVISED", "UNCHANGED"]
 
@@ -130,31 +131,18 @@ class RatesRepository:
         idempotency requirement, enforced here rather than by caller
         discipline.
         """
-        existing = self._session.execute(
-            select(EconomicObservation).where(
-                EconomicObservation.economic_series_id == series.id,
-                EconomicObservation.observation_date == observation_date,
-            )
-        ).scalar_one_or_none()
-
-        if existing is None:
-            self._session.add(
-                EconomicObservation(
-                    economic_series_id=series.id,
-                    observation_date=observation_date,
-                    value=value,
-                )
-            )
-            self._upsert_provenance(series, observation_date, provenance, revised=False)
-            return "INSERTED"
-
-        if existing.value is not None and existing.value == value:
-            self._upsert_provenance(series, observation_date, provenance, revised=False)
-            return "UNCHANGED"
-
-        existing.value = value
-        self._upsert_provenance(series, observation_date, provenance, revised=True)
-        return "REVISED"
+        # The canonical write and its system-time version are applied by
+        # the one shared writer (Increment #31), so a Treasury revision
+        # now preserves its previous value -- #29 recorded only a
+        # `revision_count`, which cannot reconstruct anything.
+        # `retrieved_at` is reused as `recorded_from` so provenance and
+        # version history agree on when this ingestion happened.
+        writer = ObservationVersionWriter(
+            self._session, recorded_at=provenance.retrieved_at, origin=ORIGIN_RATES_INGESTION
+        )
+        outcome = writer.apply(series, observation_date, value)
+        self._upsert_provenance(series, observation_date, provenance, revised=outcome == "REVISED")
+        return outcome
 
     def _upsert_provenance(
         self,

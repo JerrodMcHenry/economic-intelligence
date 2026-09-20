@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import EconomicObservation, EconomicSeries
 from app.models.series import SeriesResponse
+from app.repositories.observation_versions import ORIGIN_SERIES_SYNC, ObservationVersionWriter
 
 
 class SeriesRepository:
@@ -187,22 +188,15 @@ class SeriesRepository:
         return series
 
     def _upsert_observations(self, series: EconomicSeries, data: SeriesResponse) -> None:
-        existing_by_date = {
-            obs.observation_date: obs
-            for obs in self._session.execute(
-                select(EconomicObservation).where(EconomicObservation.economic_series_id == series.id)
-            ).scalars()
-        }
+        """Delegates every canonical write to the one shared versioning
+        writer (Increment #31), so a sync-path revision preserves its
+        previous value exactly as a release-processing revision does.
+        Before #31 this path overwrote values silently and history was
+        path-dependent.
 
+        One writer, one clock read, for the whole series: every version
+        this sync creates shares an exact `recorded_from`.
+        """
+        writer = ObservationVersionWriter(self._session, origin=ORIGIN_SERIES_SYNC)
         for observation in data.observations:
-            existing = existing_by_date.get(observation.date)
-            if existing is not None:
-                existing.value = observation.value
-            else:
-                self._session.add(
-                    EconomicObservation(
-                        economic_series_id=series.id,
-                        observation_date=observation.date,
-                        value=observation.value,
-                    )
-                )
+            writer.apply(series, observation.date, observation.value)

@@ -7,7 +7,7 @@ shape of the data as stored in PostgreSQL.
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -461,4 +461,87 @@ class RatesIngestionRun(Base):
     observations_revised: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     datasets_failed: Mapped[str | None] = mapped_column(String(255), nullable=True)
     error_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ObservationVersion(Base):
+    """Increment #31: the append-only SYSTEM-TIME history of every value
+    MacroChipz has held for one canonical observation.
+
+    `economic_observations` remains the efficient CURRENT-state cache
+    (one row per series/date, overwritten in place). This table answers
+    the different question that cache structurally cannot: *what value
+    did MacroChipz have recorded for this observation at time T?*
+
+    NOT a generalized bitemporal store. `observation_date` remains the
+    economic period; `recorded_from`/`recorded_to` are SYSTEM time --
+    when MacroChipz considered a particular value current. Valid time in
+    the source's own sense (when a value was true according to the
+    provider, including publication time) is deliberately NOT modeled,
+    because the providers this project uses do not publish it.
+
+    Interval semantics are half-open, `[recorded_from, recorded_to)`:
+    a version is live at T when `recorded_from <= T < recorded_to`, and
+    an open version (`recorded_to IS NULL`) is live from
+    `recorded_from` onward. A revision closes the open version at
+    exactly the instant the new one opens, so the two never overlap and
+    never leave a gap.
+
+    Invariants enforced by the database, not merely by application code
+    (see the migration): at most ONE open version per
+    (series, observation_date); no two versions of the same
+    (series, observation_date) sharing a `recorded_from`; and every
+    closed interval strictly forward-going (`recorded_to > recorded_from`).
+
+    `is_backfilled` marks the one class of row this table cannot vouch
+    for: versions synthesized at migration time from observations that
+    predate #31. Their `recorded_from` is the observation row's own
+    `created_at`, which honestly means "this value existed in
+    MacroChipz by this time" -- never "this was the value the source
+    first published", and never evidence that no earlier revision
+    occurred. Observed (non-backfilled) rows carry the real instant the
+    write happened.
+
+    `origin` records WHICH write path produced the version
+    (`SERIES_SYNC`, `RELEASE_PROCESSING`, `RATES_INGESTION`,
+    `BACKFILL`). A `release_check_run_id` FK is deliberately absent:
+    release processing creates its check-run row only after the
+    observation writes have already happened, so the id genuinely does
+    not exist at write time, and restructuring that ordering purely to
+    carry a nullable FK would change #18's own established sequence for
+    no correctness gain. `release_observation_updates` already links a
+    change to its run and remains the record for "what happened during
+    this release-processing event".
+    """
+
+    __tablename__ = "observation_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "economic_series_id", "observation_date", "recorded_from", name="uq_observation_version_series_date_from"
+        ),
+        Index(
+            "uq_observation_version_one_open_per_series_date",
+            "economic_series_id",
+            "observation_date",
+            unique=True,
+            postgresql_where=text("recorded_to IS NULL"),
+        ),
+        Index("ix_observation_versions_as_of", "economic_series_id", "observation_date", "recorded_from"),
+        CheckConstraint("recorded_to IS NULL OR recorded_to > recorded_from", name="ck_observation_version_interval"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    economic_series_id: Mapped[int] = mapped_column(
+        ForeignKey("economic_series.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    observation_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # Nullable for the same reason `EconomicObservation.value` is: a
+    # provider can legitimately publish a missing value, and a
+    # transition into or out of missing is a real revision.
+    value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recorded_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    change_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    origin: Mapped[str] = mapped_column(String(24), nullable=False)
+    is_backfilled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

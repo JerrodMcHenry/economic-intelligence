@@ -19,9 +19,9 @@ from tests.conftest import migrate_schema_drift_database, reset_schema_drift_dat
 
 pytestmark = pytest.mark.integration
 
-_HEAD = "b7c41d92e8a3"
-_ONE_BEFORE_HEAD = "f5420059a092"
-_THREE_BEFORE_HEAD = "09f4c0959e9f"
+_HEAD = "c3f8a1d47b62"
+_ONE_BEFORE_HEAD = "b7c41d92e8a3"
+_THREE_BEFORE_HEAD = "f12b7ec0d626"
 
 
 @pytest.fixture(autouse=True)

@@ -10056,3 +10056,163 @@ remains a future methodology, not a UI feature.
 nothing asserted the spread's *change* — so a 100× error sat in a green
 suite until someone tried to put the number on a screen. Building the
 consumer is itself a test of the producer.
+
+## Increment #31 — Observation Versioning & Deterministic Replay
+
+Backend increment, no UI. Baseline: HEAD `0a85f56`, #30 in tree. Adds the
+minimum temporal infrastructure to answer **"what data did MacroChipz
+know at time T?"** and to prove a recorded conclusion reproduces from the
+data available when it was made. No AI, no probabilistic model, no new
+provider, no new route.
+
+### What the pre-#31 audit actually found
+
+Not a design gap — a measured one. Of 1,072 observations in the dev
+database, 358 had any audit row at all, and all 714 Rates observations
+had none. `_upsert_observations` overwrote `value` in place, so a
+provider revision erased its predecessor. `RecordedMonitorResult`
+(ADR-025) could prove *what* MacroChipz concluded and never *why*: the
+inputs were gone.
+
+### System time only, and why that is the honest choice
+
+Each version carries a half-open interval `[recorded_from, recorded_to)`
+— "when did MacroChipz hold this value?". There is deliberately **no**
+second valid-time axis for "when did the provider publish it?". Our
+providers do not reliably supply publication timestamps, and a column
+that is accurate for some rows and guessed for the rest is worse than an
+absent one. `observation_date` already carries the economic period. One
+axis, fully honest, beats two where one is fabricated. See ADR-030.
+
+Half-open matters concretely: `recorded_to = recorded_from` would be a
+zero-length interval, invisible to every as-of query — a version that
+exists but can never be observed. A check constraint rejects it.
+
+### One algorithm, three write paths
+
+`ObservationVersionWriter.apply()` does the canonical write *and* the
+versioning write, and is the only place either happens. Series sync,
+release processing, and Rates ingestion all delegate to it, tagged
+`SERIES_SYNC` / `RELEASE_PROCESSING` / `RATES_INGESTION`. Three separate
+implementations of interval-closing would drift, and a versioning layer
+correct on two of three paths is not a versioning layer — it is a trap,
+because its gaps are invisible at read time.
+
+`apply()` returns `INSERTED` / `REVISED` / `UNCHANGED`, decided by the
+value rather than by the caller. Re-writing an identical value produces
+no new row: routine re-fetches of unchanged history would otherwise bury
+genuine revisions under noise.
+
+### The backfill says what it is
+
+The migration creates one open version per existing observation with
+`change_type`/`origin` = `BACKFILL`, `is_backfilled = true`, and
+`recorded_from` = the observation's own `created_at`. That timestamp
+honestly supports "this value existed by then" and nothing stronger.
+**Pre-#31 revisions are permanently unrecoverable** — the data to recover
+them was overwritten and does not exist. The flag rides all the way up to
+`ReplayResult.inputs_include_backfilled` so no consumer can mistake
+reconstructed provenance for observed provenance.
+
+### Replay re-executes; it does not read back
+
+`ReplayService` loads the recorded row *only to compare against*,
+rebuilds inputs through `get_observations_as_of` at the row's own
+`calculated_at`, and calls the same `app.domain` primitives release
+processing used. Two refusals are deliberate:
+
+- **As-of never falls back to the current value.** A series with no
+  version covering the anchor returns nothing. Falling back would make
+  every replay pass — which converts the feature from evidence into
+  decoration.
+- **Coverage is checked before any calculation.** An empty input set fed
+  to the methodology would return `INSUFFICIENT_DATA`, which looks like
+  an economic finding but is really a storage gap. Instead:
+  `NOT_REPLAYABLE` with an explicit reason.
+
+### Methodology versions are now bound to behavior
+
+Before #31, `methodology_id` was a label, not a binding: `inflation_v1.0`
+could have been changed to mean something different with nothing failing,
+silently invalidating every historical row carrying it and making replay
+a lie. `tests/test_methodology_golden_vectors.py` pins fixed inputs to
+fixed outputs for both frozen methodologies. Changing what they compute
+now breaks CI, and the only correct response is a **new** version with
+**new** vectors — never an edit to these numbers.
+
+The guard is a test, not a runtime registry. A registry with dispatch
+would oblige production code to carry every past methodology forever, to
+serve a guarantee CI satisfies completely.
+
+Writing the vectors caught two of my own errors, both from asserting what
+I expected rather than what the specs say: I asserted `STRENGTHENING` for
+EXPANDING×STABLE, but the frozen agreement table
+(`LABOR_V1_FROZEN_METHODOLOGY.md` §7) resolves that to `MIXED` — only four
+combinations produce a clean state. And I hardcoded `2.4265743` where
+`(1.002**12 - 1) * 100` is `2.426576794540325`. Both were fixed against
+the specification, never against the code's output — a vector derived
+from the code it guards guards nothing.
+
+### The database enforces the invariants
+
+A partial unique index allows at most one open version per
+`(series, observation_date)`; a unique constraint forbids two versions
+starting at the same instant; a check constraint rejects a non-increasing
+interval. The invariant tests insert through raw SQL, bypassing the
+repository entirely — so a pass means PostgreSQL refused the write, not
+that the application declined to attempt it. Concurrency correctness does
+not rest on application discipline.
+
+### A testing problem worth recording
+
+The migration tests initially failed in a way that looked like a code bug
+and was actually a harness mismatch: `migrate_schema_drift_database()`
+always resets the database first, which structurally cannot test a
+backfill — a backfill can only be exercised by migrating *forward* over
+data that already exists. It also terminates connections, so any engine
+held across a migration dies with `AdminShutdown`.
+
+Fix: a local `_alembic()` helper running the same subprocess pattern
+without the reset, plus a short-lived engine per assertion instead of one
+held across migration steps. The shared helper was left alone — its
+reset-first behavior is correct for every other caller.
+
+### Verification
+
+- Backend: **1,777 passed, 2 skipped** (48 new: 25 versioning, 10 replay,
+  13 golden vectors; plus 8 migration tests).
+- Frontend untouched and green: typecheck, lint, 1,267 tests, build.
+- Migration: upgrade → downgrade → upgrade clean; downgrade preserves
+  every canonical observation; backfill leaves zero observations without
+  history.
+- Dev database after backfill: 1,072 observations → 1,072 open versions,
+  0 orphans, 12 series.
+- Live revision demonstration (inside a rolled-back transaction, so dev
+  data was unchanged — re-verified after): identical value → `UNCHANGED`;
+  changed value → `REVISED`; as-of before the revision returns the old
+  value, as-of after returns the new one; the canonical cache follows the
+  revision while history does not move.
+- **Deterministic replay over all 133 real recorded results: 133 MATCH**
+  (59 inflation, 74 labor), 0 mismatches, 0 not-replayable. 90 of those
+  are substantive economic states rather than `INSUFFICIENT_DATA`.
+
+### Deferred
+
+Explicit input linkage (recording which observation versions fed each
+result). The brief deferred it and said to stop and report if a concrete
+correctness reason emerged; none did. Monitor inputs are deterministically
+derivable from `(monitor, evaluation_period)` and the methodologies are
+frozen, so the as-of reconstruction is exact. A future monitor with
+*dynamic* input selection would change that — and is the trigger to
+revisit. Also deferred: any replay route or UI, and valid-time
+bitemporality.
+
+### Lesson
+
+**A temporal layer's only real test is whether it can fail.** Every design
+choice here that felt like extra work — as-of not falling back to current
+values, coverage checked before calculation, `is_backfilled` propagated to
+the result, invariants in the database rather than the repository — exists
+to preserve the possibility of a negative answer. A replay that always
+returns MATCH proves nothing, and the cheapest way to build one is to be
+slightly generous at each of those four points.

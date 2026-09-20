@@ -43,6 +43,7 @@ from app.db.models import (
     ReleaseSeriesMapping,
 )
 from app.models.release_processing import AnalysisChangeRecord, CheckRunStatus, ObservationChangeRecord, RecordableMonitorResult
+from app.repositories.observation_versions import ORIGIN_RELEASE_PROCESSING, ObservationVersionWriter
 
 # The two CheckRunStatus values that mean "every currently-active
 # mapped series in that run was successfully queried" (see
@@ -112,43 +113,40 @@ class ReleaseProcessingRepository:
         ).scalars()
         return {row.observation_date: row.value for row in rows}
 
-    def write_observation(self, economic_series_id: int, observation_date: date, value: float | None) -> None:
-        """Insert-or-overwrite one observation's current value --
-        mechanical only, no classification. The caller has already
+    def write_observation(
+        self,
+        economic_series_id: int,
+        observation_date: date,
+        value: float | None,
+        recorded_at: datetime | None = None,
+    ) -> None:
+        """Insert-or-overwrite one observation's current value, and
+        record its system-time version (Increment #31).
+
+        Mechanical only, no classification: the caller has already
         decided (via `app.domain.release_processing.classify_observation_change`,
         evaluated against `get_observations_by_date`'s snapshot) that
         this write is a genuine NEW or REVISED change; an UNCHANGED
-        observation is never passed here at all.
+        observation is never passed here at all. The shared writer
+        re-checks equality anyway and would simply record nothing, so
+        the two can never disagree about what counts as a change.
 
-        Flushes immediately (Increment #20D.2 fix -- this project's own
-        session factory sets `autoflush=False`, see `app.db.session`).
-        A REVISED write mutates an already-identity-mapped object
-        in-place, so the caller's later `get_observations_by_date`
-        re-read happened to see it correctly even without a flush
-        (same Python object, same session); a genuinely NEW observation
-        has no such object to mutate, so its `session.add(...)` alone
-        was invisible to a later `select()`-based "after" evidence read
-        without an explicit flush here -- silently producing an empty
-        before/after diff for exactly the case
-        `labor_what_changed_v1.0`'s own `AVAILABILITY_RESTORED` event
-        exists to detect. This was a latent defect in #18's own shared
-        write path (present for Inflation too, never previously
-        exercised by any existing Inflation test, all of which revise
-        already-persisted observations only) -- fixing it here benefits
-        both families identically, not a Labor-specific workaround."""
-        existing = self._session.execute(
-            select(EconomicObservation).where(
-                EconomicObservation.economic_series_id == economic_series_id,
-                EconomicObservation.observation_date == observation_date,
-            )
-        ).scalar_one_or_none()
-        if existing is not None:
-            existing.value = value
-        else:
-            self._session.add(
-                EconomicObservation(economic_series_id=economic_series_id, observation_date=observation_date, value=value)
-            )
-        self._session.flush()
+        `recorded_at` lets the caller pin every version written while
+        processing one occurrence to a single instant; omitted, the
+        writer reads the clock itself.
+
+        Flushing (Increment #20D.2's fix) is preserved -- the shared
+        writer flushes after each canonical write, so the later
+        "after"-evidence re-read still sees a genuinely NEW observation.
+        """
+        series = self._session.get(EconomicSeries, economic_series_id)
+        if series is None:  # pragma: no cover - caller always resolves the series first
+            raise ValueError(f"unknown economic_series_id: {economic_series_id}")
+
+        writer = ObservationVersionWriter(
+            self._session, recorded_at=recorded_at, origin=ORIGIN_RELEASE_PROCESSING
+        )
+        writer.apply(series, observation_date, value)
 
     # -----------------------------------------------------------------
     # ReleaseCheckRun / ReleaseObservationUpdate / ReleaseAnalysisUpdate
