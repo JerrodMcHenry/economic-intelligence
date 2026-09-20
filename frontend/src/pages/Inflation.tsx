@@ -1,7 +1,9 @@
 import { getInflationMonitor, getInflationStateDuration, getInflationWhatChanged } from "../api/inflation";
+import { getInflationHistory } from "../api/monitorHistory";
 import { useApiResource } from "../api/useApiResource";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
+import { IntelligenceHistorySection } from "../components/history/IntelligenceHistorySection";
 import { ConfirmationPanel } from "../components/inflation/ConfirmationPanel";
 import { DataBasisNote } from "../components/inflation/DataBasisNote";
 import { HeadlineContext } from "../components/inflation/HeadlineContext";
@@ -11,6 +13,7 @@ import { MomentumMetrics } from "../components/inflation/MomentumMetrics";
 import { TargetPanel } from "../components/inflation/TargetPanel";
 import { WhatChangedSection } from "../components/inflation/WhatChangedSection";
 import { PageHeader } from "../components/PageHeader";
+import { inflationStateLabelOrRaw, inflationStateToneOrNeutral } from "../lib/inflationLabels";
 
 const MONITOR_ERROR_MESSAGE = "Inflation data could not be loaded.";
 const CHANGES_ERROR_MESSAGE = "What changed could not be loaded.";
@@ -32,6 +35,7 @@ export function InflationPage() {
   const monitor = useApiResource(getInflationMonitor);
   const whatChanged = useApiResource(getInflationWhatChanged);
   const stateDuration = useApiResource(getInflationStateDuration);
+  const history = useApiResource(getInflationHistory);
 
   return (
     <div>
@@ -68,7 +72,19 @@ export function InflationPage() {
           </>
         )}
 
-        {/* 8. Evidence / methodology disclosure */}
+        {/* 8. Intelligence History (Increment #32) -- recorded
+            conclusions and whether they still reproduce. Placed just
+            before the methodology disclosure so the page reads
+            current -> recent -> historical -> how it works. */}
+        <IntelligenceHistorySection
+          monitor="inflation"
+          history={history}
+          headingId="inflation-intelligence-history-heading"
+          stateLabel={inflationStateLabelOrRaw}
+          stateTone={inflationStateToneOrNeutral}
+        />
+
+        {/* 9. Evidence / methodology disclosure */}
         {(monitor.status === "success" || whatChanged.status === "success") && (
           <MethodologyDisclosure
             monitor={monitor.status === "success" ? monitor.data : null}

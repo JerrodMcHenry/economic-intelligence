@@ -1,8 +1,10 @@
 import { getEmploymentSituationProcessingStatus, getLaborMonitor, getLaborStateDuration, getLaborWhatChanged } from "../api/labor";
+import { getLaborHistory } from "../api/monitorHistory";
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
 import { useApiResource } from "../api/useApiResource";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
+import { IntelligenceHistorySection } from "../components/history/IntelligenceHistorySection";
 import { DataBasisNote } from "../components/inflation/DataBasisNote";
 import { EmploymentSection } from "../components/labor/EmploymentSection";
 import { LaborHero } from "../components/labor/LaborHero";
@@ -12,6 +14,7 @@ import { RelevantRelease } from "../components/labor/RelevantRelease";
 import { UnemploymentSection } from "../components/labor/UnemploymentSection";
 import { WhatChangedSection } from "../components/labor/WhatChangedSection";
 import { PageHeader } from "../components/PageHeader";
+import { laborStateLabelOrRaw, laborStateToneOrNeutral } from "../lib/laborLabels";
 
 const MONITOR_ERROR_MESSAGE = "Labor data could not be loaded.";
 const CHANGES_ERROR_MESSAGE = "What changed could not be loaded.";
@@ -32,9 +35,15 @@ const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
  * page's own established "page owns every resource, components stay
  * dumb" convention -- one clear owner per resource.
  *
- * Frozen 7-section hierarchy (docs/architecture/labor-ui-v1.md §7):
- * Current State -> Employment -> Unemployment -> What Changed ->
- * Latest Data Detected -> Relevant Release -> Evidence & methodology.
+ * Section hierarchy (docs/architecture/labor-ui-v1.md §7, extended by
+ * Increment #32): Current State -> Employment -> Unemployment -> What
+ * Changed -> Latest Data Detected -> Relevant Release -> Intelligence
+ * History -> Evidence & methodology. #32 inserts its section at
+ * position 7 rather than anywhere earlier specifically to preserve
+ * §7's own deliberate adjacencies -- "Latest Data Detected" must stay
+ * next to "Relevant Release" because they concern the same release --
+ * and because recorded history reads naturally just before the
+ * page-level methodology disclosure.
  * State Duration V1 is a new line inside the existing Current State
  * (Hero) section, not an eighth section (frozen contract
  * docs/product/state-duration-v1.md §40). Every economic value, state,
@@ -48,6 +57,7 @@ export function LaborPage() {
   const processingStatus = useApiResource(getEmploymentSituationProcessingStatus);
   const upcoming = useApiResource(fetchUpcomingReleases);
   const recent = useApiResource(fetchRecentReleases);
+  const history = useApiResource(getLaborHistory);
 
   return (
     <div>
@@ -101,7 +111,16 @@ export function LaborPage() {
           />
         </div>
 
-        {/* 7. Evidence & methodology */}
+        {/* 7. Intelligence History (Increment #32) */}
+        <IntelligenceHistorySection
+          monitor="labor"
+          history={history}
+          headingId="labor-intelligence-history-heading"
+          stateLabel={laborStateLabelOrRaw}
+          stateTone={laborStateToneOrNeutral}
+        />
+
+        {/* 8. Evidence & methodology */}
         {(monitor.status === "success" || whatChanged.status === "success") && (
           <MethodologyDisclosure
             monitor={monitor.status === "success" ? monitor.data : null}

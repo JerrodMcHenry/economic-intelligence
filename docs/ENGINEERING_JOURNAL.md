@@ -10216,3 +10216,156 @@ the result, invariants in the database rather than the repository — exists
 to preserve the possibility of a negative answer. A replay that always
 returns MATCH proves nothing, and the cheapest way to build one is to be
 slightly generous at each of those four points.
+
+## Increment #32 — Point-in-Time Intelligence UX
+
+Baseline: HEAD `49f1292` (#31), clean tree. Turns #31's temporal
+foundation into a product surface on Inflation and Labor. No AI, no new
+provider, no new economic methodology.
+
+### The question the UI has to answer without lying
+
+MacroChipz now knows two different things about the same month, and they
+can legitimately disagree:
+
+- **What it knew then** — the conclusion it durably recorded, re-derived
+  from the observations available at `calculated_at`.
+- **What today's revised data says** — the same methodology re-run at the
+  same period against the current dataset.
+
+Conflating those is the single most misleading thing this feature could
+do, so the distinction is expressed in the types (`state` vs
+`current_state`), in two headings that can never collide ("What
+MacroChipz knew then" / "Using today's revised data"), and in a guard
+asserting the second never contains the word "knew".
+
+### The methodology names its own inputs
+
+The best discovery of this increment, and it removed most of the design
+risk: **neither monitor needed a new "which observations mattered"
+concept, because both already report one.** `inflation_v1.0` resolves
+t, t-1, t-3, t-6 and t-12 by exact calendar lookup and returns each as
+`InflationMetricEvidence` with both endpoints and their values;
+`labor_v1.0` returns every required month as `LaborObservationEvidence`,
+explicitly including the ones that were missing.
+
+So `historical_inputs` is read off the recomputed result rather than
+from a lookback window this feature invented. A window would have been a
+second definition of the methodology's input set, free to drift from the
+real one. Replay already recomputes that result, so the input list falls
+out of work that was being done anyway.
+
+Same reasoning drives the comparison: `compute_series_momentum_at` /
+`compute_labor_monitor_result_at` are called twice — once over as-of
+data, once over current data, same period, same function — so any
+difference is attributable to the data rather than to two code paths
+that merely resemble each other.
+
+### A units bug the symmetry caught
+
+The first version compared replay evidence against a raw
+`economic_observations` read. Every Labor input came back `REVISED` by a
+factor of 1,000: `labor_v1.0` converts PAYEMS from FRED-native thousands
+into actual jobs before putting it in evidence (158,268,000), while
+storage holds 158,268.
+
+The fix was not a conversion — it was to compare **evidence against
+evidence**, so both sides speak the methodology's own unit by
+construction and a unit mismatch becomes structurally impossible. The
+backend also now declares `value_unit` per input, so the frontend never
+infers a unit from a series id, which would be re-deriving a methodology
+decision in React.
+
+Worth recording because the bug was invisible to every backend test I
+had written at that point and showed up only when real Labor data was
+requested through the real route.
+
+### Cause attribution stays evidence-backed
+
+`recorded_monitor_results` and `release_observation_updates` share a
+`release_check_run_id`. That is a real persisted link, not temporal
+proximity — but it still does not record that one caused the other, and
+ADR-023's "no causal nesting" applies unchanged. So:
+
+- related changes are narrowed to observations this result's methodology
+  actually used (a bootstrap run carries 118 changes; attaching all of
+  them to each of 59 results would be true and useless),
+- the remainder is **counted, not dropped** (`other_changes_in_same_run`),
+- the copy says "processed in the same run… MacroChipz records that they
+  happened together; it does not record that one caused the other",
+- and a guard asserts no field name in the contract implies causation.
+
+### Replay status is a verdict, not an economic state
+
+#27B's hard rule keeps the `state-*` and `feedback-*` token families
+disjoint because an economic state is a classification, not a verdict —
+"Cooling" is not success. A replay outcome is the opposite kind of thing:
+it IS a verdict, about MacroChipz's own integrity. So replay badges use
+`feedback-*` (success / error / warning) and economic states keep
+`state-*`, and a guard asserts the replay map never reaches for a
+`state-*` token. A `MISMATCH` carries the error treatment plus a
+screen-reader description saying plainly that it is a data-integrity
+issue rather than an economic signal — never softened to "unverified".
+
+### Refusing rather than faking
+
+Three cases produce an explicit refusal instead of a number:
+
+- **Methodology version differs** — no `current_state` at all. Today's
+  code implements different rules; its answer is not "the same analysis
+  on newer data". `state_differs` is `null`, never defaulted to `false`,
+  which would read as "nothing changed".
+- **Replay unavailable** — no historical inputs to compare against, so
+  the input comparison is `NOT_COMPARABLE`. Today's reconstruction still
+  stands on its own and is still reported.
+- **Rates** — `/monitors/rates/history` is a 422, because Rates has
+  observation versioning but records no monitor state. An empty list
+  would imply a history that does not exist.
+
+### Backfill, disclosed without alarm
+
+Every real local result replays over #31 backfill, so every row carries a
+quiet "Reconstructed inputs" chip and the detail carries the full
+disclosure. The wording tracks the boundary frozen in
+`recorded-state-history-v1.md` §23: reproducible from MacroChipz's own
+stored data, but not proof of the provider's originally published
+figures. #31 moved that boundary; it did not erase it.
+
+### Verification
+
+- Backend **1,833 passed, 2 skipped** (+56: 24 service, 14 API, 18
+  architecture).
+- Frontend **1,320 passed** (+53), typecheck / lint / build clean.
+- Visual review at 1440 / 820 / 390 in light and dark: zero horizontal
+  overflow and zero console errors at every breakpoint.
+- History API exercised against the real local database: 59 inflation
+  and 74 labor recorded results, all replaying MATCH, related changes
+  correctly narrowed from 118 to the 5 the methodology used.
+
+### Known limitation found during visual review
+
+Labor's twelve most recent recorded results are all `INSUFFICIENT_DATA`,
+for evaluation periods through October 2027. That is honest — those rows
+really were recorded, for future periods with no data yet — and it is an
+artifact of how the local database was bootstrapped, not of this
+feature. It is left as-is deliberately: filtering `INSUFFICIENT_DATA`
+out of recorded history would hide real recorded conclusions to make the
+page look better, which is the opposite of what this surface is for.
+
+### Deferred
+
+Pagination controls (the section shows the most recent 12 of a bounded,
+paginated endpoint), an Overview surface, a Rates equivalent (no
+recorded state exists to surface), and user-selectable arbitrary
+timestamps — nothing in the product question set required one.
+
+### Lesson
+
+**Ask what the existing code already proves before designing a new
+concept.** The two hardest-looking requirements — "show the relevant
+deterministic inputs" and "compare then against today" — turned out to
+need no new economics at all, because the frozen methodologies already
+emit their own exact inputs as evidence and already accept an explicit
+period. The one place I *did* introduce a second path (evidence on one
+side, raw storage on the other) is precisely where the only real bug of
+the increment appeared.

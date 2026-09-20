@@ -5,6 +5,7 @@ from app.api.ai import router as ai_router
 from app.api.analysis import router as analysis_router
 from app.api.inflation import router as inflation_router
 from app.api.labor import router as labor_router
+from app.api.monitor_history import router as monitor_history_router
 from app.api.rates import monitors_router as rates_monitors_router, rates_router
 from app.api.release_processing_read import router as release_processing_read_router
 from app.api.releases import router as releases_router
@@ -25,6 +26,7 @@ app.include_router(inflation_router, prefix="/api/v1")
 app.include_router(labor_router, prefix="/api/v1")
 app.include_router(rates_monitors_router, prefix="/api/v1")
 app.include_router(rates_router, prefix="/api/v1")
+app.include_router(monitor_history_router, prefix="/api/v1")
 app.include_router(releases_router, prefix="/api/v1")
 app.include_router(release_processing_read_router, prefix="/api/v1")
 app.include_router(since_last_visit_router, prefix="/api/v1")

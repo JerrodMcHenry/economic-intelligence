@@ -56,6 +56,18 @@ export function laborStateLabelOrRaw(value: string): string {
   return value in LABOR_STATE_LABELS ? LABOR_STATE_LABELS[value as LaborState] : value;
 }
 
+/**
+ * Tone for a state arriving as a plain `string` -- the shape recorded
+ * history uses, since a durably stored state may predate the current
+ * `LaborState` union. Mirrors `inflationStateToneOrNeutral`; an
+ * unrecognised value falls back to `neutral`, never to a directional
+ * tone, so an unknown state can never be coloured as if it carried a
+ * direction (the same rule `LABOR_STATE_TONE` itself already honours).
+ */
+export function laborStateToneOrNeutral(value: string): Tone {
+  return value in LABOR_STATE_TONE ? LABOR_STATE_TONE[value as LaborState] : "neutral";
+}
+
 const EMPLOYMENT_STATE_LABELS: Record<EmploymentState, string> = {
   EXPANDING: "Expanding",
   COOLING: "Cooling",

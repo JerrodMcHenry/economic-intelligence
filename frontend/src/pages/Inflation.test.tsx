@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api/errors";
 import { getInflationMonitor, getInflationStateDuration, getInflationWhatChanged } from "../api/inflation";
+import { getInflationHistory } from "../api/monitorHistory";
 import {
   buildChangeEvent,
   buildConfirmation,
@@ -21,6 +22,7 @@ import {
   buildTarget,
   buildWhatChanged,
 } from "../test/fixtures/inflation";
+import { buildEmptyHistoryResponse } from "../test/fixtures/monitorHistory";
 import { buildStateDurationAvailable, buildStateDurationCurrentInsufficient } from "../test/fixtures/stateDuration";
 import { InflationPage } from "./Inflation";
 
@@ -30,9 +32,12 @@ vi.mock("../api/inflation", () => ({
   getInflationStateDuration: vi.fn(),
 }));
 
+vi.mock("../api/monitorHistory", () => ({ getInflationHistory: vi.fn() }));
+
 const mockedGetMonitor = vi.mocked(getInflationMonitor);
 const mockedGetWhatChanged = vi.mocked(getInflationWhatChanged);
 const mockedGetStateDuration = vi.mocked(getInflationStateDuration);
+const mockedGetHistory = vi.mocked(getInflationHistory);
 
 beforeEach(() => {
   mockedGetMonitor.mockReset();
@@ -43,6 +48,13 @@ beforeEach(() => {
   // dedicated describe block below; unrelated tests must never hang
   // or crash on this third, independent resource.
   mockedGetStateDuration.mockResolvedValue(buildStateDurationCurrentInsufficient());
+  // Increment #32's Intelligence History is a fourth independent
+  // resource; the same rule applies -- a resolved default here so no
+  // pre-existing test hangs on, or sees an error alert from, a section
+  // it is not about. Its own behavior is covered in
+  // components/history/IntelligenceHistorySection.test.tsx.
+  mockedGetHistory.mockReset();
+  mockedGetHistory.mockResolvedValue(buildEmptyHistoryResponse("inflation"));
 });
 
 function renderPage() {
@@ -197,7 +209,15 @@ describe("State Duration V1 (Increment #24D)", () => {
     // Both live in the SAME Hero section, and the duration line precedes
     // the Why disclosure in document order (DOM position comparison).
     expect(durationText.compareDocumentPosition(whyToggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: /history/i })).not.toBeInTheDocument();
+    // State Duration contributes NO section heading of its own -- the
+    // point of this assertion. (Increment #32 later added a genuine
+    // "Intelligence history" section, which is a different feature and
+    // is excluded here rather than allowed to mask a #24D regression.)
+    const stateDurationHeadings = screen
+      .getAllByRole("heading", { level: 2 })
+      .map((heading) => heading.textContent)
+      .filter((text) => text !== null && /duration|history of/i.test(text));
+    expect(stateDurationHeadings).toEqual([]);
   });
 
   it("never renders a chart element", async () => {

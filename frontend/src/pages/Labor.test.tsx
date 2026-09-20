@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 import { getEmploymentSituationProcessingStatus, getLaborMonitor, getLaborStateDuration, getLaborWhatChanged } from "../api/labor";
+import { getLaborHistory } from "../api/monitorHistory";
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
 import {
   buildEmploymentResult,
@@ -19,6 +20,7 @@ import {
   buildLaborWhatChanged,
   buildUnemploymentResult,
 } from "../test/fixtures/labor";
+import { buildEmptyHistoryResponse } from "../test/fixtures/monitorHistory";
 import { buildLatestCheck, buildReleaseProcessingStatusItem, buildReleaseProcessingStatusResponse } from "../test/fixtures/processingStatus";
 import { buildReleaseListResponse, buildReleaseOccurrenceItem } from "../test/fixtures/releases";
 import { buildStateDurationAvailable, buildStateDurationCurrentInsufficient } from "../test/fixtures/stateDuration";
@@ -34,6 +36,7 @@ vi.mock("../api/releases", () => ({
   fetchUpcomingReleases: vi.fn(),
   fetchRecentReleases: vi.fn(),
 }));
+vi.mock("../api/monitorHistory", () => ({ getLaborHistory: vi.fn() }));
 
 const mockedGetMonitor = vi.mocked(getLaborMonitor);
 const mockedGetWhatChanged = vi.mocked(getLaborWhatChanged);
@@ -41,6 +44,7 @@ const mockedGetProcessingStatus = vi.mocked(getEmploymentSituationProcessingStat
 const mockedFetchUpcoming = vi.mocked(fetchUpcomingReleases);
 const mockedFetchRecent = vi.mocked(fetchRecentReleases);
 const mockedGetStateDuration = vi.mocked(getLaborStateDuration);
+const mockedGetHistory = vi.mocked(getLaborHistory);
 
 beforeEach(() => {
   mockedGetMonitor.mockReset();
@@ -52,6 +56,12 @@ beforeEach(() => {
   // Resolved, non-hanging default for every test unless overridden --
   // State Duration is scoped to its own dedicated describe block below.
   mockedGetStateDuration.mockResolvedValue(buildStateDurationCurrentInsufficient({ methodology_id: "labor_v1.0" }));
+  // Increment #32's Intelligence History -- a seventh independent
+  // resource, resolved by default so no pre-existing test hangs on or
+  // sees an error from a section it is not about. Its own behavior is
+  // covered in components/history/IntelligenceHistorySection.test.tsx.
+  mockedGetHistory.mockReset();
+  mockedGetHistory.mockResolvedValue(buildEmptyHistoryResponse("labor"));
 });
 
 function resolveAll(overrides: {
@@ -112,6 +122,7 @@ describe("frozen 7-section hierarchy", () => {
       "What changed",
       "Latest data detected",
       "Employment Situation release",
+      "Intelligence history",
       "Evidence & methodology",
     ]);
   });
@@ -307,7 +318,15 @@ describe("State Duration V1 (Increment #24D)", () => {
     const durationText = within(section).getByText(/Latest-revised reconstruction/);
     const whyToggle = within(section).getByText("Why Strengthening?");
     expect(durationText.compareDocumentPosition(whyToggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: /history/i })).not.toBeInTheDocument();
+    // State Duration contributes NO section heading of its own -- the
+    // point of this assertion. (Increment #32 later added a genuine
+    // "Intelligence history" section, which is a different feature and
+    // is excluded here rather than allowed to mask a #24D regression.)
+    const stateDurationHeadings = screen
+      .getAllByRole("heading", { level: 2 })
+      .map((heading) => heading.textContent)
+      .filter((text) => text !== null && /duration|history of/i.test(text));
+    expect(stateDurationHeadings).toEqual([]);
   });
 
   it("preserves the existing #23C Relate composition sentence inside WhyLaborState, unaffected by State Duration", async () => {
@@ -354,6 +373,7 @@ describe("Relate V1 composition, inside the existing WhyLaborState disclosure (I
       "What changed",
       "Latest data detected",
       "Employment Situation release",
+      "Intelligence history",
       "Evidence & methodology",
     ]);
 
