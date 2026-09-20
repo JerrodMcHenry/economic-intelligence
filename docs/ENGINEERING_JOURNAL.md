@@ -9755,3 +9755,170 @@ commercial product" differ on almost every source that matters, and the
 difference is only visible in terms-of-use pages nobody reads until something
 depends on them. Two days of reading changed the domain scope, removed a
 headline feature, and reversed the build decision.
+
+## Increment #29 — Rates Intelligence Foundation
+
+Implementation. Baseline: HEAD `a81530b` (#28's discovery artifact),
+clean tree. Adds one deterministic domain — U.S. interest rates — to the
+backend. No AI, no probabilistic model, no frontend change.
+
+### Scope chosen, and what was deliberately left out
+
+#28 established which sources are usable at $0 in a commercial product.
+#29 acts on that evidence rather than on the wish-list: **one provider,
+six canonical series, two derived metric families.**
+
+- Nominal Treasury par yields 2Y/5Y/10Y/30Y and real (TIPS) par yields
+  5Y/10Y, from the two U.S. Treasury XML feeds — U.S. Government works,
+  unauthenticated, no key to configure or leak.
+- Derived server-side: 2s10s and 2s30s curve spreads (basis points), and
+  5Y/10Y market-implied inflation compensation (percentage points).
+
+**Policy and overnight rates (target range, EFFR, SOFR) were deferred on
+purpose.** Each needs a second provider: the NY Fed's rates licence
+carries two mandatory legends plus an indemnification clause, and the
+FRED path carries the terms ambiguity #28 §10.2 documented. Holding V1
+to a single provider keeps every observation's provenance and licensing
+uniform, and makes the later addition a deliberate licence review rather
+than a silent widening. `5s30s` was dropped for a simpler reason: 2s10s
+and 2s30s already answer the V1 question, and every extra derived metric
+is more surface to justify, test and explain.
+
+### Two decisions that shaped everything else
+
+**1. Windows count observations, not calendar days.** A "5-session
+change" is the latest observation minus the one five published sessions
+earlier. The obvious alternative — "5 days ago" — needs a fallback policy
+for weekends, holidays and missing prints, and every such policy quietly
+changes the number reported. Counting observations needs no fallback and
+is reproducible by hand from the stored series. The cost is accepted
+openly: `21_SESSIONS` is approximately, not exactly, a month, so the API
+names windows in sessions and never relabels them "1M".
+
+**2. Percentiles instead of invented thresholds.** Inflation and Labor
+classify into named states because their methodologies define a neutral
+band around a monthly aggregate. Doing the same for a daily market series
+would mean inventing a cutoff — an economic claim wearing a UI label. So
+`rates_v1.0` ships no `TIGHTENING`/`EASING`/`RISK_OFF` state at all. It
+reports the level, the basis-point change over an explicit window, the
+spread, and where that change sits in its own history. "Larger than 91%
+of 5-session changes since 2004" needs no threshold and says more than a
+label would.
+
+### Canonical vs derived, kept structurally distinct
+
+A derived value must never look like a sourced one, so the two carry
+*different provenance types*. `SourceProvenance` has provider, dataset,
+upstream field, source URL, retrieval time and revision count.
+`DerivedProvenance` has a methodology ID, the calculation in words, its
+input series and the calculation timestamp — and deliberately no provider
+or dataset field at all. A test asserts that a spread's provenance
+contains no `provider` key.
+
+### Alignment and missing data
+
+The rules are absolute and tested: a null value is not an observation
+(dropped, never zero, never carried forward); a two-series metric
+requires both sides on the *same* date (no nearest-date search, no
+forward-fill, no interpolation); and an unavailable derived metric says
+*which* of three things went wrong —
+`NO_OBSERVATIONS_FOR_EITHER_SERIES`, `NO_OBSERVATIONS_FOR_ONE_SERIES`,
+or `NO_EXACTLY_SHARED_OBSERVATION_DATE`. A series that was never ingested
+behaves exactly like one with too little history: `available: false`
+inside a normal 200, never an error. Only genuine database failure is a
+503/500.
+
+### Persistence
+
+Two additive tables; nothing existing was altered, so every pre-#29 row
+keeps its exact meaning and the downgrade is a clean drop (verified by
+running upgrade → downgrade → upgrade against the isolated drift
+database).
+
+- `observation_provenance` — one row per (series, observation_date).
+  Deliberately not columns on `economic_observations`: provenance
+  describes the *retrieval event*, not the economic fact, and back-filling
+  a fabricated provider for historical FRED rows would itself be a
+  provenance lie. A missing row means "not recorded", never an assumed
+  source.
+- `rates_ingestion_runs` — that a sync was attempted and how it ended.
+  Counts and an exception class name only; never a payload, never a body.
+
+Idempotency lives in the repository, not in caller discipline:
+`upsert_observation` returns `INSERTED` / `REVISED` / `UNCHANGED`. A
+re-sync of identical data inserts nothing and advances no revision
+counter — only `retrieved_at` moves — so `revision_count` stays a
+meaningful count of genuine provider corrections.
+
+### Structure
+
+Read and write paths are separate classes, mirroring
+`ReleaseReadService`/`ReleaseSyncService`: `RatesMonitorService` has no
+Treasury client anywhere in its import graph, so a read is *incapable* of
+triggering ingestion. An architecture test walks the transitive imports
+and asserts exactly that.
+
+### Security
+
+The client hardcodes its host and a closed two-entry dataset allow-list;
+an unknown dataset is refused before any request is built. The only
+caller-supplied values (year, month) are range-checked and rendered
+through integer formatting, never interpolated raw. Redirects are
+disabled, so an upstream redirect can never carry a request to a host the
+allow-list never approved (tested: a 301/302/307 surfaces as a typed
+error). Responses are capped at 1MB. There is no API key anywhere in this
+path, and no `.env` value was read during this increment.
+
+### Verification
+
+- Backend suite: **1,719 passed, 2 skipped** (up from 1,603; +116 tests).
+  The 2 skips are the pre-existing research tests needing gitignored
+  cached FRED data.
+- New tests: 31 domain, 28 client, 22 service/repository integration, 17
+  API, 18 architecture guards.
+- Migration reversibility confirmed on the isolated drift database.
+- **Live end-to-end against the real Treasury feed** (read-only, no
+  writes): 13 sessions per dataset for 2026-09, latest 2026-09-18,
+  2s10s = 25.0bp, 10Y compensation = 2.33pp, 10Y 5-session change =
+  5.0bp — all matching hand arithmetic on the published values.
+- Existing behavior intact: Inflation, Labor, Release Intelligence,
+  Since Last Visit, recorded history and readiness all unchanged and
+  green. The frontend was not touched.
+
+**One existing-test change, and why it is maintenance rather than
+weakening:** four integration modules pin the migration head as a literal
+(`_HEAD`, `_ONE_BEFORE_HEAD`, `_THREE_BEFORE_HEAD`) precisely so that
+adding a migration forces a conscious update. They were advanced by one
+revision. `test_expected_revision_is_the_real_known_head` still compares
+the application's computed head against that literal, so the guard keeps
+working.
+
+**A real defect the live test caught:** the first default timeout (15s)
+timed out against the production feed. The failure path behaved correctly
+— a typed `TreasuryTimeoutError`, no partial write — and the default is
+now 30s, since Treasury's stack is materially slower than FRED's.
+
+### Operator note
+
+The development database is at the previous head; `alembic upgrade head`
+is required before `POST /api/v1/rates/sync`. #29 did not migrate any
+database outside the isolated test ones.
+
+### Deferred
+
+Policy/overnight rates; 5s30s; a Rates UI (no frontend work at all in
+this increment); inclusion in automated maintenance sweeps (sync remains
+explicit and operator-invoked); recorded-history integration for rates;
+and the realized-inflation vs market-implied-compensation comparison —
+#29 exposes the canonical metrics such a methodology would consume and
+implements no comparison itself.
+
+### Lesson
+
+**Choosing the window rule is an economic decision disguised as a
+technical one.** "5-day change" sounds unambiguous until the data has
+weekends, holidays and missing prints in it — at which point the fallback
+policy, not the definition, decides the number the user reads. Making the
+rule "count observations" removed an entire class of silent
+inconsistency, and cost only the honesty of naming windows in sessions
+rather than months.

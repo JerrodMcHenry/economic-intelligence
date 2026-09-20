@@ -7,7 +7,7 @@ shape of the data as stored in PostgreSQL.
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, String, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -386,4 +386,79 @@ class RecordedMonitorResult(Base):
     methodology_id: Mapped[str] = mapped_column(String(32), nullable=False)
     data_basis: Mapped[str] = mapped_column(String(32), nullable=False)
     calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ObservationProvenance(Base):
+    """Increment #29: where one persisted `EconomicObservation` actually
+    came from, and whether the provider has since revised it.
+
+    Deliberately a SEPARATE table rather than columns on
+    `economic_observations`: provenance is about the *retrieval event*,
+    not about the economic fact, and every pre-#29 observation
+    legitimately has none (backfilling a fabricated provider/URL for
+    historical FRED rows would itself be a provenance lie). A missing
+    provenance row therefore means "not recorded", never "unknown
+    source silently assumed".
+
+    One row per `(economic_series_id, observation_date)` -- the same
+    grain as the observation itself. `revision_count` increments and
+    `last_revised_at` is set only when a later ingestion genuinely
+    changes the stored value; a re-ingestion that confirms the same
+    value updates `retrieved_at` only, so revision history never
+    inflates with routine idempotent syncs.
+    """
+
+    __tablename__ = "observation_provenance"
+    __table_args__ = (
+        UniqueConstraint("economic_series_id", "observation_date", name="uq_observation_provenance_series_date"),
+        Index("ix_observation_provenance_provider_dataset", "provider", "dataset"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    economic_series_id: Mapped[int] = mapped_column(
+        ForeignKey("economic_series.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    observation_date: Mapped[date] = mapped_column(Date, nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    dataset: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_series_field: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revision_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_revised_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class RatesIngestionRun(Base):
+    """Increment #29: one operator-invoked Rates ingestion attempt, for
+    diagnosability.
+
+    Mirrors `ReleaseCheckRun`'s role for release processing: it records
+    that a sync was ATTEMPTED and how it ended, independent of whether
+    any observation changed. Counts only -- never an upstream payload,
+    never a URL with credentials (these feeds have none), never a stack
+    trace. `error_class` holds an exception class name at most, so a
+    failure is diagnosable without leaking response bodies.
+    """
+
+    __tablename__ = "rates_ingestion_runs"
+    __table_args__ = (Index("ix_rates_ingestion_runs_started_at", "started_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    datasets_requested: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    observations_received: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    observations_inserted: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    observations_revised: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    datasets_failed: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    error_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

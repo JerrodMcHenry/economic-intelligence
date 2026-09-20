@@ -25,6 +25,7 @@ DOMAIN_FILES = [
     Path("app/domain/labor_what_changed.py"),
     Path("app/domain/labor_release_processing.py"),
     Path("app/domain/state_duration.py"),
+    Path("app/domain/rates.py"),
 ]
 
 # Forbidden if an imported module IS one of these, or is a submodule of
