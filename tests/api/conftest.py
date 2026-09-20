@@ -134,3 +134,20 @@ def fred_configured(monkeypatch):
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "fred_api_key", "test-sentinel-not-a-real-key")
+
+
+@pytest.fixture(autouse=True)
+def _reset_analyst_rate_limiter():
+    """Clear the Analyst rate limiter between API tests (Increment #34).
+
+    The limiter is module-level in-process state, so without this it
+    accumulates across the whole suite and an unrelated test eventually
+    receives a 429 instead of the status it asserts. That is not a test
+    smell to paper over -- it is the same per-process accumulation the
+    limiter is supposed to have in production, surfacing correctly here.
+    """
+    from app.api.analyst import _analyst_rate_limiter
+
+    _analyst_rate_limiter.reset()
+    yield
+    _analyst_rate_limiter.reset()

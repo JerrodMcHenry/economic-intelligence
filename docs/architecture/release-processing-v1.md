@@ -549,9 +549,12 @@ response text, generated SQL, or a stack trace.
 
 ## 18. No public HTTP process endpoint (security)
 
-**This project has no authentication anywhere.** `POST /series/{id}/sync`
-and `POST /releases/sync` already establish an existing, accepted
-pattern of unauthenticated mutation endpoints -- but release processing
+**When #18 was written, this project had no authentication anywhere,**
+and `POST /series/{id}/sync` and `POST /releases/sync` established an
+existing, accepted pattern of unauthenticated mutation endpoints. As of
+Increment #34 that premise no longer holds: both now require the
+`X-Operator-Token` header (ADR-033). **#18's conclusion is unaffected
+and, if anything, reinforced** -- release processing
 is strictly more expensive (it fans out to multiple mapped series per
 release, writes more rows, and performs additional computation) than
 either. #18 deliberately does **not** add

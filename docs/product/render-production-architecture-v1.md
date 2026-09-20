@@ -292,6 +292,8 @@ Unchanged in substance from #26E's own already-frozen threshold (ADR-029), now s
 | `OPENAI_API_KEY` / `OPENAI_MODEL` | Optional (only if the AI route is ever exposed; may be omitted entirely for private beta) | No | No | No |
 | `APP_VERSION` | Yes (§32) | Yes | No | Inherited from web's own build context |
 | `CORS_ALLOWED_ORIGINS` | Yes (§8, new, non-secret) | No | No | No |
+| `OPERATOR_TOKEN` | Yes (§55.2, Increment #34 — **secret**, `sync: false`; unset in production closes the sync endpoints entirely) | No | **No — never exposed to the browser** | No |
+| `ENVIRONMENT` | Yes (`production`, non-secret; see ADR-033) | Yes | No | Inherited from web's own deploy context |
 | `VITE_API_BASE_URL` | No | No | Yes (non-secret, the deployed backend's own public URL) | No |
 | `PORT` | Render-injected automatically (§10) | No (cron does not bind a port) | No | No |
 
@@ -317,7 +319,9 @@ Used identically on the web service and the cron job (once added, §59) — Rend
 
 ## §31. FRED key scope — least privilege, verified against actual code paths
 
-**The web service does not need `FRED_API_KEY` at all.** Verified directly (not assumed) against every web-service route this session has ever built: `GET /api/v1/monitors/{inflation,labor}`, `/since-last-visit`, `/releases`, `/release-processing-read/*` are all database-backed reads, never a live FRED call; `POST /api/v1/series/{id}/sync` and `POST /api/v1/releases/sync` **do** call FRED, but §55/§62 designate them as bootstrap-time, operator-invoked actions (curl'd directly against the deployed web service by an operator during bootstrap), not something the web service needs a *standing* credential for beyond that. Given this is a genuine, if narrow, tension (the sync endpoints DO exist on the web service and DO need the key when invoked) — the resolution is: **the web service DOES receive `FRED_API_KEY`, exactly because these two already-existing, already-public sync endpoints require it to function** (removing it would silently break already-shipped, intentionally-public functionality) — corrected from an initial narrower instinct ("web never needs it") to the verified truth ("two specific, already-public web routes do"). The cron job needs it unconditionally (`run_maintenance` always calls FRED). Neither the frontend build nor the migration pre-deploy phase ever needs it.
+**The web service does not need `FRED_API_KEY` at all.** Verified directly (not assumed) against every web-service route this session has ever built: `GET /api/v1/monitors/{inflation,labor}`, `/since-last-visit`, `/releases`, `/release-processing-read/*` are all database-backed reads, never a live FRED call; `POST /api/v1/series/{id}/sync` and `POST /api/v1/releases/sync` **do** call FRED, but §55/§62 designate them as bootstrap-time, operator-invoked actions (curl'd directly against the deployed web service by an operator during bootstrap), not something the web service needs a *standing* credential for beyond that. Given this is a genuine, if narrow, tension (the sync endpoints DO exist on the web service and DO need the key when invoked) — the resolution is: **the web service DOES receive `FRED_API_KEY`, exactly because these two already-existing, operator-authorized sync endpoints require it to function** (removing it would silently break already-shipped operational functionality) — corrected from an initial narrower instinct ("web never needs it") to the verified truth ("two specific web routes do"). The cron job needs it unconditionally (`run_maintenance` always calls FRED). Neither the frontend build nor the migration pre-deploy phase ever needs it.
+
+> **Increment #34 note.** Those two routes are no longer public: they require the `X-Operator-Token` header (§55.2, ADR-033). That narrows *who* can spend the key but not *which process* needs it, so this section's conclusion is unchanged.
 
 ---
 
@@ -474,7 +478,19 @@ Covered fully by §27 — Render's own default email notifications for cron fail
 Freshly verified against actual code (§2), not guessed:
 
 1. **Release catalog**: already seeded by the migration chain itself (three data migrations, #26D's own confirmed finding, reconfirmed unchanged) — no separate bootstrap step needed for this part.
-2. **Economic observations**: `POST /api/v1/series/{series_id}/sync` (confirmed exact path, `app/api/series.py:108`) — called once per curated series, directly against the deployed web service's own public URL (a plain `curl -X POST https://<web-service>.onrender.com/api/v1/series/<id>/sync`, no SSH needed, since this is an already-public, already-safe endpoint per ADR-016's own established rationale).
+2. **Economic observations**: `POST /api/v1/series/{series_id}/sync` (confirmed exact path, `app/api/series.py`) — called once per curated series, directly against the deployed web service's own URL. **This endpoint is operator-authorized, not public** (Increment #34, ADR-033): it requires the `X-Operator-Token` request header, whose value is the server-side production secret `OPERATOR_TOKEN`. No SSH is needed, but the header is mandatory.
+
+   ```bash
+   # OPERATOR_TOKEN is read from the operator's own environment.
+   # Never paste a literal token into a command, a file, or this document.
+   curl -X POST \
+     -H "X-Operator-Token: $OPERATOR_TOKEN" \
+     https://<web-service>.onrender.com/api/v1/series/<series-id>/sync
+   ```
+
+   **Supersedes this section's original instruction**, which described a plain unauthenticated `curl` and called this "an already-public, already-safe endpoint per ADR-016's own established rationale." ADR-016's reasoning — the write is idempotent and cannot corrupt canonical data — remains correct and is not what changed. #34's threat-model review rejected the exposure on different grounds: a stranger who knows the URL can exhaust the project's FRED quota, drive unbounded upstream requests, and hold database transactions open, none of which requires corrupting a single row. "Cannot break the data" is not the same as "safe to expose." See ADR-033 and `docs/operations/production-deployment-v1.md` §3-§4.
+
+   Public **read** endpoints are unchanged and remain anonymously public — the monitors, history, releases, series observations and Analyst availability all require no header. Only the three sync/write endpoints are authorized. `OPERATOR_TOKEN` is a server-side secret held by the operator and by the web service's own environment; it is never issued to, needed by, or reachable from the frontend, and no browser user ever possesses it.
 3. **Canonical monitor availability**: requires at least one genuine processing pass per relevant release occurrence — `python -m app.operations.process_release --occurrence-id <id>` (confirmed exact flag name), run via SSH/Shell (§26) once per currently-relevant occurrence, until Inflation and Labor both return real (non-`INSUFFICIENT_DATA`) states.
 
 Not performed this increment — this is #26H's own scope.
@@ -531,7 +547,7 @@ Not performed this increment — this is #26H's own scope.
 
 ## §63. Operator access — summary
 
-No public admin API exists or is added. Every operational command (`release preflight`, `maintenance_health`, `process_release`, ad hoc `smoke_test`) runs either (a) via Render SSH/Shell into the web service instance (§26), using the exact same image/environment/private-network access the service already has, or (b) for the two already-public, already-safe sync endpoints (§55.2), a plain HTTPS `curl` from the operator's own machine.
+No public admin API exists or is added. Every operational command (`release preflight`, `maintenance_health`, `process_release`, ad hoc `smoke_test`) runs either (a) via Render SSH/Shell into the web service instance (§26), using the exact same image/environment/private-network access the service already has, or (b) for the three sync endpoints (§55.2), an HTTPS `curl` from the operator's own machine **carrying the `X-Operator-Token` header** (Increment #34, ADR-033). Those endpoints are operator-authorized, not public; with `OPERATOR_TOKEN` unset in a production environment they refuse every request rather than standing open.
 
 ---
 

@@ -23,6 +23,11 @@ WORKDIR /app
 # wheels that lack a prebuilt manylinux wheel for this base image —
 # removed from the final layer's own apt cache immediately after use,
 # never left resident in the image.
+# Increment #34: psycopg[binary] ships prebuilt manylinux wheels, so the
+# compilers are needed only as a fallback. They are installed, used by
+# `pip install` below, and then PURGED in the same image -- previously
+# `build-essential` stayed resident, leaving a full toolchain in a
+# production image for no runtime purpose.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -37,7 +42,9 @@ COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . \
+    && apt-get purge -y --auto-remove build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 # Increment #26C/#26D's own version-provenance mechanism
 # (app/core/version.py): prefer a build-time-injected APP_VERSION over
@@ -78,5 +85,25 @@ ENV APP_VERSION=${APP_VERSION}
 # never invokes maintenance -- app/main.py has, and must continue to
 # have, zero awareness of any of them (enforced by
 # tests/test_release_architecture.py).
+# Increment #34: run as a non-root user. Nothing in this image needs
+# root at runtime -- the application writes no files, binds an
+# unprivileged port, and owns no system state.
+RUN useradd --create-home --uid 10001 macrochipz \
+    && chown -R macrochipz:macrochipz /app
+USER macrochipz
+
+# Increment #34, two changes required by the frozen deployment contract
+# (docs/product/render-production-architecture-v1.md §9):
+#
+# - `$PORT`: the platform injects the port to bind and does not
+#   guarantee detection of a fixed alternate one. Shell form so the
+#   variable is expanded at container start, defaulting to 8000 so
+#   local `docker run` is unchanged.
+# - `--proxy-headers` with `--forwarded-allow-ips`: TLS terminates at
+#   the platform edge, so without this the application sees the proxy's
+#   address as the client and every request as plain HTTP. The allowed
+#   set is configurable and defaults to `*`, which is correct ONLY
+#   because this container is never exposed directly -- the platform is
+#   always the sole ingress. Documented in the deployment guide.
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-*}"]

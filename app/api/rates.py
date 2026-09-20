@@ -14,10 +14,11 @@ ingestion, and ingestion can never be an accidental side effect of
 someone loading a page.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from app.clients.treasury import TreasuryClient, TreasuryError
+from app.api.operator import require_operator
 from app.core.config import settings
 from app.db.session import session_scope
 from app.models.rates import RatesMonitorResult, RatesSyncResponse
@@ -59,7 +60,7 @@ def get_rates_monitor() -> RatesMonitorResult:
         raise HTTPException(status_code=500, detail="Database error while reading rates monitor data.")
 
 
-@rates_router.post("/sync", response_model=RatesSyncResponse)
+@rates_router.post("/sync", response_model=RatesSyncResponse, dependencies=[Depends(require_operator)])
 def sync_rates(
     lookback_months: int = Query(default=DEFAULT_LOOKBACK_MONTHS, ge=1, le=MAX_LOOKBACK_MONTHS),
 ) -> RatesSyncResponse:

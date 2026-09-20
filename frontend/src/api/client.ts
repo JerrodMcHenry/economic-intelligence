@@ -25,6 +25,25 @@ import { ApiError } from "./errors";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 /**
+ * How long to wait for the backend before giving up (Increment #34).
+ *
+ * Before this, there was no timeout anywhere in the frontend: a hung
+ * backend left every section stuck in `status: "loading"` until the
+ * browser's own network timeout (minutes), with no error, no retry
+ * affordance and no explanation. A visible failure the user can retry
+ * is strictly better than an indefinite spinner.
+ *
+ * Generous rather than tight: the Analyst legitimately takes several
+ * seconds, and the aim is to catch a hang, not to race a slow answer.
+ */
+export const REQUEST_TIMEOUT_MS = 30_000;
+
+/** An `AbortSignal` that fires after `REQUEST_TIMEOUT_MS`. */
+function timeoutSignal(): AbortSignal {
+  return AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+}
+
+/**
  * Issue a GET request and parse its JSON body.
  *
  * Throws `ApiError` for a network failure or a non-2xx HTTP status.
@@ -44,6 +63,7 @@ export async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
+      signal: timeoutSignal(),
       ...init,
       method: "GET",
       headers: { Accept: "application/json", ...init?.headers },
@@ -78,6 +98,7 @@ export async function apiPost<T>(path: string, body: unknown, init?: RequestInit
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
+      signal: timeoutSignal(),
       ...init,
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json", ...init?.headers },

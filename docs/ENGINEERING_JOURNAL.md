@@ -10668,3 +10668,153 @@ out was to run the suite exactly as built and then read every answer
 before touching a line of code. Had I tuned the assertions first, I
 would have shipped a green suite over a context packet that was quietly
 asking a language model to do the backend's arithmetic.
+
+## Increment #34 — Production Hardening
+
+Baseline: HEAD `90e7cb1`, clean tree. No new product features. The full
+audit, route matrix, threat model and runbook live in
+`docs/operations/production-deployment-v1.md`; ADR-033 records the
+authorization and production-mode decisions. This entry records what
+the exercise taught.
+
+### The audit changed what the work was
+
+I expected to find the usual list — CORS, headers, a rate limit — and
+those were there. What I did not expect was that **a frozen deployment
+contract already existed** (`render-production-architecture-v1.md`,
+§1–§81, from #26F) and that it *named two required implementation tasks
+that were never carried out*: the Dockerfile `$PORT` binding (§9) and
+`CORS_ALLOWED_ORIGINS` (§8). Both were written down as "#26G's own
+implementation task", and #26G never happened.
+
+So the first useful output of the audit was not a new finding. It was
+noticing that the most dangerous gap in a long-running project is a
+decision that was made, documented, and then quietly not done — it
+reads as settled every time anyone greps for it.
+
+### The finding I would have missed without measuring
+
+**Every `logger.info` in this application was being discarded.**
+
+Under uvicorn's default configuration the root logger sits at WARNING
+with no handler attached to `app.*`. Verified directly rather than
+assumed:
+
+```
+app.services.analyst: effective level = WARNING, isEnabledFor(INFO) = False
+root: level=WARNING handlers=[]
+```
+
+Which means all of #33's Analyst telemetry — model, prompt version,
+context version, latency, tokens, outcome, evidence validation, every
+field I wrote a test for — produced nothing in a real deployment. The
+code was correct. It reached no handler.
+
+That is a specific kind of failure worth naming: instrumentation that
+is *tested* is not the same as instrumentation that is *observable*.
+Every test asserted the record's fields via `caplog`, which attaches
+its own handler and therefore never exercised the production path at
+all. `app/core/logging.py` exists to connect the two.
+
+A second, smaller version of the same problem surfaced immediately
+after: once logs did emit, the Analyst line carried its own generated
+`request_id` while the access line carried the middleware's, so the two
+records for one request could not be joined. Correlation you cannot
+correlate is decoration.
+
+### Public write endpoints, and disagreeing with a frozen document
+
+Three endpoints — series sync, rates sync, release sync — drive
+outbound provider traffic and write canonical economic data, and were
+anonymously reachable. Probing returned 422/404, never 401/403, because
+no authentication primitive existed anywhere in the application.
+
+`render-production-architecture-v1.md` §55.2/§63 calls these
+"already-public, already-safe" and builds the bootstrap procedure
+around a public `curl`. Its reasoning — idempotent, cannot corrupt
+data (ADR-016) — is correct, and answers a different question than the
+one that matters here. Data integrity is not the exposure. Cost and
+availability are: a stranger can exhaust a FRED quota, issue unbounded
+Treasury fetches, and hold transactions open without corrupting a
+single row.
+
+The fix is sized to the actual access model rather than to a checklist.
+MacroChipz has no accounts, no personal data, no payments, no sessions,
+and exactly one privileged actor. A shared secret in a header is the
+smallest thing that solves it; ADR-033 records why accounts, OAuth and
+IP allowlisting were each rejected as disproportionate.
+
+It fails **closed** in production. A forgotten variable then means "my
+sync returns 503", which I notice, rather than "anyone can drive my
+quota", which nobody notices.
+
+### What I deliberately did not build
+
+No Redis, no queue, no Kubernetes, no Terraform, no distributed lock,
+no WAF, no identity system. The rate limiter is an in-process
+fixed-window counter, correct only for the single-instance deployment
+the frozen architecture specifies — and the module says so at the top,
+because the failure mode of an undocumented single-instance assumption
+is someone scaling to two and quietly losing the control.
+
+Two deliberate non-implementations worth recording:
+
+- **No CSP or HSTS on the API.** This service returns JSON, never HTML;
+  a CSP on its responses protects nothing, and TLS terminates at the
+  platform edge which issues HSTS itself. The CSP that matters belongs
+  to the static host and is specified in the deployment document
+  instead — including the honest note that `script-src 'unsafe-inline'`
+  is required by the pre-paint theme bootstrap, which is a real
+  weakening rather than something to hide.
+- **No pagination added to `/series/{id}/transform` or
+  `/analysis/compare`**, which are genuinely unpaginated. Every curated
+  series is monthly, so the realistic worst case is hundreds of rows.
+  Adding pagination to a working public contract is a product change,
+  not hardening; it is recorded as a limitation with the condition that
+  would make it urgent (ingesting a daily series at scale).
+
+### Two tests that failed for the right reasons
+
+Writing the abuse tests surfaced two things worth keeping:
+
+The first hung. `POST /rates/sync` needs no API key, so a test that
+authenticated successfully went on to perform a **real, multi-month
+Treasury ingestion**. Stubbing the client fixed it, and the near-miss
+is the point: the endpoint being unauthenticated upstream is exactly
+why it needed guarding.
+
+The second was the rate limiter leaking across tests — an unrelated
+test eventually received a 429 instead of the status it asserted. That
+is not a test smell to paper over; it is the same per-process
+accumulation the limiter is supposed to have in production, surfacing
+correctly. The fix is an autouse reset, and the docstring says why.
+
+### Verification
+
+Backend **2,073 passed, 2 skipped** (+57). Frontend **1,366 passed**,
+typecheck/lint/build clean. `npm audit`: 0 vulnerabilities. `pip-audit`:
+3 findings in `setuptools`/`wheel`, both build-time tooling absent from
+the application's runtime import graph.
+
+Exercised live against a production-mode instance: docs closed (404);
+all three operator endpoints 401 anonymously and with a wrong token;
+legacy AI route 404; CORS allows the configured origin and refuses a
+forged one with no credentials header; four security headers on every
+response including errors; rate limit 3/60s produced `200,200,200,
+429,429` with `Retry-After: 59`; a 5 MB body rejected `413` before
+parsing; malformed JSON, wrong content type and an unsupported context
+all `422`; traversal-shaped identifiers `404`. With the database
+unreachable: `/health` stayed `200`, `/readiness` reported
+`database_unreachable`, reads returned a contained `503`, and Analyst
+availability still answered `200`. Zero secret matches across every
+server log.
+
+### Lesson
+
+**Hardening is mostly finding out which of your existing guarantees
+were never true.** The controls I added are unremarkable — a header
+check, a limiter, four response headers, a logging config. What made
+the increment worth doing was measuring things I had already written
+tests for and finding that two of them — production telemetry, and a
+documented deployment fix — existed only on paper. A checklist would
+have produced the same middleware and missed both.

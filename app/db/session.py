@@ -27,7 +27,32 @@ def _get_engine() -> Engine:
         raise DatabaseNotConfiguredError("DATABASE_URL is not configured.")
     # pool_pre_ping guards against stale connections (e.g. after a DB
     # restart) without any manual pool tuning.
-    return create_engine(settings.database_url, pool_pre_ping=True)
+    #
+    # Increment #34 adds two bounds, both about failing fast rather than
+    # tuning throughput (no measurements exist to justify tuning, so
+    # pool_size/max_overflow are deliberately left at SQLAlchemy's
+    # defaults):
+    #
+    # - `connect_timeout`: without it, psycopg waits on the OS default
+    #   for a TCP connect, so a network partition to the database parks
+    #   a worker thread for minutes instead of failing into the 503 that
+    #   every route already handles correctly.
+    # - `pool_recycle`: managed Postgres and the proxies in front of it
+    #   drop idle connections silently. `pool_pre_ping` already repairs
+    #   that, and recycling avoids paying the discovery round-trip.
+    #
+    # `application_name` makes this service identifiable in
+    # `pg_stat_activity` when an operator is looking at who holds a
+    # connection.
+    return create_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+        pool_recycle=settings.database_pool_recycle_seconds,
+        connect_args={
+            "connect_timeout": settings.database_connect_timeout_seconds,
+            "application_name": "macrochipz-api",
+        },
+    )
 
 
 @lru_cache(maxsize=1)

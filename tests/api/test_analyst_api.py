@@ -402,3 +402,71 @@ class TestNoCanonicalSideEffects:
                     "/api/v1/analyst/explain", json={"context": {"type": context_type}, "question": "Explain."}
                 )
         assert counts() == before
+
+
+class TestAnalystCostControls:
+    """Increment #34. The Analyst is the only endpoint where an
+    anonymous caller can spend real money, so it is the only one with
+    cost controls."""
+
+    def test_requests_beyond_the_budget_are_rejected_with_429(
+        self, client, analyst_configured, fake_provider, monkeypatch
+    ):
+        from app.api import analyst as analyst_module
+        from app.api.rate_limit import FixedWindowRateLimiter
+
+        monkeypatch.setattr(analyst_module, "_analyst_rate_limiter", FixedWindowRateLimiter(limit=2, window_seconds=60))
+        provider = fake_provider()
+        payload = {"context": {"type": "INFLATION"}, "question": "Why?"}
+
+        statuses = [client.post("/api/v1/analyst/explain", json=payload).status_code for _ in range(4)]
+
+        assert statuses == [200, 200, 429, 429]
+        assert len(provider.responses.calls) == 2, "a throttled request must not reach the provider"
+
+    def test_a_throttled_request_tells_the_caller_when_to_retry(
+        self, client, analyst_configured, fake_provider, monkeypatch
+    ):
+        from app.api import analyst as analyst_module
+        from app.api.rate_limit import FixedWindowRateLimiter
+
+        monkeypatch.setattr(analyst_module, "_analyst_rate_limiter", FixedWindowRateLimiter(limit=1, window_seconds=60))
+        fake_provider()
+        payload = {"context": {"type": "INFLATION"}, "question": "Why?"}
+
+        client.post("/api/v1/analyst/explain", json=payload)
+        throttled = client.post("/api/v1/analyst/explain", json=payload)
+
+        assert throttled.status_code == 429
+        assert int(throttled.headers["Retry-After"]) > 0
+
+    def test_throttling_happens_before_any_database_work(
+        self, client, analyst_configured, fake_provider, monkeypatch
+    ):
+        """A throttled caller must cost neither a query nor a token."""
+        from app.api import analyst as analyst_module
+        from app.api.rate_limit import FixedWindowRateLimiter
+
+        monkeypatch.setattr(analyst_module, "_analyst_rate_limiter", FixedWindowRateLimiter(limit=0, window_seconds=60))
+
+        def _explode(*args, **kwargs):
+            raise AssertionError("context assembly must not run for a throttled request")
+
+        monkeypatch.setattr("app.api.analyst.AnalystContextBuilder.build", _explode)
+        fake_provider()
+
+        response = client.post("/api/v1/analyst/explain", json={"context": {"type": "INFLATION"}, "question": "Why?"})
+
+        assert response.status_code == 429
+
+    def test_the_output_token_ceiling_is_sent_to_the_provider(self, client, analyst_configured, fake_provider):
+        """#33 capped the question at 500 characters but left the answer
+        unbounded, so a single request's cost was open-ended at the top."""
+        from app.core.config import settings
+
+        provider = fake_provider()
+
+        client.post("/api/v1/analyst/explain", json={"context": {"type": "INFLATION"}, "question": "Why?"})
+
+        assert provider.responses.calls[0]["max_output_tokens"] == settings.analyst_max_output_tokens
+        assert settings.analyst_max_output_tokens > 0

@@ -3,6 +3,20 @@
 Reads settings from environment variables (optionally populated from a
 local .env file for development). Nothing here should ever hold a real
 secret value directly in source code.
+
+Increment #34 adds a single, explicit `ENVIRONMENT` setting and derives
+every production-behaviour decision from it here, in one place. The
+alternative -- scattered `if os.environ.get("ENV") == "production"`
+comparisons at each call site -- is how a development default silently
+becomes a production one: each site is individually plausible, and no
+single file tells you what the deployment actually does.
+
+**Development defaults must never be silently unsafe in production.**
+The rule applied throughout: where a setting is required for a control
+to work, the development default is permissive and the PRODUCTION
+default is closed. `is_production` decides which, and
+`production_configuration_errors()` reports, at startup, anything
+production needs and does not have.
 """
 
 import os
@@ -13,9 +27,40 @@ from dotenv import load_dotenv
 # No-op (and safe) if the file doesn't exist, e.g. in production.
 load_dotenv()
 
+#: The one recognised production marker. Anything else -- unset,
+#: "development", "test", a typo -- is treated as NOT production, which
+#: is the safe direction: a typo yields a permissive local app that
+#: obviously is not production, never a production app silently running
+#: with development defaults.
+PRODUCTION_ENVIRONMENT = "production"
+
+
+def _split_csv(raw: str | None) -> list[str]:
+    return [item.strip() for item in (raw or "").split(",") if item.strip()]
+
 
 class Settings:
     """Minimal settings container backed by environment variables."""
+
+    # -----------------------------------------------------------------
+    # Deployment mode
+    # -----------------------------------------------------------------
+
+    #: `production` enables the closed defaults below. Unset means local
+    #: development.
+    environment: str = (os.environ.get("ENVIRONMENT") or "development").strip().lower()
+
+    #: Emitted by `/readiness` and useful in logs; `.git` is excluded
+    #: from the image, so production should pass this as a build arg.
+    app_version: str | None = os.environ.get("APP_VERSION")
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment == PRODUCTION_ENVIRONMENT
+
+    # -----------------------------------------------------------------
+    # Providers
+    # -----------------------------------------------------------------
 
     fred_api_key: str | None = os.environ.get("FRED_API_KEY")
     fred_timeout_seconds: float = 10.0
@@ -37,5 +82,124 @@ class Settings:
     openai_model: str | None = os.environ.get("OPENAI_MODEL")
     openai_timeout_seconds: float = 30.0
 
+    # -----------------------------------------------------------------
+    # Database connection behaviour (Increment #34)
+    # -----------------------------------------------------------------
+
+    #: Seconds to wait for a TCP connection to Postgres. Without this,
+    #: psycopg waits on the OS default (minutes), so a network partition
+    #: blocks a worker thread rather than failing into the 503 every
+    #: route already handles.
+    database_connect_timeout_seconds: int = int(os.environ.get("DATABASE_CONNECT_TIMEOUT_SECONDS") or 10)
+
+    #: Recycle pooled connections before a managed Postgres or an
+    #: intermediary silently drops them. `pool_pre_ping` already repairs
+    #: a dead connection; recycling avoids paying for that discovery.
+    database_pool_recycle_seconds: int = int(os.environ.get("DATABASE_POOL_RECYCLE_SECONDS") or 1800)
+
+    # -----------------------------------------------------------------
+    # HTTP surface (Increment #34)
+    # -----------------------------------------------------------------
+
+    #: Exact allowed browser origins, comma-separated. Never a wildcard.
+    #: Empty in development is fine -- the Vite dev server proxies `/api`
+    #: same-origin, so no CORS is involved locally at all.
+    cors_allowed_origins: list[str] = _split_csv(os.environ.get("CORS_ALLOWED_ORIGINS"))
+
+    #: Largest accepted request body. Every legitimate request here is a
+    #: small JSON document; the largest contracted field is the Analyst's
+    #: own 500-character question.
+    max_request_body_bytes: int = int(os.environ.get("MAX_REQUEST_BODY_BYTES") or 64 * 1024)
+
+    #: Shared secret for the operator-only write endpoints (series/rates/
+    #: release sync). Unset in development leaves them open, which is
+    #: convenient and harmless on localhost; unset in PRODUCTION closes
+    #: them entirely rather than leaving them open (see
+    #: `app/api/operator.py`).
+    operator_token: str | None = os.environ.get("OPERATOR_TOKEN")
+
+    # -----------------------------------------------------------------
+    # Analyst cost controls (Increment #34)
+    # -----------------------------------------------------------------
+
+    #: Hard ceiling on generated tokens per Analyst answer. #33 caps the
+    #: question at 500 characters but never bounded the output, so a
+    #: single request's cost was open-ended at the top.
+    analyst_max_output_tokens: int = int(os.environ.get("ANALYST_MAX_OUTPUT_TOKENS") or 700)
+
+    #: Simple fixed-window rate limit for `POST /analyst/explain`.
+    #: IN-PROCESS AND PER-INSTANCE -- see `app/api/rate_limit.py`. Valid
+    #: only for the single-instance deployment the frozen architecture
+    #: specifies (render-production-architecture-v1.md §9).
+    analyst_rate_limit_requests: int = int(os.environ.get("ANALYST_RATE_LIMIT_REQUESTS") or 10)
+    analyst_rate_limit_window_seconds: int = int(os.environ.get("ANALYST_RATE_LIMIT_WINDOW_SECONDS") or 60)
+
+    # -----------------------------------------------------------------
+    # Observability (Increment #34)
+    # -----------------------------------------------------------------
+
+    log_level: str = (os.environ.get("LOG_LEVEL") or "INFO").strip().upper()
+
+    #: JSON lines in production (a log aggregator can parse them, and
+    #: `extra` fields survive); human-readable locally.
+    @property
+    def log_format_json(self) -> bool:
+        override = os.environ.get("LOG_FORMAT")
+        if override:
+            return override.strip().lower() == "json"
+        return self.is_production
+
+    # -----------------------------------------------------------------
+    # Legacy surface (Increment #34)
+    # -----------------------------------------------------------------
+
+    #: The Increment-8 tool-calling AI path, superseded by the #33
+    #: Analyst. Unmounted by default everywhere. Opt-in only, and never
+    #: in production (`app/main.py` refuses to mount it there at all).
+    enable_legacy_ai_route: bool = (os.environ.get("ENABLE_LEGACY_AI_ROUTE") or "").strip().lower() in {"1", "true", "yes"}
+
+    #: Interactive API docs. Public in development, closed in production
+    #: -- `/docs` there mostly serves to advertise the operator
+    #: endpoints to a scanner.
+    @property
+    def expose_api_docs(self) -> bool:
+        override = os.environ.get("EXPOSE_API_DOCS")
+        if override:
+            return override.strip().lower() in {"1", "true", "yes"}
+        return not self.is_production
+
 
 settings = Settings()
+
+
+def production_configuration_errors(current: Settings | None = None) -> list[str]:
+    """What production needs and does not have.
+
+    Called once at import in `app/main.py` so a misconfigured production
+    deployment fails loudly at startup instead of at the first request
+    that happens to need the missing value. Returns messages naming
+    VARIABLES ONLY -- never a value, so this is safe to log and safe to
+    print in a deploy log.
+    """
+    active = current or settings
+    if not active.is_production:
+        return []
+
+    errors: list[str] = []
+    if not active.database_url:
+        errors.append("DATABASE_URL is required in production.")
+    if not active.cors_allowed_origins:
+        errors.append(
+            "CORS_ALLOWED_ORIGINS is required in production: the frontend is served from a separate origin, "
+            "so without it every browser request from the deployed UI fails."
+        )
+    if any(origin == "*" for origin in active.cors_allowed_origins):
+        errors.append("CORS_ALLOWED_ORIGINS must name exact origins; '*' is never accepted.")
+    if not active.operator_token:
+        # Not fatal: absent, the operator endpoints close themselves.
+        # Reported so the operator learns it from a startup line rather
+        # than from a 503 mid-bootstrap.
+        errors.append(
+            "OPERATOR_TOKEN is not set: the operator sync endpoints will refuse every request in production."
+        )
+    return errors

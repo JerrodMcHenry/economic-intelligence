@@ -8,7 +8,7 @@ details live here.
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 
 from app.clients.fred import (
@@ -18,6 +18,7 @@ from app.clients.fred import (
     FREDTimeoutError,
     FREDUpstreamError,
 )
+from app.api.operator import require_operator
 from app.core.config import settings
 from app.db.session import session_scope
 from app.models.discovery import SeriesSearchResponse
@@ -105,7 +106,7 @@ def get_series(series_id: str) -> SeriesResponse:
         raise HTTPException(status_code=502, detail="Upstream FRED service error.")
 
 
-@router.post("/{series_id}/sync", response_model=SeriesResponse)
+@router.post("/{series_id}/sync", response_model=SeriesResponse, dependencies=[Depends(require_operator)])
 def sync_series(series_id: str) -> SeriesResponse:
     """Fetch a series from FRED and persist it to the database.
 

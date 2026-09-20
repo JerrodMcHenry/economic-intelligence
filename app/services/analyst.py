@@ -123,12 +123,22 @@ def analyst_available() -> bool:
 class AnalystService:
     """One bounded generation over one deterministic context packet."""
 
-    def explain(self, packet: AnalystContextPacket, question: str) -> AnalystExplainResponse:
+    def explain(
+        self, packet: AnalystContextPacket, question: str, request_id: str | None = None
+    ) -> AnalystExplainResponse:
+        """`request_id` (Increment #34) correlates this call's telemetry
+        with the HTTP access line for the same request.
+
+        A plain string, deliberately: the architectural rule is that
+        this service receives no handle it could read data through, and
+        an opaque identifier is not one. Without it the two log lines
+        for a single request carried different ids and could not be
+        joined -- which defeats the point of having them."""
         if not analyst_available():
             raise AnalystNotConfiguredError("The MacroChipz Analyst is not configured on this server.")
 
         model = settings.openai_model or ""
-        request_id = uuid.uuid4().hex
+        request_id = request_id or uuid.uuid4().hex
         started = time.monotonic()
 
         # The packet is serialized as JSON rather than prose: structured
@@ -218,6 +228,13 @@ class AnalystService:
                         "strict": True,
                     }
                 },
+                # Increment #34: the question was capped at 500
+                # characters from the start, but the ANSWER was not
+                # bounded at all, so a single request's cost was
+                # open-ended at the top. The instruction already asks
+                # for two to five sentences; this makes that a limit
+                # rather than a request.
+                max_output_tokens=settings.analyst_max_output_tokens,
                 store=False,
             )
         except (APITimeoutError, APIConnectionError) as exc:

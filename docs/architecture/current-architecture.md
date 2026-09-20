@@ -1379,8 +1379,18 @@ The following are intentionally absent — not overlooked:
   above and [ADR-014](../adr/014-read-only-ai-tools.md); `sync_series`
   and any future write operation are deliberately unreachable from
   natural language.
-- **Authentication/authorization** — the API is unauthenticated; anyone who
-  can reach it can call it.
+- **General authentication/authorization** — there is still no user
+  identity, no accounts, no sessions and no per-user authorization, and
+  every read endpoint remains anonymously public. Increment #34 added
+  exactly one narrow exception: the three operational write endpoints
+  (`POST /api/v1/series/{id}/sync`, `/rates/sync`, `/releases/sync`)
+  require the `X-Operator-Token` header, matched against the server-side
+  `OPERATOR_TOKEN` secret, because each drives outbound provider traffic
+  and writes canonical data. That is a single shared secret for one
+  operator, deliberately not an identity system — see
+  [ADR-033](../adr/033-operator-shared-secret-and-production-mode.md)
+  for why accounts, OAuth and IP allowlisting were each rejected as
+  disproportionate.
 - **Async I/O** — both `FREDClient` and the database session are
   synchronous by deliberate choice (see [ADR-003](../adr/003-fred-rest-httpx.md)
   and [ADR-007](../adr/007-synchronous-sqlalchemy.md)), even though

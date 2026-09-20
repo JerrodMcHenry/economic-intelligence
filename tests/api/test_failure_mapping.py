@@ -168,16 +168,25 @@ class TestAIIndependence:
         body = {"series_a": {"series_id": "A"}, "series_b": {"series_id": "B"}, "analysis": "aligned"}
         assert client.post("/api/v1/analysis/pipeline", json=body).status_code == 200
 
-    def test_ai_query_returns_clean_503_without_openai_key(self, client, monkeypatch):
-        """The one, narrow, non-behavioral AI-route test this increment
-        permits: configuration-unavailable -> 503, nothing more. No live
-        OpenAI call, no round behavior, no tool-schema testing."""
+    def test_the_superseded_ai_query_route_is_not_exposed(self, client, monkeypatch):
+        """Increment #34 unmounted the Increment-8 tool-calling route.
+
+        It was replaced by the #33 Analyst and was the largest anonymous
+        cost surface in the application: an unbounded `message` field
+        and up to five provider calls per request. The previous version
+        of this test asserted a clean 503 when OpenAI was unconfigured;
+        the route now returns 404 because it is not routed at all, which
+        is a strictly stronger guarantee than a well-behaved error.
+
+        The property this test has always really protected -- that the
+        deterministic product does not depend on OpenAI -- is covered by
+        every other test in this class.
+        """
         from app.core.config import settings
 
         monkeypatch.setattr(settings, "openai_api_key", None)
-        monkeypatch.setattr(settings, "openai_model", None)
-        response = client.post("/api/v1/ai/query", json={"message": "anything"})
-        assert response.status_code == 503
+
+        assert client.post("/api/v1/ai/query", json={"message": "hello"}).status_code == 404
 
     def test_no_deterministic_route_file_imports_aiservice(self):
         """Static guard: app/api/series.py, app/api/analysis.py, and

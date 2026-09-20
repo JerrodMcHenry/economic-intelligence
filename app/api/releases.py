@@ -12,10 +12,11 @@ entry point from the frontend, unlike series sync.
 from datetime import date, datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from app.clients.fred import FREDClient
+from app.api.operator import require_operator
 from app.core.config import settings
 from app.db.session import session_scope
 from app.models.releases import ReleaseListResponse, ReleaseSyncResponse
@@ -64,7 +65,7 @@ def list_releases(
         raise HTTPException(status_code=500, detail="Database error while reading the release calendar.")
 
 
-@router.post("/sync", response_model=ReleaseSyncResponse)
+@router.post("/sync", response_model=ReleaseSyncResponse, dependencies=[Depends(require_operator)])
 def sync_releases() -> ReleaseSyncResponse:
     """Fetch each active curated release's dates from FRED and upsert
     them idempotently. Explicit only -- never triggered by a read,
