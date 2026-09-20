@@ -54,18 +54,22 @@ describe("App", () => {
     const overviewLink = within(nav).getByRole("link", { name: "Overview" });
     const inflationLink = within(nav).getByRole("link", { name: "Inflation" });
     const laborLink = within(nav).getByRole("link", { name: "Labor" });
+    const ratesLink = within(nav).getByRole("link", { name: "Rates" });
     const releasesLink = within(nav).getByRole("link", { name: "Releases" });
 
     expect(homeLink).toHaveAttribute("href", "/");
     expect(overviewLink).toHaveAttribute("href", "/overview");
     expect(inflationLink).toHaveAttribute("href", "/inflation");
     expect(laborLink).toHaveAttribute("href", "/labor");
+    expect(ratesLink).toHaveAttribute("href", "/rates");
     expect(releasesLink).toHaveAttribute("href", "/releases");
-    // Exactly the five real destinations, in order (docs/product/product-ui-ux-v1.md §11) --
-    // Labor still sits between Inflation and Releases (labor-ui-v1.md §33), and
-    // there are no placeholder items for future Growth/Housing/Markets/etc.
+    // Only real, implemented destinations, in order. Rates joined in #30
+    // because rates_v1.0 genuinely shipped in #29 -- the condition
+    // docs/product/product-ui-ux-v1.md §11 set for adding a nav slot
+    // (content first, then the IA commitment). Still no placeholders for
+    // future Growth/Housing/Markets/etc.
     const navOrder = within(nav).getAllByRole("link").map((link) => link.textContent);
-    expect(navOrder).toEqual(["Home", "Overview", "Inflation", "Labor", "Releases"]);
+    expect(navOrder).toEqual(["Home", "Overview", "Inflation", "Labor", "Rates", "Releases"]);
 
     const user = userEvent.setup();
     await user.tab(); // skip link first
@@ -85,7 +89,7 @@ describe("App", () => {
     renderAt("/inflation");
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(within(nav).getByRole("link", { name: "Inflation" })).toHaveAttribute("aria-current", "page");
-    for (const name of ["Home", "Overview", "Labor", "Releases"]) {
+    for (const name of ["Home", "Overview", "Labor", "Rates", "Releases"]) {
       expect(within(nav).getByRole("link", { name })).not.toHaveAttribute("aria-current");
     }
   });
@@ -166,6 +170,14 @@ describe("App", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/releases");
     expect(screen.getByRole("heading", { level: 1, name: "Economic Releases" })).toBeInTheDocument();
+  });
+
+  it("renders the Rates product route at /rates", () => {
+    // Only routing is under test here -- pages/Rates.test.tsx covers the
+    // page's own data loading and rendering behavior in full.
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    renderAt("/rates");
+    expect(screen.getByRole("heading", { level: 1, name: "Rates Intelligence" })).toBeInTheDocument();
   });
 
   it("renders a deterministic not-found page for an unknown route", () => {

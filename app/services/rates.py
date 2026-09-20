@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.rates import (
     RateObservation,
+    to_basis_points,
     change_over_sessions,
     historical_session_changes,
     inflation_compensation_series,
@@ -246,7 +247,9 @@ class RatesMonitorService:
             title=title,
             available=True,
             observation_date=latest.observation_date,
-            spread_basis_points=latest.value,
+            # The spread SERIES is in percentage points (see
+            # `spread_series`); the reported LEVEL converts once, here.
+            spread_basis_points=to_basis_points(latest.value) if latest.value is not None else None,
             long_series_id=long_series_id,
             short_series_id=short_series_id,
             long_value=long_value,

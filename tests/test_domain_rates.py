@@ -181,15 +181,41 @@ class TestAlignment:
 
 
 class TestSpreadSeries:
-    def test_spread_is_long_minus_short_in_basis_points(self):
+    def test_spread_is_long_minus_short_in_percentage_points(self):
+        """The SERIES is in percentage points, not basis points -- see
+        `spread_series`'s docstring. Callers convert the level once, at
+        the presentation boundary."""
         ten_year = [obs(1, 5.01)]
         two_year = [obs(1, 4.76)]
         series = spread_series(ten_year, two_year)
-        assert series[0].value == pytest.approx(25.0)
+        assert series[0].value == pytest.approx(0.25)
+        assert to_basis_points(series[0].value) == pytest.approx(25.0)
+
+    def test_a_spread_change_is_not_scaled_twice(self):
+        """Regression (#30): the spread series is consumed by
+        `change_over_sessions`, which converts a percentage-point
+        difference into basis points. When the series itself was stored
+        in basis points, a 2bp move was reported as 200bp."""
+        ten_year = [obs(1, 4.94), obs(2, 5.01)]
+        two_year = [obs(1, 4.67), obs(2, 4.76)]
+        series = spread_series(ten_year, two_year)
+
+        # 27bp -> 25bp is a 2bp narrowing.
+        assert to_basis_points(series[0].value) == pytest.approx(27.0)
+        assert to_basis_points(series[1].value) == pytest.approx(25.0)
+        assert change_over_sessions(series, 1).change_basis_points == pytest.approx(-2.0)
+
+    def test_historical_spread_changes_are_also_in_basis_points(self):
+        series = spread_series(
+            [obs(1, 4.94), obs(2, 5.01), obs(3, 5.05)],
+            [obs(1, 4.67), obs(2, 4.76), obs(3, 4.76)],
+        )
+        changes = [value for _, value in historical_session_changes(series, 1)]
+        assert changes == pytest.approx([-2.0, 4.0])
 
     def test_inversion_is_reported_as_a_negative_number_with_no_label(self):
         series = spread_series([obs(1, 4.00)], [obs(1, 4.50)])
-        assert series[0].value == pytest.approx(-50.0)
+        assert series[0].value == pytest.approx(-0.50)
 
     def test_unaligned_dates_produce_an_empty_series(self):
         assert spread_series([obs(1, 5.0)], [obs(2, 4.0)]) == []

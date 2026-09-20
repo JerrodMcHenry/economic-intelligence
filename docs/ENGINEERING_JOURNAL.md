@@ -9922,3 +9922,137 @@ policy, not the definition, decides the number the user reads. Making the
 rule "count observations" removed an entire class of silent
 inconsistency, and cost only the honesty of naming windows in sessions
 rather than months.
+
+## Increment #30 — Rates Intelligence UI
+
+Frontend increment. Baseline: HEAD `548bcd2` (#29), clean tree. Turns the
+deterministic `rates_v1.0` backend into a Rates page inside the existing
+MacroChipz shell. No AI, no probabilistic model, no new data provider.
+
+### The defect inspection found first
+
+Before writing any UI, reading the live contract turned up a real #29
+bug: `curve_spreads[].changes` and their historical context were **100×
+too large**. The 2s10s spread moved 27bp → 25bp — a 2bp narrowing — and
+the API reported `-200.0` bp.
+
+Root cause: `spread_series` emitted basis points, but every consumer of a
+series (`change_over_sessions`, `historical_session_changes`) treats a
+series value as a percentage-point level and converts differences to
+basis points itself. The spread was therefore scaled twice.
+
+Fix, minimal and deterministic: `spread_series` now returns percentage
+points — the natural unit of a yield difference, and the same convention
+`inflation_compensation_series` already used — and the service converts
+once, at the model boundary, for the reported level. Levels were always
+correct and stay correct; changes and context are now right. Two
+regression tests pin it, including one asserting that a 2bp move reports
+−2.0 bp rather than −200.0. This was the only backend change in #30, and
+it is a correctness fix, not a contract extension.
+
+### Hard rule: no financial calculation in React
+
+Every number on the page is the backend's number. The frontend subtracts
+nothing, converts nothing to basis points, and ranks nothing. Two guards
+enforce that rather than trusting review:
+
+- `frontend/src/test/no-rates-calculation.test.ts` scans the Rates
+  modules for subtraction of rate-shaped values, `* 100` / `/ 100`
+  conversions, and hand-written percentile or mean math.
+- `tests/test_rates_architecture.py`'s frontend guard was **retargeted**.
+  It previously forbade the canonical series identifiers
+  (`UST_NOMINAL_`, `UST_REAL_`) anywhere in `frontend/src` — a sound
+  proxy while no Rates UI existed, but it tested the absence of a UI, not
+  the absence of a calculation. #30 legitimately renders those
+  identifiers because the API returns them as provenance the evidence
+  panels must display. The guard now matches assignment-with-arithmetic
+  shapes instead. Both guards were mutation-tested: adding a
+  `computeSpread()` helper to the frontend fails both.
+
+The single arithmetic operation in the UI is `percentile * 100` to render
+an already-computed 0..1 rank as "57th", which is unit formatting of the
+same class as rendering 0.25 as "25%".
+
+### Information hierarchy
+
+Header (with the latest observation date) → Treasury yields (2Y/5Y/10Y/30Y)
+→ curve chart with its derived spreads beside it → real yields →
+market-implied inflation compensation → what changed → methodology.
+Each card keeps its four session changes on the face and everything
+heavier — ranks, provider, dataset, retrieval, source URL — one
+disclosure away.
+
+### Decisions worth recording
+
+**The chart is hand-drawn inline SVG, not a library.** Four points and
+two axes do not justify a dependency, a bundle cost, or a second theming
+system to reconcile with #27B's tokens. Every stroke is a token, so both
+themes work with no second palette. It is `aria-hidden`, and the same
+numbers are published beneath it as a real `<table>` — a screen-reader
+user gets the values, not a description of a picture. A maturity with no
+value is omitted from the line rather than interpolated across, so a gap
+in the data looks like a gap.
+
+**Source vs derived is made visible three ways.** A "Calculated by
+MacroChipz" marker on the face of every derived card, the inputs shown
+inline as the arithmetic that produced the number, and two structurally
+different provenance panels: a source panel names provider / dataset /
+retrieval / source URL, while a derived panel names methodology /
+calculation / inputs and deliberately has no provider field at all.
+
+**Session windows are never relabelled.** Labels read "1 session",
+"5 sessions", "21 sessions", "63 sessions". A test asserts the page never
+contains "1 week", "1 month", or "3 months". The session explanation
+copy *does* discuss months — to say 21 sessions is approximately, not
+exactly, one month — which is why that assertion targets labels rather
+than the whole page.
+
+**Direction is not economic meaning.** A yield moving up is neither good
+nor bad, so direction uses plain foreground tokens plus an arrow glyph
+plus visually hidden text ("higher"/"lower"), never #27B's economic
+`state-*` palette. That palette stays reserved for classified economic
+states, which is exactly the separation #27B's own guard protects.
+
+**Nav grew to six.** #27A §11 froze five destinations and refused
+speculative slots; its stated condition for adding one was that the
+content exist first. `rates_v1.0` shipped in #29, so Rates earns a slot.
+
+### Two accuracy fixes found in visual review
+
+Real data on screen caught things tests did not: the curve card stretched
+to the height of the taller spreads column, leaving ~300px of dead space
+(fixed with `h-fit`), and the change grid was cramped at four across
+inside a narrow card (now 2×2). More substantively, the **global footer
+still claimed "Source data: FRED®"** — false on a page whose data is
+Treasury. Now that a second provider exists it reads "FRED®, Federal
+Reserve Bank of St. Louis; U.S. Department of the Treasury."
+
+### Verification
+
+- Frontend: **47 files, 1,267 passed** (was 44 / 1,189; +78). Typecheck,
+  lint (0 warnings), and production build all clean.
+- Backend: **1,721 passed, 2 skipped** (was 1,719; +2 spread regression
+  tests). The 2 skips are the pre-existing cached-FRED-data research
+  tests.
+- Visual review against the live backend with real Treasury data at
+  1440px, 820px and 390px in both themes: zero horizontal overflow
+  everywhere, six named regions, correct active nav, and hand-checked
+  values on screen (2s10s 25 bp = 5.01 − 4.76; 10Y compensation 2.33% =
+  5.01 − 2.68).
+
+### Deferred
+
+A compensation or yield history chart (the monitor endpoint returns
+latest-plus-windows, not a series — adding one would be a contract
+extension #30 did not need); per-window historical context (the backend
+ranks the 5-session window only); and any cross-domain comparison
+between realized inflation and market-implied compensation, which
+remains a future methodology, not a UI feature.
+
+### Lesson
+
+**Reading the live contract before designing found a bug no test caught.**
+#29's own tests asserted the spread *level*, which was always right, and
+nothing asserted the spread's *change* — so a 100× error sat in a green
+suite until someone tried to put the number on a screen. Building the
+consumer is itself a test of the producer.

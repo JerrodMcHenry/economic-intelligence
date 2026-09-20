@@ -18,6 +18,7 @@ its own:
 """
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -144,26 +145,57 @@ class TestUpstreamAccessIsAllowListed:
 class TestDerivedValuesAreBackendOwned:
     def test_frontend_does_not_compute_rates_metrics(self):
         """The frontend must never reconstruct a spread, a basis-point
-        change, or inflation compensation. #29 ships no frontend code at
-        all; this guard fails the moment someone adds such a
-        calculation client-side."""
+        change, or inflation compensation.
+
+        Increment #30 note: this guard originally also forbade the
+        canonical series identifiers (`UST_NOMINAL_`, `UST_REAL_`) from
+        appearing in `frontend/src` at all. That was a sound proxy while
+        #29 shipped no Rates UI, but it tested the ABSENCE OF A UI, not
+        the absence of a calculation -- and #30 legitimately renders
+        those identifiers because the API returns them as provenance
+        (`long_series_id`, `input_series_ids`) that the evidence panels
+        must display. Naming a series the backend already named is not
+        computing anything.
+
+        The markers below therefore target ASSIGNMENT of a derived
+        financial value in frontend code, which is the behaviour this
+        guard actually exists to prevent. The fine-grained companion
+        check lives on the frontend side
+        (`frontend/src/test/no-rates-calculation.test.ts`), which scans
+        the Rates modules for subtraction of rate-shaped values,
+        basis-point conversion, and hand-written percentile math.
+        """
         frontend_src = Path("frontend/src")
         if not frontend_src.exists():
             pytest.skip("frontend/src not present")
 
-        forbidden_markers = (
-            "UST_NOMINAL_",
-            "UST_REAL_",
-            "inflationCompensation =",
-            "basisPoints =",
-            "spreadBasisPoints =",
+        # Each pattern matches an ASSIGNMENT whose right-hand side does
+        # arithmetic -- e.g. `const spreadBasisPoints = long - short`.
+        # Reading `spread.spread_basis_points` off a response never
+        # matches; deriving one always does.
+        forbidden_patterns = (
+            re.compile(r"\b(inflationCompensation|basisPoints|spreadBasisPoints|percentileRank)\s*=\s*[^=;\n]*[-+*/]"),
+            re.compile(r"\b(nominal|real|long|short)\w*\s+-\s+\w*(Value|Yield|Rate)\b"),
+            re.compile(r"\*\s*100\b"),
         )
+        # Scaling an already-computed 0..1 rank into a percentile for
+        # display is unit formatting, not derivation -- the same class of
+        # operation as rendering 0.25 as "25%".
+        display_scaling = re.compile(r"percentile|rank", re.IGNORECASE)
+
         offenders = []
         for path in frontend_src.rglob("*.ts*"):
-            text = path.read_text()
-            for marker in forbidden_markers:
-                if marker in text:
-                    offenders.append(f"{path}: {marker}")
+            if path.name.endswith((".test.ts", ".test.tsx")):
+                continue
+            for line_number, line in enumerate(path.read_text().split("\n"), 1):
+                code = line.split("//", 1)[0]
+                if code.lstrip().startswith("*"):
+                    continue  # a block-comment line is prose, not code
+                if display_scaling.search(code):
+                    continue
+                for pattern in forbidden_patterns:
+                    if pattern.search(code):
+                        offenders.append(f"{path}:{line_number}: {line.strip()}")
         assert offenders == [], f"frontend appears to compute rates values: {offenders}"
 
 

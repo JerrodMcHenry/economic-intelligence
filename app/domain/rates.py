@@ -255,8 +255,17 @@ def align_on_exact_date(
 
 
 def spread_series(long_maturity: list[RateObservation], short_maturity: list[RateObservation]) -> list[RateObservation]:
-    """The derived curve-spread series in BASIS POINTS: longer maturity
-    minus shorter maturity, on exactly-shared dates only.
+    """The derived curve-spread series in PERCENTAGE POINTS: longer
+    maturity minus shorter maturity, on exactly-shared dates only.
+
+    Percentage points, not basis points, deliberately: every consumer of
+    a series in this module (`change_over_sessions`,
+    `historical_session_changes`) treats a series value as a
+    percentage-point level and converts differences to basis points
+    itself. A series already expressed in basis points would therefore
+    be multiplied by 100 a second time, reporting a 2bp move as 200bp.
+    Callers that want the spread LEVEL in basis points convert once, at
+    the presentation boundary, via `to_basis_points`.
 
     A negative value is an inversion; this module assigns it no meaning
     beyond the arithmetic (no "inverted" label, no recession reading --
@@ -265,7 +274,7 @@ def spread_series(long_maturity: list[RateObservation], short_maturity: list[Rat
     return [
         RateObservation(
             observation_date=pair.observation_date,
-            value=basis_point_change(pair.second_value, pair.first_value),
+            value=percentage_point_difference(pair.first_value, pair.second_value),
         )
         for pair in align_on_exact_date(long_maturity, short_maturity)
     ]

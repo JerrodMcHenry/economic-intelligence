@@ -11,8 +11,11 @@ import { ThemeToggle } from "../components/ThemeToggle";
  * the global background, the single content width (PageContainer), page
  * spacing, and responsive navigation -- pages render only their content.
  *
- * Navigation is exactly the five real destinations (docs/product/
- * product-ui-ux-v1.md §11) -- no placeholders for future domains.
+ * Navigation lists only real, implemented destinations -- no
+ * placeholders for future domains. #27A §11 froze five; Rates joins
+ * them in #30 because the domain now genuinely exists (rates_v1.0,
+ * shipped in #29), which is exactly the condition §11 set for adding
+ * a nav slot: content first, then the IA commitment.
  * Below the `md` breakpoint the same single list collapses behind a
  * disclosure button rather than shrinking the desktop row.
  */
@@ -21,6 +24,7 @@ const NAV_LINKS: ReadonlyArray<{ to: string; label: string; end?: boolean }> = [
   { to: "/overview", label: "Overview" },
   { to: "/inflation", label: "Inflation" },
   { to: "/labor", label: "Labor" },
+  { to: "/rates", label: "Rates" },
   { to: "/releases", label: "Releases" },
 ];
 
@@ -113,7 +117,7 @@ export function AppShell() {
             <p>
               <span className="font-semibold text-fg-secondary">MacroChipz</span> · Economic Intelligence
             </p>
-            <p>Source data: FRED®, Federal Reserve Bank of St. Louis.</p>
+            <p>Source data: FRED®, Federal Reserve Bank of St. Louis; U.S. Department of the Treasury.</p>
           </div>
         </PageContainer>
       </footer>
