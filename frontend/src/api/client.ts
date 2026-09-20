@@ -58,3 +58,38 @@ export async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
 
   return (await response.json()) as T;
 }
+
+/**
+ * Issue a POST request with a JSON body and parse its JSON response.
+ *
+ * Added for the MacroChipz Analyst (Increment #33), which is the first
+ * and only thing in this application that asks the server to DO
+ * something rather than merely read -- and even then the "something" is
+ * generating an explanation, with no canonical side effect (ADR-032).
+ *
+ * Identical error discipline to `apiGet`: an `ApiError` for a network
+ * failure or a non-2xx status, never a retry, and never a successful
+ * response reinterpreted as an error. A 503 meaning "the Analyst is
+ * unavailable" is an infrastructure error and is surfaced as one; a 200
+ * whose body says the evidence cannot answer the question is a
+ * successful response.
+ */
+export async function apiPost<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json", ...init?.headers },
+      body: JSON.stringify(body),
+    });
+  } catch (cause) {
+    throw new ApiError("network", "Could not reach the server.", undefined, { cause });
+  }
+
+  if (!response.ok) {
+    throw new ApiError("http", `Request failed with status ${response.status}.`, response.status);
+  }
+
+  return (await response.json()) as T;
+}

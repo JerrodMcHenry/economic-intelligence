@@ -10,6 +10,8 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
+import { getAnalystAvailability } from "../api/analyst";
+
 import { getEmploymentSituationProcessingStatus, getLaborMonitor, getLaborStateDuration, getLaborWhatChanged } from "../api/labor";
 import { getLaborHistory } from "../api/monitorHistory";
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
@@ -36,6 +38,7 @@ vi.mock("../api/releases", () => ({
   fetchUpcomingReleases: vi.fn(),
   fetchRecentReleases: vi.fn(),
 }));
+vi.mock("../api/analyst", () => ({ getAnalystAvailability: vi.fn() }));
 vi.mock("../api/monitorHistory", () => ({ getLaborHistory: vi.fn() }));
 
 const mockedGetMonitor = vi.mocked(getLaborMonitor);
@@ -44,6 +47,7 @@ const mockedGetProcessingStatus = vi.mocked(getEmploymentSituationProcessingStat
 const mockedFetchUpcoming = vi.mocked(fetchUpcomingReleases);
 const mockedFetchRecent = vi.mocked(fetchRecentReleases);
 const mockedGetStateDuration = vi.mocked(getLaborStateDuration);
+const mockedGetAnalyst = vi.mocked(getAnalystAvailability);
 const mockedGetHistory = vi.mocked(getLaborHistory);
 
 beforeEach(() => {
@@ -60,6 +64,12 @@ beforeEach(() => {
   // resource, resolved by default so no pre-existing test hangs on or
   // sees an error from a section it is not about. Its own behavior is
   // covered in components/history/IntelligenceHistorySection.test.tsx.
+  // Increment #33: the Analyst is optional. Default these page tests
+  // to "not configured", which is the shape every pre-existing
+  // assertion here was written against -- the surface then renders one
+  // unavailable line and changes nothing else.
+  mockedGetAnalyst.mockReset();
+  mockedGetAnalyst.mockResolvedValue({ available: false, reason: "NOT_CONFIGURED" });
   mockedGetHistory.mockReset();
   mockedGetHistory.mockResolvedValue(buildEmptyHistoryResponse("labor"));
 });
@@ -123,6 +133,7 @@ describe("frozen 7-section hierarchy", () => {
       "Latest data detected",
       "Employment Situation release",
       "Intelligence history",
+      "Ask MacroChipz",
       "Evidence & methodology",
     ]);
   });
@@ -374,6 +385,7 @@ describe("Relate V1 composition, inside the existing WhyLaborState disclosure (I
       "Latest data detected",
       "Employment Situation release",
       "Intelligence history",
+      "Ask MacroChipz",
       "Evidence & methodology",
     ]);
 

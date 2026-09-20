@@ -1,7 +1,9 @@
 import { getRatesMonitor } from "../api/rates";
 import type { RateChange, RatesMonitorResult } from "../api/rates.types";
+import { getAnalystAvailability } from "../api/analyst";
 import { useApiResource } from "../api/useApiResource";
 import { Disclosure } from "../components/Disclosure";
+import { AskMacroChipz } from "../components/analyst/AskMacroChipz";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { ExplanationTrigger } from "../components/explanations/ExplanationTrigger";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
@@ -261,6 +263,7 @@ function RatesContent({ result }: { result: RatesMonitorResult }) {
 
 export function RatesPage() {
   const monitor = useApiResource(getRatesMonitor);
+  const analyst = useApiResource(getAnalystAvailability);
 
   return (
     <div>
@@ -287,6 +290,19 @@ export function RatesPage() {
         </div>
       )}
       {monitor.status === "success" && <RatesContent result={monitor.data} />}
+
+      {/* Ask MacroChipz (Increment #33) -- optional interpretive layer.
+          It sits outside RatesContent so an Analyst outage, or the
+          Analyst simply being unconfigured, can never affect whether the
+          canonical rates content renders. */}
+      <div className="mt-8 border-t border-line pt-8">
+        <AskMacroChipz
+          contextType="RATES"
+          contextRef={{ type: "RATES" }}
+          available={analyst.status === "success" && analyst.data.available}
+          headingId="rates-analyst-heading"
+        />
+      </div>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import { getEmploymentSituationProcessingStatus, getLaborMonitor, getLaborStateDuration, getLaborWhatChanged } from "../api/labor";
+import { getAnalystAvailability } from "../api/analyst";
 import { getLaborHistory } from "../api/monitorHistory";
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
 import { useApiResource } from "../api/useApiResource";
+import { AskMacroChipz } from "../components/analyst/AskMacroChipz";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { IntelligenceHistorySection } from "../components/history/IntelligenceHistorySection";
@@ -58,6 +60,7 @@ export function LaborPage() {
   const upcoming = useApiResource(fetchUpcomingReleases);
   const recent = useApiResource(fetchRecentReleases);
   const history = useApiResource(getLaborHistory);
+  const analyst = useApiResource(getAnalystAvailability);
 
   return (
     <div>
@@ -116,11 +119,22 @@ export function LaborPage() {
           monitor="labor"
           history={history}
           headingId="labor-intelligence-history-heading"
+          analystAvailable={analyst.status === "success" && analyst.data.available}
           stateLabel={laborStateLabelOrRaw}
           stateTone={laborStateToneOrNeutral}
         />
 
-        {/* 8. Evidence & methodology */}
+        {/* 8. Ask MacroChipz (Increment #33) -- optional interpretive
+            layer; unconfigured or failing, it renders a short note and
+            changes nothing else on the page. */}
+        <AskMacroChipz
+          contextType="LABOR"
+          contextRef={{ type: "LABOR" }}
+          available={analyst.status === "success" && analyst.data.available}
+          headingId="labor-analyst-heading"
+        />
+
+        {/* 9. Evidence & methodology */}
         {(monitor.status === "success" || whatChanged.status === "success") && (
           <MethodologyDisclosure
             monitor={monitor.status === "success" ? monitor.data : null}

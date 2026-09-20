@@ -11,6 +11,7 @@ import {
   observationChangeLabel,
 } from "../../lib/historyLabels";
 import { formatObservationDate } from "../../lib/ratesFormat";
+import { AskMacroChipz } from "../analyst/AskMacroChipz";
 import { ErrorMessage } from "../ErrorMessage";
 import { LoadingSkeleton } from "../LoadingSkeleton";
 
@@ -31,11 +32,13 @@ export function HistoricalResultDetail({
   recordedResultId,
   open,
   stateLabel,
+  analystAvailable,
 }: {
   monitor: HistoryMonitor;
   recordedResultId: number;
   open: boolean;
   stateLabel: (state: string) => string;
+  analystAvailable: boolean;
 }) {
   const detail = useMonitorHistoryDetail(monitor, recordedResultId, open);
 
@@ -46,7 +49,21 @@ export function HistoricalResultDetail({
   if (detail.status === "error") {
     return <ErrorMessage message={copy.DETAIL_ERROR_MESSAGE} />;
   }
-  return <DetailBody detail={detail.data} stateLabel={stateLabel} />;
+  return (
+    <>
+      <DetailBody detail={detail.data} stateLabel={stateLabel} />
+      {analystAvailable && (
+        <div className="mt-5 border-t border-line-subtle pt-4">
+          <AskMacroChipz
+            contextType="MONITOR_HISTORY"
+            contextRef={{ type: "MONITOR_HISTORY", monitor, recorded_result_id: recordedResultId }}
+            available
+            headingId={`history-analyst-${recordedResultId}`}
+          />
+        </div>
+      )}
+    </>
+  );
 }
 
 function SubHeading({ children }: { children: React.ReactNode }) {

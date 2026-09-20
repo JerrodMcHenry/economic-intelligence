@@ -9,6 +9,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getAnalystAvailability } from "../api/analyst";
 import { ApiError } from "../api/errors";
 import { getInflationMonitor, getInflationStateDuration, getInflationWhatChanged } from "../api/inflation";
 import { getInflationHistory } from "../api/monitorHistory";
@@ -32,11 +33,13 @@ vi.mock("../api/inflation", () => ({
   getInflationStateDuration: vi.fn(),
 }));
 
+vi.mock("../api/analyst", () => ({ getAnalystAvailability: vi.fn() }));
 vi.mock("../api/monitorHistory", () => ({ getInflationHistory: vi.fn() }));
 
 const mockedGetMonitor = vi.mocked(getInflationMonitor);
 const mockedGetWhatChanged = vi.mocked(getInflationWhatChanged);
 const mockedGetStateDuration = vi.mocked(getInflationStateDuration);
+const mockedGetAnalyst = vi.mocked(getAnalystAvailability);
 const mockedGetHistory = vi.mocked(getInflationHistory);
 
 beforeEach(() => {
@@ -53,6 +56,12 @@ beforeEach(() => {
   // pre-existing test hangs on, or sees an error alert from, a section
   // it is not about. Its own behavior is covered in
   // components/history/IntelligenceHistorySection.test.tsx.
+  // Increment #33: the Analyst is optional. Default these page tests
+  // to "not configured", which is the shape every pre-existing
+  // assertion here was written against -- the surface then renders one
+  // unavailable line and changes nothing else.
+  mockedGetAnalyst.mockReset();
+  mockedGetAnalyst.mockResolvedValue({ available: false, reason: "NOT_CONFIGURED" });
   mockedGetHistory.mockReset();
   mockedGetHistory.mockResolvedValue(buildEmptyHistoryResponse("inflation"));
 });

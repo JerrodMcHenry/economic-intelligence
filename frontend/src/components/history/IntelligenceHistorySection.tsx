@@ -36,12 +36,16 @@ export function IntelligenceHistorySection({
   headingId,
   stateLabel,
   stateTone,
+  analystAvailable = false,
 }: {
   monitor: HistoryMonitor;
   history: ApiResourceState<MonitorHistoryResponse> & { reload: () => void };
   headingId: string;
   stateLabel: (state: string) => string;
   stateTone: (state: string) => Tone;
+  /** Increment #33. Defaults to off, so history renders identically on a
+      deployment with no Analyst configured. */
+  analystAvailable?: boolean;
 }) {
   return (
     <section aria-labelledby={headingId}>
@@ -73,6 +77,7 @@ export function IntelligenceHistorySection({
                   entry={entry}
                   stateLabel={stateLabel}
                   stateTone={stateTone}
+                  analystAvailable={analystAvailable}
                 />
               ))}
             </ul>
@@ -95,11 +100,13 @@ function HistoryRow({
   entry,
   stateLabel,
   stateTone,
+  analystAvailable,
 }: {
   monitor: HistoryMonitor;
   entry: RecordedIntelligenceEntry;
   stateLabel: (state: string) => string;
   stateTone: (state: string) => Tone;
+  analystAvailable: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const label = stateLabel(entry.state);
@@ -157,6 +164,7 @@ function HistoryRow({
             recordedResultId={entry.recorded_result_id}
             open={open}
             stateLabel={stateLabel}
+            analystAvailable={analystAvailable}
           />
         </div>
       </details>

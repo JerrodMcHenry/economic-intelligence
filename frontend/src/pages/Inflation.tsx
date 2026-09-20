@@ -1,6 +1,8 @@
 import { getInflationMonitor, getInflationStateDuration, getInflationWhatChanged } from "../api/inflation";
+import { getAnalystAvailability } from "../api/analyst";
 import { getInflationHistory } from "../api/monitorHistory";
 import { useApiResource } from "../api/useApiResource";
+import { AskMacroChipz } from "../components/analyst/AskMacroChipz";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { IntelligenceHistorySection } from "../components/history/IntelligenceHistorySection";
@@ -36,6 +38,7 @@ export function InflationPage() {
   const whatChanged = useApiResource(getInflationWhatChanged);
   const stateDuration = useApiResource(getInflationStateDuration);
   const history = useApiResource(getInflationHistory);
+  const analyst = useApiResource(getAnalystAvailability);
 
   return (
     <div>
@@ -80,11 +83,24 @@ export function InflationPage() {
           monitor="inflation"
           history={history}
           headingId="inflation-intelligence-history-heading"
+          analystAvailable={analyst.status === "success" && analyst.data.available}
           stateLabel={inflationStateLabelOrRaw}
           stateTone={inflationStateToneOrNeutral}
         />
 
-        {/* 9. Evidence / methodology disclosure */}
+        {/* 9. Ask MacroChipz (Increment #33) -- an optional interpretive
+            layer over everything above. It never affects the canonical
+            content: when the Analyst is unconfigured or its availability
+            check fails, this renders a short note and nothing else on the
+            page changes. */}
+        <AskMacroChipz
+          contextType="INFLATION"
+          contextRef={{ type: "INFLATION" }}
+          available={analyst.status === "success" && analyst.data.available}
+          headingId="inflation-analyst-heading"
+        />
+
+        {/* 10. Evidence / methodology disclosure */}
         {(monitor.status === "success" || whatChanged.status === "success") && (
           <MethodologyDisclosure
             monitor={monitor.status === "success" ? monitor.data : null}

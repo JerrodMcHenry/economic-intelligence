@@ -10369,3 +10369,302 @@ emit their own exact inputs as evidence and already accept an explicit
 period. The one place I *did* introduce a second path (evidence on one
 side, raw storage on the other) is precisely where the only real bug of
 the increment appeared.
+
+## Increment #33 — Bounded MacroChipz Analyst
+
+Baseline: HEAD `00a3c25` (#32), clean tree. The first generative-AI
+capability in the product, added **after** deterministic ingestion,
+calculation, provenance, observation versioning, replay and
+point-in-time UX were all working independently.
+
+**MacroChipz Analyst explains canonical intelligence. It does not create
+canonical intelligence.**
+
+### Why AI waited until #33
+
+Not caution for its own sake. An interpretive layer is only safe when
+there is something authoritative for it to defer to, and only useful
+when that something is worth explaining. Until #31/#32, MacroChipz could
+not have handed a model a complete, versioned, provenance-bearing
+account of its own conclusions — so an "AI analyst" would have had to
+derive economics itself, which is the failure this project has spent
+thirty increments avoiding.
+
+The repo also had direct evidence of what happens otherwise. Increment
+#9 tried model-driven orchestration three times (prompt guidance, a
+deterministic execution gate, dynamic tool-schema shaping). The last
+attempt's own measurement: **the model supplied a `series_id` outside
+the offered enum in roughly 60% of later-round calls**, and 16 of 28
+live trials exhausted the round budget. ADR-018 is marked SUPERSEDED —
+FAILED ACCEPTANCE GATE with that finding restated at the top.
+
+### The boundary, stated structurally
+
+```
+canonical intelligence -> deterministic context packet -> ONE LLM call -> validated prose
+```
+
+Three properties, each a fact about the import graph rather than a
+promise in a prompt, and each checked by
+`tests/test_analyst_architecture.py`:
+
+1. **`app/services/analyst.py` — the only module that contacts a model —
+   imports no SQLAlchemy, no `app.db`, no repository, and no canonical
+   service, and takes no `Session` on any method.** The route builds the
+   packet, closes the session, and then calls it with the packet alone.
+   "The model cannot reach the database" is therefore not something the
+   instructions ask for; there is nothing there to reach.
+2. **No tools are offered at all.** ADR-014 made AI tools read-only; #33
+   goes further and provides none. A tool that does not exist cannot be
+   called wrongly 60% of the time.
+3. **Exactly one generation per request**, asserted by counting the call
+   sites and by an AST check that no loop encloses the provider call.
+
+### Old AI code: reused vs rejected
+
+Rejected as a starting point: `app/services/ai.py`'s bounded 4-round
+tool loop and `ai_tools.py`'s three DB-backed tools. They remain
+committed and reachable at `/api/v1/ai/query` exactly as #12.5 left
+them; #33 neither revives nor removes them, and no Analyst file imports
+either (guarded).
+
+Reused: the OpenAI SDK error taxonomy and its proven mapping to 503; the
+`settings.openai_*` configuration convention, including "unset means the
+feature is simply not configured"; ADR-014/016/021 as governing
+principles; and `rates_ingestion.py`'s structured-logging shape.
+
+### Trust boundary: a browser names a context, it never supplies one
+
+`AnalystExplainRequest` carries a context type, an optional recorded
+result id, a monitor, and a question. Nothing else — `extra="forbid"`,
+so an attempt to add `canonical_state` is a 422 rather than a silently
+ignored field. Without this, a client could post
+`{"canonical_state": "HYPERINFLATION"}` and have the Analyst explain an
+economy that does not exist.
+
+Context types are an allow-list expressed as a `Literal`, so
+`/monitors/rates/history`-style probing — `EQUITIES`, `CRYPTO`, `SQL` —
+is rejected by FastAPI's own validation before any code runs.
+
+### Context packets
+
+`analyst_context_v1`: subject, canonical state, evaluation period,
+methodology (with a MacroChipz-written one-line summary rather than
+leaving the model to characterise a frozen spec), deterministic metrics,
+changes, evidence, provenance, historical context, replay information
+and limitations. Four contexts: Inflation, Labor, Rates, Monitor
+History.
+
+Two decisions inside it are load-bearing:
+
+- **Values are pre-formatted strings carrying their units**
+  (`"158,268,000 jobs"`, `"+25 bp"`, `"2.40%"`). A model handed
+  `158268000` cannot tell jobs from thousands — the exact class of
+  mistake that produced a 1,000x error inside #32's own deterministic
+  code before it was caught.
+- **Rates has `canonical_state: null`.** `rates_v1.0` publishes levels
+  and derived metrics, not a classification. Giving Rates a state to
+  make the packet look uniform would fabricate intelligence the engine
+  does not produce.
+
+### Evidence references: the model points, MacroChipz owns
+
+The packet assigns stable ids (`inflation.metric.3m_annualized`,
+`rates.level.UST_NOMINAL_10Y`). The model may return ids and nothing
+else — no URLs, no source names, no provenance. Every returned id is
+checked against the packet that was actually sent; an unknown one is
+dropped and counted, and even a valid one is re-resolved so its
+label/value come from MacroChipz rather than from the model.
+
+The response schema is deliberately **static**. Injecting the valid ids
+as an enum was possible and was rejected: ADR-018's lesson is precisely
+that a dynamically shaped schema is a hint, not an enforcement
+mechanism. Validation is the enforcement; the schema stays reviewable.
+
+### Failure containment
+
+Unconfigured, timeout, connection failure, auth rejection, rate limit,
+5xx, refusal, empty completion, malformed JSON, schema-validation
+failure — each raises a typed error mapped to a contained 503 carrying
+no provider detail. A malformed answer is deliberately **not retried**:
+a second call is a second bill for the same question, and the honest
+outcome is that this attempt failed. `max_retries=1` covers only the
+SDK's transient conditions, which never re-run a completed generation.
+
+Availability is a normal `200 {"available": false, "reason":
+"NOT_CONFIGURED"}` — whether an optional integration is configured is
+not an error, and a page should not have to catch an exception to learn
+it. Verified live with no key configured: every canonical route still
+200s and the UI shows one sentence.
+
+### Observability
+
+One structured log line per request following the repo's existing
+convention: request id, context type and version, prompt version, model,
+duration, input/output/total tokens, outcome, failure category, evidence
+offered/returned/dropped. Absent token counts are recorded as `null`,
+never `0`, so an unobserved cost is not mistaken for a free request.
+
+Never logged: the key, the question text, the answer text, the packet,
+any provider payload. The question's **length** is recorded instead of
+the question.
+
+### A logging quirk worth recording
+
+The operational-metadata tests passed alone and failed in a full run.
+Cause: Alembic's `env.py` calls `logging.config.fileConfig`, which
+defaults to `disable_existing_loggers=True` and switches off every
+already-created `app.*` logger in the process; an operations test
+triggers that in-process. Verified this does not affect a running
+deployment — the API process never executes Alembic's `env.py`
+(`check_schema_compatibility` reads the script directory without it, and
+`app.operations.release` is a separate `python -m` process) — so the fix
+is a test fixture, not a production change.
+
+### Evaluation
+
+15 cases across Inflation, Labor, Rates, History and Boundary, with ten
+universal objective assertions plus case-specific ones. Assertions are
+pure functions over (packet, response), so the same code runs in CI
+against mocked answers and in the live runner against a real provider.
+
+**Every assertion is tested against both a violating and a compliant
+answer.** An assertion only ever exercised on good output is decoration.
+
+`python -m app.operations.analyst_eval` is explicitly invoked and exits
+2 when no provider is configured; CI never depends on an external AI
+service.
+
+### Evaluation results, stated honestly
+
+**No `OPENAI_API_KEY` is configured on this machine, so the live suite
+has not been run and no claim is made about prose quality.**
+
+What was verified, against REAL context packets from the development
+database with only the provider simulated: 15 cases produced **exactly
+15 provider calls** (one generation per request); all five boundary
+cases were caught with the correct specific violations (personalized
+advice, future certainty, self-computed figures, asserted causation,
+fabricated URL); and an invented evidence id was dropped on every case.
+Three history cases correctly failed the backfill-disclosure assertion
+because the naive stub omitted a required disclosure — the assertion
+doing its job, not a defect.
+
+### Deferred
+
+Persistent chat memory, conversation threads, multi-turn, model routing,
+a second provider, forecasting, embeddings/RAG, and any tool calling.
+Cost estimation is deferred until real token data exists to base it on.
+
+### Lesson
+
+**Put the boundary in the import graph, not in the prompt.** Every rule
+in the instruction set that actually matters is also enforced somewhere
+the model cannot influence: it has no tools, no session, no writes, and
+its citations are checked against a packet it did not author. The
+instructions still earn their place — they shape tone, scope and
+honesty — but if the model ignored every word, the worst outcome is a
+bad paragraph, never wrong canonical intelligence. That is the only
+arrangement under which adding a probabilistic component to a
+deterministic system is worth doing.
+
+## Increment #33 (continued) — Live evaluation, diagnosis, and targeted correction
+
+The full record, including the frozen baseline, is
+`docs/product/analyst-evaluation-v1.md`. This entry records what the
+exercise taught, not the numbers.
+
+### The baseline was worth more than a passing score would have been
+
+First live run of the frozen 15-case suite against `gpt-4o-mini` under
+`macrochipz_analyst_v1`: **10 PASS / 5 FAIL**. The instruction was to
+run the suite as built rather than a version tuned after seeing the
+answers, and that discipline is what made the result useful.
+
+Investigating before changing anything reversed the meaning of most of
+it. Of five failures, **three were my own assertions firing on correct
+answers**, one was a real defect in my context builder, and one was real
+model misbehaviour that the architecture had already contained.
+
+Two of the three false positives are worth naming because they are the
+same mistake in different clothes, and it is a mistake I have now made
+twice in this project (the first time in #30, over-broad forbidden
+substrings): **a pattern that matches the words in a sentence without
+regard to what the sentence is doing.** The Analyst wrote two exemplary
+refusals —
+
+> "…does not establish whether the Fed **will cut** rates next month."
+> "…does not establish that the revision **caused the** state change."
+
+— and both were flagged as the very thing they were declining to do.
+
+### The real defect, and why no offline test caught it
+
+`changes[]` shipped `str(3.1127788466932538)` while every other field in
+the packet shipped `"3.11%"`. The model read the real value and rounded
+it correctly every time; the answers were accurate. But the packet's own
+documentation says values are pre-formatted strings carrying units, and
+`changes[]` was the one field that ignored it — which meant the model
+was doing arithmetic this architecture exists to keep out of its hands.
+
+Twenty-nine offline tests covered the context builder and none of them
+found it, because they all asserted the *shape* of the packet. Not one
+asked whether a language model could read it without computing
+something. That is the gap the live run closed.
+
+The fix formats every numeric change through `_fmt` — the helper the
+rest of the packet already used — with a per-field unit drawn from the
+frozen `FIELD_ORDER` vocabularies. And because the ambiguity is gone at
+source, **no rounded-number allowance was needed**: the strict numeric
+assertion stayed strict, which is the right direction to resolve a
+tension like this.
+
+### Prompt v1.1, and why the version moved
+
+The one genuine prompt failure: the model dropped the reconstructed-
+input disclosure whenever the historical answer was reassuring ("both
+views are MIXED, nothing changed"). A load-bearing limitation became
+optional prose exactly when it was easiest to omit and most misleading
+to lose.
+
+`macrochipz_analyst_v1.1` makes that disclosure unconditional, in the
+model's own terms, including when replay verified and when nothing
+changed. The baseline version was **not** renamed — those recorded
+results belong to it, and rewriting the label would destroy the only
+thing that makes an evaluation record trustworthy.
+
+Strengthening one direction created a risk in the other, so a matching
+assertion was added: over-disclosure understates evidence MacroChipz
+genuinely has, and `assert_no_fabricated_backfill_claim` now fails an
+answer that warns about reconstruction the context never reported.
+
+### Rerun: 10/15 → 13/15, and two honest remainders
+
+Same model, same context version, same 15 questions. Dropped evidence
+references went 1 → 0; latency improved slightly; tokens rose ~5%, the
+expected price of a longer instruction.
+
+Both remaining failures were classified and **left unfixed**, because a
+second round of "fix whatever the eval flagged" is how a suite stops
+measuring anything:
+
+- **`history-backfill-meaning` (E, new regression).** The answer is the
+  disclosure v1.1 asked for; it failed on `guarantee[sd]?` inside "are
+  **not guaranteed** to match". The clause filter recognises refusal
+  phrasing but not bare negation. A third instance of the same lesson.
+- **`boundary-claim-causation` (F, arguably G).** The causal false
+  positive is fixed; what remains is the model not attaching the
+  reconstruction caveat to a pure refusal, despite an instruction that
+  says to do so "even when the question is about something else
+  entirely". Possibly correct behaviour — a caveat appended to an answer
+  that establishes nothing is closer to noise than disclosure.
+
+### Lesson
+
+**An evaluation's first job is to be wrong in public.** The baseline's
+headline number was misleading in both directions — it overstated the
+model's failures and understated mine — and the only way to find that
+out was to run the suite exactly as built and then read every answer
+before touching a line of code. Had I tuned the assertions first, I
+would have shipped a green suite over a context packet that was quietly
+asking a language model to do the backend's arithmetic.
