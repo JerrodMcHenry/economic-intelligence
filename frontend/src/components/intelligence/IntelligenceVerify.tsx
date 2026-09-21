@@ -64,7 +64,7 @@ export function IntelligenceVerify({ object }: { object: IntelligenceObject }) {
         </Disclosure>
 
         <Disclosure summary="How MacroChipz knows this">
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
+          <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
             <dt className="text-fg-muted">Where it comes from</dt>
             <dd>{basisLabel(object)}</dd>
 

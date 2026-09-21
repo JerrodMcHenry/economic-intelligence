@@ -12012,3 +12012,126 @@ About 3.3 KB gzipped per page: +2.0 KB HTML, +1.3 KB JavaScript, and
 verification table, which is a deliberate purchase — it is what makes
 the chart checkable rather than decorative. Nothing in the numbers
 suggested a problem, so nothing was optimised.
+
+## Increment #41 — Economic Worlds & consumer information architecture
+
+MacroChipz's navigation used to read:
+
+> Home · Overview · Inflation · Labor · Rates · Releases
+
+Three of those six were our words, not a reader's. "Overview" named an
+internal idea — the intelligence workspace. "Labor" and "Releases" were
+the engineering domain's vocabulary leaking into the product. #41 makes
+the navigation the economy plus the two surfaces that are not part of
+it:
+
+> Home · Inflation · Jobs · Rates · Calendar
+
+### The registry, and what it refuses to be
+
+`src/worlds/registry.ts` defines a world once: id, label, route, one
+plain sentence, and the analytics value. It is code rather than a table
+because worlds change when the product changes, not when data changes.
+
+What it deliberately is not is the more interesting list. Not a CMS —
+no slots, no component configuration. Not a methodology — no
+thresholds, no states. Not a fetcher. And not a provider identity: a
+test fails if `PAYEMS`, `UNRATE`, `UST_` or `FRED` ever appears in it,
+because a world is a MacroChipz concept and #38 exists to keep those
+two things apart.
+
+Housing is absent rather than present-and-empty. #27A §11 already froze
+the rule — a navigation slot follows content, it does not precede it —
+and an inactive world with no data is a promise the product cannot
+keep. Adding it in #45 is one entry in one array.
+
+### Jobs is a rename of the product, not of the domain
+
+The public world is Jobs. The engineering domain stays Labor:
+`labor_v1.0`, `app/domain/labor.py`, `/api/v1/monitors/labor`,
+`LaborState`. The registry records that mismatch in a field called
+`engineeringDomain` rather than hiding it, and a test asserts the
+endpoint and the methodology id are untouched. Renaming a frozen
+methodology to improve a heading would break replay against every
+conclusion already recorded, which is a high price for a nicer word in
+a file nobody reads.
+
+### The distinction the frontend had been quietly dropping
+
+`app/concepts/registry.py` makes `universe` a required field, and says
+why in its own docstring: CES counts *jobs*, CPS counts *employed
+people*. Nonfarm payroll employment carries
+`universe="NONFARM_PAYROLL_JOBS"`; the unemployment rate carries
+`universe="CIVILIAN_LABOR_FORCE_PERSONS"`.
+
+The frontend showed none of it. Grepping the labor UI for `universe`,
+`CES`, `CPS`, "establishment survey" or "household survey" returned
+nothing at all. A reader saw two headings, "Employment" and
+"Unemployment", with no indication they count different populations —
+so the one thing most likely to confuse someone was the one thing the
+page never mentioned.
+
+It now says so, in the reader's words: one survey counts jobs, so a
+person with two jobs counts twice; the other counts people, so someone
+who stops looking for work leaves the count entirely rather than
+appearing as a job lost. Which is why they can move in different
+directions in the same month without either being wrong, and why
+MacroChipz reports Mixed rather than averaging them into a number that
+would describe neither.
+
+It refuses to say which is right when they disagree — a test fails on
+"more accurate", "more reliable", "better measure". Explaining a
+methodological boundary is not the same as adjudicating it.
+
+### A freeze that was worth respecting
+
+The note first went in as its own page section, which broke the
+seven-section hierarchy `docs/architecture/labor-ui-v1.md` §7 had
+frozen, and a test said so immediately. The right response was not to
+update the frozen list — it was to notice that the note belongs inside
+the Unemployment section anyway, at the exact moment the page stops
+talking about jobs and starts talking about people. The test was right
+and the first instinct was wrong.
+
+### The chart defect ADR-041 had been carrying
+
+ADR-041 recorded `preserveAspectRatio="none"` on the Treasury curve as
+a live bug, measured the damage (x scaled 0.542 against y's 0.862 at
+390px — roughly 37% horizontal squash), prescribed the fix, and named
+#41 as the acceptance point. #40C had already built that fix for a
+different chart, so this was mostly transcription: `xMidYMid meet`,
+viewBox per breakpoint, CSS-swapped.
+
+Measured afterwards in real Chrome rather than asserted: viewBox aspect
+and rendered aspect now match to three decimals at both 390px (1.500)
+and 1440px (2.923).
+
+### A redirect is not a 301, and saying so is the work
+
+`/overview`, `/labor` and `/releases` all still resolve, via
+`<Navigate replace>`. That is correct for people and incomplete for
+crawlers: a crawler that does not run JavaScript sees a shell and never
+learns the successor exists.
+
+The honest thing was to find out whether a true 301 could be written at
+all. It cannot — there is no Vercel, Netlify, Cloudflare or S3 config
+in the repository, the Dockerfile does not serve the frontend, FastAPI
+mounts no static files, and CI never deploys. So the three 301s are
+specified in the rendering document as an obligation for whoever picks
+the host, and the compatibility routes are deliberately left out of
+both the prerender list and the sitemap so they cannot compete as
+canonical URLs. A `vercel.json` for a host nobody has chosen would have
+been a guess wearing the costume of completeness.
+
+### One sweep that went too far
+
+Late in the increment a global replace of "Economic Intelligence" with
+"MacroChipz" — intended to make the actor consistent — also rewrote
+curated methodology explanations and the brand line, turning the footer
+into "MacroChipz · MacroChipz" and breaking seventeen tests that
+encode frozen wording. Reverted the curated content and the chrome,
+kept the two cases where the sentence genuinely names an actor.
+
+The lesson is small but repeatable: a rename across a product is not a
+`sed` over a repository. Curated copy and brand chrome are not the same
+category of string as UI labels, and the tests knew it before I did.

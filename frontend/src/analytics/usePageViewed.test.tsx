@@ -54,7 +54,7 @@ afterEach(() => {
 
 describe("normalizeRoute", () => {
   it("passes through every known route template", () => {
-    for (const route of ["/", "/overview", "/inflation", "/labor", "/rates", "/releases"]) {
+    for (const route of ["/", "/inflation", "/jobs", "/rates", "/calendar"]) {
       expect(normalizeRoute(route)).toBe(route);
     }
   });
@@ -91,11 +91,11 @@ describe("classifyReferrer", () => {
 describe("usePageViewed", () => {
   it("emits page_viewed once for a non-world route", () => {
     const sent: Recorded[] = [];
-    renderAt("/releases", sent);
+    renderAt("/calendar", sent);
 
     expect(sent).toHaveLength(1);
     expect(at(sent, 0).event).toBe("page_viewed");
-    expect(at(sent, 0).properties.route_template).toBe("/releases");
+    expect(at(sent, 0).properties.route_template).toBe("/calendar");
   });
 
   it("emits page_viewed and world_opened for a world route", () => {

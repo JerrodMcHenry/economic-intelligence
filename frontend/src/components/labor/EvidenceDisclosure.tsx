@@ -63,7 +63,7 @@ export function EvidenceDisclosure({
           ))}
         </tbody>
       </table>
-      <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
+      <dl className="mt-3 grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
         <dt className="text-fg-muted">Series</dt>
         <dd>{observations[0]?.series_id}</dd>
         <dt className="text-fg-muted">Methodology</dt>

@@ -144,9 +144,17 @@ describe("route vocabulary stays in step with the router", () => {
     const app = readFileSync(join(SRC_DIR, "App.tsx"), "utf8");
     const events = readFileSync(join(ANALYTICS_DIR, "events.ts"), "utf8");
 
-    const routed = [...app.matchAll(/<Route\s+path="([^"]+)"/g)]
+    // A COMPATIBILITY REDIRECT is not a page (#41). `<Route
+    // path="labor" element={<Navigate to="/jobs" replace />} />`
+    // renders nothing and immediately navigates away, so the reader is
+    // measured at `/jobs` -- its destination -- and giving the old path
+    // its own template would report a page view nobody ever saw.
+    const routed = [...app.matchAll(/<Route\s+path="([^"]+)"\s+element=\{(<[A-Za-z]+)/g)]
+      .filter((match) => match[2] !== "<Navigate")
       .map((match) => match[1])
       .filter((path): path is string => path !== undefined && path !== "*");
+
+    expect(routed.length, "the route scan matched nothing -- the regex has drifted from App.tsx").toBeGreaterThan(0);
 
     const missing = routed.filter((path) => !events.includes(`"/${path}"`));
     expect(missing).toEqual([]);

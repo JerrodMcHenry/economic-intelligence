@@ -26,9 +26,20 @@
  * assembled dynamically or a type is widened by accident. Defence in
  * depth, deliberately duplicated.
  */
+import { ECONOMIC_WORLDS } from "../worlds/registry";
 
-/** The six MacroChipz economic worlds. Only three exist today. */
-export type World = "inflation" | "labor" | "rates";
+
+/**
+ * The MacroChipz economic worlds. Only three exist today.
+ *
+ * `jobs`, not `labor`, since #41: the measurement vocabulary follows
+ * the PRODUCT vocabulary, and it now matches #39's backend `World`
+ * exactly, so the same word means the same thing on both sides. Safe
+ * to change because no analytics provider has ever been configured --
+ * the default is a no-op, so there is no historical series to break.
+ * The engineering domain remains `labor`; see `src/worlds/registry.ts`.
+ */
+export type World = "inflation" | "jobs" | "rates";
 
 /**
  * The kind of thing an interaction was about. Deliberately coarse:
@@ -71,11 +82,10 @@ export type ReferrerClass = "none" | "internal" | "external";
  */
 export type RouteTemplate =
   | "/"
-  | "/overview"
   | "/inflation"
-  | "/labor"
+  | "/jobs"
   | "/rates"
-  | "/releases"
+  | "/calendar"
   // A permanent intelligence object page (#40). The TEMPLATE, never a
   // concrete id -- an id is a semantic identifier, and sending it would
   // report which specific object a reader opened.
@@ -93,8 +103,8 @@ export interface AnalyticsEventMap {
    * Q: Does anyone explore past the homepage, and into which world?
    *
    * Overlaps `page_viewed` today, because worlds are routes today.
-   * Kept as its own event because it is the one that survives the
-   * planned `/labor` -> `/jobs` rename and the 2.0 designs where a
+   * Kept as its own event because it is the one that survived the
+   * `/labor` -> `/jobs` rename (#41) and the 2.0 designs where a
    * world opens without a route change. The `world` property is
    * self-describing; a route template requires knowing which routes
    * are worlds.
@@ -207,17 +217,21 @@ export const ANALYTICS_EVENT_NAMES = Object.keys(EVENT_PROPERTY_ALLOWLIST) as Re
  */
 export const ROUTE_TEMPLATES: ReadonlyArray<Exclude<RouteTemplate, "unknown_route">> = [
   "/",
-  "/overview",
   "/inflation",
-  "/labor",
+  "/jobs",
   "/rates",
-  "/releases",
+  "/calendar",
   "/intelligence/:id",
 ];
 
-/** Which route templates are economic worlds, and which world each is. */
-export const WORLD_BY_ROUTE: Readonly<Partial<Record<RouteTemplate, World>>> = {
-  "/inflation": "inflation",
-  "/labor": "labor",
-  "/rates": "rates",
-};
+/**
+ * Which route templates are economic worlds, and which world each is.
+ *
+ * Derived from the world registry (#41) rather than retyped, so a world
+ * cannot be renamed in the product and left behind in the numbers.
+ * Calendar is deliberately absent: it is a product surface spanning
+ * every world, not a world, so it emits no `world_opened`.
+ */
+export const WORLD_BY_ROUTE: Readonly<Partial<Record<RouteTemplate, World>>> = Object.fromEntries(
+  ECONOMIC_WORLDS.map((world) => [world.route, world.analyticsWorld]),
+) as Readonly<Partial<Record<RouteTemplate, World>>>;

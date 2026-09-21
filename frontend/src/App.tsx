@@ -1,32 +1,53 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./layouts/AppShell";
+import { CalendarPage } from "./pages/Calendar";
 import { HomePage } from "./pages/Home";
 import { InflationPage } from "./pages/Inflation";
-import { LaborPage } from "./pages/Labor";
+import { JobsPage } from "./pages/Jobs";
 import { NotFoundPage } from "./pages/NotFound";
-import { OverviewPage } from "./pages/Overview";
 import { RatesPage } from "./pages/Rates";
-import { ReleasesPage } from "./pages/Releases";
 
 /**
  * The routes that have not yet graduated into React Router framework
  * mode (Increment #40). Rendered by `routes/catchall.tsx`.
  *
- * `ThemeProvider` moved to `root.tsx` in #40 so that routes outside
- * this tree -- the permanent intelligence page is the first -- get the
- * theme too. Nothing else here changed.
+ * CONSUMER INFORMATION ARCHITECTURE (#41)
+ * ---------------------------------------
+ * Primary surfaces: Home, Inflation, Jobs, Rates, Calendar. The route
+ * names are the product's names -- `/jobs`, not `/labor`; `/calendar`,
+ * not `/releases` -- because a URL is the most public piece of language
+ * a product has.
+ *
+ * `/` is the canonical home and now renders what used to live at
+ * `/overview`. That page's own docstring described it as "the real `/`
+ * product page"; #41 simply puts it where it always said it belonged.
+ * It is NOT the #42 homepage: nothing here selects, ranks, or scores
+ * intelligence, and no "most important thing today" exists.
+ *
+ * OLD ROUTES STILL WORK. Every previous URL redirects to its successor
+ * rather than 404ing, because links that were shared before #41 are
+ * not the reader's mistake. `<Navigate replace>` is a CLIENT-side
+ * redirect -- see `docs/architecture/rendering-and-permanent-objects.md`
+ * §19 for exactly what that does and does not give us, and what a true
+ * HTTP 301 still requires at the hosting layer.
  */
 export function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<HomePage />} />
-        <Route path="overview" element={<OverviewPage />} />
         <Route path="inflation" element={<InflationPage />} />
-        <Route path="labor" element={<LaborPage />} />
+        <Route path="jobs" element={<JobsPage />} />
         <Route path="rates" element={<RatesPage />} />
-        <Route path="releases" element={<ReleasesPage />} />
+        <Route path="calendar" element={<CalendarPage />} />
+
+        {/* Compatibility. `replace` so the old URL does not sit in the
+            reader's back button, waiting to bounce them again. */}
+        <Route path="overview" element={<Navigate to="/" replace />} />
+        <Route path="labor" element={<Navigate to="/jobs" replace />} />
+        <Route path="releases" element={<Navigate to="/calendar" replace />} />
+
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

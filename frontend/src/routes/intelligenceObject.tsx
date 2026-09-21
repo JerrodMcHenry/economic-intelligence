@@ -32,12 +32,13 @@ import { getIntelligenceObject } from "../api/intelligence";
 import type { IntelligenceObject } from "../api/intelligence.types";
 import { isApiError } from "../api/errors";
 import { IntelligenceSee } from "../components/intelligence/IntelligenceSee";
+import { IntelligenceShell } from "../components/intelligence/IntelligenceShell";
 import { IntelligenceVerify } from "../components/intelligence/IntelligenceVerify";
-import { PageContainer } from "../components/PageContainer";
 import { ShareButton } from "../components/ShareButton";
 import { headline } from "../lib/intelligenceLanguage";
 import { intelligenceMeta } from "../lib/intelligenceMetadata";
 import { absoluteUrl, intelligencePath } from "../lib/siteUrl";
+import { ECONOMIC_WORLDS } from "../worlds/registry";
 
 export interface LoaderData {
   object: IntelligenceObject | null;
@@ -78,8 +79,13 @@ export default function IntelligenceObjectRoute() {
 
   const url = absoluteUrl(intelligencePath(intelligenceId));
 
+  // #41: name the world in the shell so a cold visitor from a shared
+  // link knows what part of the economy they have landed in. Looked up
+  // by the object's own `world`, never guessed.
+  const home = ECONOMIC_WORLDS.find((entry) => entry.analyticsWorld === object.world);
+
   return (
-    <PageContainer>
+    <IntelligenceShell worldLabel={home?.label} worldRoute={home?.route}>
       <article className="py-8">
         <IntelligenceSee object={object} />
 
@@ -99,13 +105,13 @@ export default function IntelligenceObjectRoute() {
           />
         </div>
       </article>
-    </PageContainer>
+    </IntelligenceShell>
   );
 }
 
 function NotFound() {
   return (
-    <PageContainer>
+    <IntelligenceShell>
       <div className="py-16">
         <h1 className="type-page-title">No intelligence here</h1>
         <p className="mt-3 max-w-prose text-fg-secondary">
@@ -116,7 +122,7 @@ function NotFound() {
           Go to MacroChipz →
         </a>
       </div>
-    </PageContainer>
+    </IntelligenceShell>
   );
 }
 
@@ -133,7 +139,7 @@ export function ErrorBoundary() {
   if (isNotFound) return <NotFound />;
 
   return (
-    <PageContainer>
+    <IntelligenceShell>
       <div className="py-16">
         <h1 className="type-page-title">This could not be loaded</h1>
         <p className="mt-3 max-w-prose text-fg-secondary">
@@ -142,6 +148,6 @@ export function ErrorBoundary() {
         </p>
         <p className="mt-4 text-sm text-fg-muted">Reference: {params.intelligenceId}</p>
       </div>
-    </PageContainer>
+    </IntelligenceShell>
   );
 }

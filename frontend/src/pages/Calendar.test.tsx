@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
 import { buildReleaseListResponse, buildReleaseOccurrenceItem } from "../test/fixtures/releases";
-import { ReleasesPage } from "./Releases";
+import { CalendarPage } from "./Calendar";
 
 vi.mock("../api/releases", () => ({
   fetchUpcomingReleases: vi.fn(),
@@ -34,7 +34,7 @@ function resolveBoth(overrides: {
 }
 
 function renderPage() {
-  return render(<ReleasesPage />);
+  return render(<CalendarPage />);
 }
 
 async function findSection(name: string) {
@@ -47,7 +47,7 @@ describe("page header and disclosure", () => {
     resolveBoth();
     renderPage();
 
-    expect(screen.getByRole("heading", { level: 1, name: "Economic Releases" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Release calendar" })).toBeInTheDocument();
     expect(
       await screen.findByText(
         "Release dates indicate scheduled publication dates. They do not confirm that new data has been published, ingested, or reflected in Economic Intelligence analysis.",
@@ -357,7 +357,7 @@ describe("accessibility and structure", () => {
     renderPage();
 
     await screen.findByRole("heading", { name: "Upcoming Releases" });
-    expect(screen.getByRole("heading", { level: 1, name: "Economic Releases" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Release calendar" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Upcoming Releases" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Recent Releases" })).toBeInTheDocument();
   });

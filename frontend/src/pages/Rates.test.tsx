@@ -126,7 +126,17 @@ describe("RatesPage curve and spreads", () => {
     renderPage();
 
     const section = await screen.findByRole("region", { name: "Treasury curve" });
-    expect(within(section).getByRole("img", { name: /Nominal Treasury yield curve as of Sep 18, 2026/ })).toBeInTheDocument();
+    // Two renderings since #41 -- one viewBox per breakpoint, which is
+    // how the chart scales uniformly instead of distorting (ADR-041).
+    // Only one is ever displayed, so a screen reader still hears one
+    // chart: `display: none` removes the other from the a11y tree.
+    const charts = within(section).getAllByRole("img", {
+      name: /Nominal Treasury yield curve as of Sep 18, 2026/,
+    });
+    expect(charts).toHaveLength(2);
+    for (const chart of charts) {
+      expect(chart).toHaveAttribute("preserveAspectRatio", "xMidYMid meet");
+    }
 
     const table = within(section).getByRole("table", { name: "Nominal Treasury par yields by maturity" });
     expect(within(table).getByRole("rowheader", { name: "10Y" })).toBeInTheDocument();

@@ -25,7 +25,7 @@ export function MethodologyDisclosure({
       </h2>
       <div className="mt-3">
         <Disclosure summary="Methodology and coverage detail">
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
+          <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
             {monitor && (
               <>
                 <dt className="text-fg-muted">Monitor methodology</dt>

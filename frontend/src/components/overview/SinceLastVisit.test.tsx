@@ -223,9 +223,9 @@ describe("SinceLastVisit", () => {
   it("CTAs link to the correct, existing domain routes, no query params, no new destination", () => {
     renderWithData(buildSinceLastVisitResponse());
     const inflationLink = screen.getByRole("link", { name: "View Inflation →" });
-    const laborLink = screen.getByRole("link", { name: "View Labor →" });
+    const laborLink = screen.getByRole("link", { name: "View Jobs →" });
     expect(inflationLink).toHaveAttribute("href", "/inflation");
-    expect(laborLink).toHaveAttribute("href", "/labor");
+    expect(laborLink).toHaveAttribute("href", "/jobs");
   });
 
   it("preserves backend item order, never resorts", () => {

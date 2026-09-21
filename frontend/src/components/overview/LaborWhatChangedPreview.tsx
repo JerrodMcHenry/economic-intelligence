@@ -126,7 +126,7 @@ export function LaborWhatChangedPreview({ events, comparisonAvailable }: { event
 
   return (
     <div>
-      <p className="text-sm font-semibold text-fg-secondary">Labor</p>
+      <p className="text-sm font-semibold text-fg-secondary">Jobs</p>
 
       {!comparisonAvailable ? (
         <p className="mt-3 text-sm text-fg-muted">Previous-period comparison unavailable.</p>
@@ -160,8 +160,8 @@ export function LaborWhatChangedPreview({ events, comparisonAvailable }: { event
         </div>
       )}
 
-      <Link to="/labor" className="mt-4 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
-        View Labor →
+      <Link to="/jobs" className="mt-4 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
+        View Jobs →
       </Link>
     </div>
   );

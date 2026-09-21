@@ -7,7 +7,7 @@ import { InflationCurrentStateCard } from "./InflationCurrentStateCard";
 import { LaborCurrentStateCard } from "./LaborCurrentStateCard";
 
 const MONITOR_ERROR_MESSAGE = "Inflation data could not be loaded.";
-const LABOR_ERROR_MESSAGE = "Labor data could not be loaded.";
+const LABOR_ERROR_MESSAGE = "Jobs data could not be loaded.";
 
 /**
  * The Economic Overview's "Current State" section (Increment #20E.2:

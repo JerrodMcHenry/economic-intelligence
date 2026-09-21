@@ -173,7 +173,7 @@ describe("track", () => {
       },
     });
 
-    track("world_opened", { world: "labor" });
+    track("world_opened", { world: "jobs" });
     await new Promise((resolve) => setTimeout(resolve, 0));
     process.off("unhandledRejection", unhandled);
 

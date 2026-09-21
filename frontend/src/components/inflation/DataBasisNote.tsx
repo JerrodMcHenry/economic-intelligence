@@ -16,7 +16,7 @@ import { LATEST_REVISED_DATA, STATE_DURATION_DISCLOSURE } from "../../content/ex
  * docs/product/state-duration-v1.md §38) alongside the existing two --
  * never replacing them -- covering the one distinction the existing
  * sentence doesn't: State Duration is a reconstruction computed today,
- * not what Economic Intelligence reported in real time as each month
+ * not what MacroChipz reported in real time as each month
  * occurred. Always rendered (this disclosure has no per-response data
  * dependency, so it never needs its own loading/error state).
  */

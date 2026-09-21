@@ -108,7 +108,7 @@ function SelectedOccurrence({ item }: { item: ReleaseProcessingStatusItem }) {
         <p className="mt-1 text-sm text-fg-muted">Some associated series could not be checked.</p>
       )}
       {latestCheck.status === "CHECK_FAILED" && (
-        <p className="mt-1 text-sm text-fg-muted">Economic Intelligence could not complete the latest provider check.</p>
+        <p className="mt-1 text-sm text-fg-muted">MacroChipz could not complete the latest provider check.</p>
       )}
       {latestCheck.checked_at !== null && (
         <p className="mt-1 text-xs text-fg-muted">Checked {formatCheckedAt(latestCheck.checked_at)}</p>
@@ -198,7 +198,7 @@ export function AnalysisChangeRow({ change }: { change: DetectedAnalysisChange }
       <div className="text-xs text-fg-muted">{formatFullDate(change.evaluation_period)}</div>
       <div className="mt-1">
         <Disclosure summary="Details">
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
+          <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
             <dt className="text-fg-muted">Methodology</dt>
             <dd>{change.methodology_id}</dd>
             <dt className="text-fg-muted">Data basis</dt>

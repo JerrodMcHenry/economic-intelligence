@@ -18,7 +18,7 @@ import { WhatChangedSection } from "../components/labor/WhatChangedSection";
 import { PageHeader } from "../components/PageHeader";
 import { laborStateLabelOrRaw, laborStateToneOrNeutral } from "../lib/laborLabels";
 
-const MONITOR_ERROR_MESSAGE = "Labor data could not be loaded.";
+const MONITOR_ERROR_MESSAGE = "Jobs data could not be loaded.";
 const CHANGES_ERROR_MESSAGE = "What changed could not be loaded.";
 const PROCESSING_STATUS_ERROR_MESSAGE = "Release-processing status is temporarily unavailable.";
 const UPCOMING_ERROR_MESSAGE = "Upcoming releases could not be loaded.";
@@ -52,7 +52,7 @@ const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
  * and relationship rendered below is exactly what those endpoints
  * returned; this page composes and formats, it does not calculate.
  */
-export function LaborPage() {
+export function JobsPage() {
   const monitor = useApiResource(getLaborMonitor);
   const whatChanged = useApiResource(getLaborWhatChanged);
   const stateDuration = useApiResource(getLaborStateDuration);
@@ -65,8 +65,8 @@ export function LaborPage() {
   return (
     <div>
       <PageHeader
-        title="Labor"
-        description="Track U.S. labor market conditions -- payroll employment, the unemployment trend, and the evidence behind each conclusion."
+        title="Jobs"
+        description="Whether employers are adding jobs, and how many people are out of work — with the evidence behind each conclusion."
       >
         <DataBasisNote />
       </PageHeader>
@@ -77,7 +77,12 @@ export function LaborPage() {
         {monitor.status === "error" && <ErrorMessage message={MONITOR_ERROR_MESSAGE} onRetry={monitor.reload} />}
         {monitor.status === "success" && <LaborHero result={monitor.data} stateDuration={stateDuration} />}
 
-        {/* 2-3. Employment, Unemployment -- both sub-views of the monitor resource */}
+        {/* 2-3. Employment, Unemployment -- both sub-views of the monitor
+            resource, separated by the note explaining WHY they are two
+            things rather than one (#41). The note sits between them
+            deliberately: a reader meets the distinction at the moment
+            the page stops talking about jobs and starts talking about
+            people. */}
         {monitor.status === "success" && (
           <>
             <EmploymentSection employment={monitor.data.employment} methodologyId={monitor.data.methodology_id} dataBasis={monitor.data.data_basis} />

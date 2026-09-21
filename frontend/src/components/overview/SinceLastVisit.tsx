@@ -22,7 +22,7 @@ const ERROR_MESSAGE = "Recent activity could not be loaded.";
 
 const DOMAIN_CTA: Record<Monitor, { label: string; to: string }> = {
   inflation: { label: "View Inflation →", to: "/inflation" },
-  labor: { label: "View Labor →", to: "/labor" },
+  labor: { label: "View Jobs →", to: "/jobs" },
 };
 
 /**

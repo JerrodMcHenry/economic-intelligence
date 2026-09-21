@@ -26,7 +26,7 @@ import { WhyLaborState } from "../labor/WhyLaborState";
 export function LaborCurrentStateCard({ result }: { result: LaborMonitorResult }) {
   return (
     <div>
-      <p className="text-sm font-semibold text-fg-secondary">Labor</p>
+      <p className="text-sm font-semibold text-fg-secondary">Jobs</p>
       <div className="mt-1.5">
         <Badge label={laborStateLabel(result.state)} tone={laborStateTone(result.state)} size="xl" />
       </div>
@@ -35,8 +35,8 @@ export function LaborCurrentStateCard({ result }: { result: LaborMonitorResult }
       </p>
       <WhyLaborState result={result} />
 
-      <Link to="/labor" className="mt-4 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
-        Open Labor →
+      <Link to="/jobs" className="mt-4 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
+        Open Jobs →
       </Link>
     </div>
   );

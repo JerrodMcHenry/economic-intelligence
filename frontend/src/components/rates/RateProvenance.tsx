@@ -21,7 +21,7 @@ export function SourceProvenanceDisclosure({ provenance }: { provenance: SourceP
 
   return (
     <Disclosure summary="Source &amp; provenance">
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
+      <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
         <dt className="text-fg-muted">Value type</dt>
         <dd>Published by the source</dd>
         <dt className="text-fg-muted">Provider</dt>
@@ -63,7 +63,7 @@ export function DerivedProvenanceDisclosure({ provenance }: { provenance: Derive
 
   return (
     <Disclosure summary="How this is calculated">
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
+      <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
         <dt className="text-fg-muted">Value type</dt>
         <dd>Calculated by MacroChipz, not published by the source</dd>
         <dt className="text-fg-muted">Methodology</dt>

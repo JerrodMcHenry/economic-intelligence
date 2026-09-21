@@ -125,14 +125,14 @@ export function WhatChangedSection({ whatChanged }: { whatChanged: LaborWhatChan
       {!whatChanged.comparison_available ? (
         <p className="mt-3 text-sm text-fg-muted">Previous-period comparison unavailable.</p>
       ) : events.length === 0 ? (
-        <p className="mt-3 text-sm text-fg-muted">No canonical Labor changes were reported for this comparison.</p>
+        <p className="mt-3 text-sm text-fg-muted">No canonical Jobs changes were reported for this comparison.</p>
       ) : (
         <div className="mt-3 max-w-3xl space-y-4">
           {/* Tier 1: top-level LABOR state/availability */}
           {laborTier.map((event, index) =>
             event.event_type === "STATE_CHANGED" ? (
               <p key={index} className="text-sm font-semibold text-fg">
-                Labor state: {formatEventValue(event, event.previous_value)}
+                Jobs state: {formatEventValue(event, event.previous_value)}
                 <span aria-hidden="true" className="mx-1.5 text-fg-muted">
                   →
                 </span>

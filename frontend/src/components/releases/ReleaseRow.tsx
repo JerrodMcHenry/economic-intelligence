@@ -23,7 +23,7 @@ import { ScheduleStatusBadge } from "./ScheduleStatusBadge";
  * caller-opted-in next-action link, keyed by CANONICAL MONITOR
  * RELATION (`lib/releaseMonitorRelation.ts`), never by the broader,
  * unrelated `releaseCategory()` display tag above -- "View Inflation →"
- * for CPI/Personal Income and Outlays, "View Labor →" for Employment
+ * for CPI/Personal Income and Outlays, "View Jobs →" for Employment
  * Situation, "View Releases →" for a release with no canonical monitor
  * relation (JOLTS/GDP/Advance Retail Sales), so a non-monitor release
  * is never a hard dead end (docs/product/overview-attention-model-v1.md

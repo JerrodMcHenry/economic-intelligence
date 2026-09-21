@@ -68,7 +68,7 @@ function SelectedOccurrence({ item }: { item: ReleaseProcessingStatusItem }) {
         <p className="mt-1 text-sm text-fg-muted">Some associated series could not be checked.</p>
       )}
       {latestCheck.status === "CHECK_FAILED" && (
-        <p className="mt-1 text-sm text-fg-muted">Economic Intelligence could not complete the latest provider check.</p>
+        <p className="mt-1 text-sm text-fg-muted">MacroChipz could not complete the latest provider check.</p>
       )}
       {latestCheck.checked_at !== null && (
         <p className="mt-1 text-xs text-fg-muted">Checked {formatCheckedAt(latestCheck.checked_at)}</p>

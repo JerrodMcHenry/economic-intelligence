@@ -23,7 +23,7 @@ export function EvidenceDisclosure({ label, evidence }: { label: string; evidenc
       // never the values on screen.
       onOpen={() => track("evidence_expanded", { object_type: "inflation_metric" })}
     >
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
+      <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
         <dt className="text-fg-muted">Series</dt>
         <dd>{evidence.series_id}</dd>
         <dt className="text-fg-muted">Calculation period</dt>

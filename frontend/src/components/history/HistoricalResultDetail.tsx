@@ -85,7 +85,7 @@ function DetailBody({
       {/* ---------- What MacroChipz knew then ---------- */}
       <div>
         <SubHeading>{copy.THEN_HEADING}</SubHeading>
-        <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-fg-secondary">
+        <dl className="mt-2 grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-fg-secondary">
           <dt className="text-fg-muted">Conclusion</dt>
           <dd>{stateLabel(recorded.state)}</dd>
           <dt className="text-fg-muted">Period</dt>

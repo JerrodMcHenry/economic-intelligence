@@ -1,6 +1,6 @@
 # Rendering and Permanent Intelligence Objects
 
-**Status:** implemented (Increment #40), corrected by #40A (§16), consumer presentation pass in #40B (§17), visual evidence in #40C (§18)
+**Status:** implemented (Increment #40), corrected by #40A (§16), consumer presentation pass in #40B (§17), visual evidence in #40C (§18), consumer IA in #41 (§19-20)
 **Implements:** ADR-039 (React Router framework mode with prerendering), ADR-041 (charting — not yet exercised)
 **Consumes:** #39 Structured Intelligence Layer, #37 measurement foundation
 **Supersedes for the frontend shell:** the `index.html` + `main.tsx` SPA bootstrap
@@ -559,3 +559,76 @@ No optimisation was applied, because nothing in these numbers indicates a proble
 ### 18.7 OG images
 
 Unchanged. Dynamic chart-in-OG is deferred.
+
+---
+
+## 19. #41 — route migration and what a client-side redirect is not
+
+The consumer IA renamed three public routes:
+
+| Old | New | Why |
+| --- | --- | --- |
+| `/overview` | `/` | "Overview" named our architecture, not a part of the economy. The page's own docstring already called itself *"the real `/` product page"*. |
+| `/labor` | `/jobs` | `labor` is the engineering domain's word. The reader's word is Jobs. |
+| `/releases` | `/calendar` | Same reason. |
+
+**Every old URL still works.** `App.tsx` routes each to `<Navigate to="…" replace />`.
+
+### 19.1 What React Router's redirect actually gives us — and what it does not
+
+| | Client-side `<Navigate replace>` | True HTTP 301 |
+| --- | --- | --- |
+| Reader with an old bookmark lands on the right page | **yes** | yes |
+| Old URL removed from browser history | **yes** (`replace`) | yes |
+| Requires JavaScript to run | **yes** | no |
+| Crawler treats the new URL as canonical | **no** | yes |
+| Link equity transferred | **no** | yes |
+
+So the redirects are correct for **people** and incomplete for **crawlers**. A crawler that does not execute JavaScript sees the SPA fallback shell at `/labor` and never learns that `/jobs` exists.
+
+Two things limit the damage today, both deliberate:
+
+- The compatibility routes are **not prerendered**, so they produce no HTML of their own and never enter `sitemap.xml`. Only the five canonical routes do.
+- The 404/unknown branch of `catchall.tsx`'s `meta` emits `robots: noindex`.
+
+### 19.2 What still requires the hosting layer — and why it is not configured here
+
+A true permanent redirect must be issued by whatever serves the static bundle:
+
+```
+/overview   →  /   301
+/labor      →  /jobs      301
+/releases   →  /calendar  301
+```
+
+**This was not implemented, because there is no deployment target to implement it against.** Verified this increment: there is no Vercel, Netlify, Cloudflare or S3/CloudFront configuration in the repository; the `Dockerfile` does not serve the frontend; `app/main.py` mounts no `StaticFiles`; and CI validates without ever deploying (ADR-028). Writing a `_redirects` or `vercel.json` for a host nobody has chosen would be a guess wearing the costume of completeness.
+
+**Recorded as an explicit, bounded obligation:** whoever chooses the static host owns those three 301s, and the table above is the specification. #41 §22 named this as a stop-and-report condition; this section is the report.
+
+---
+
+## 20. #41 — what the new IA means for rendering
+
+### 20.1 Prerendered now
+
+`STATIC_PATHS` grew from `["/"]` to the five canonical routes: `/`, `/inflation`, `/jobs`, `/rates`, `/calendar`. Each gets real HTML with its own `<title>`, description and Open Graph tags, produced by `catchall.tsx`'s `meta`, which branches on pathname (one module serves all of them).
+
+Verified in the generated HTML:
+
+```
+/            MacroChipz — Economic Intelligence
+/inflation   Inflation — MacroChipz
+/jobs        Jobs — MacroChipz
+/rates       Rates — MacroChipz
+/calendar    Release calendar — MacroChipz
+```
+
+### 20.2 What is still SPA-only, stated plainly
+
+**The BODIES of those five pages are not crawlable.** They fetch through `useApiResource` in the browser, so the prerendered body is the application shell, not a rendered monitor. #41 buys metadata and a non-empty document — not crawler-visible economic content.
+
+Making that content crawlable means giving each world a real framework route with a loader, which is a larger change than #41 owned. The permanent intelligence pages remain the only surfaces whose *content* a non-JavaScript crawler can read.
+
+### 20.3 The permanent page now has a shell
+
+`IntelligenceShell` — brand, world name, one link into that world, and a footer. Deliberately not `AppShell`: a permanent object page is usually the FIRST page someone sees, arriving from a message with no context, and five navigation items above a single Treasury yield would bury the fact. Adds no client-only behaviour, so prerendering and metadata are unchanged (re-verified: title, `og:*`, canonical, both chart SVGs, Check this and Share all still present in the built HTML).

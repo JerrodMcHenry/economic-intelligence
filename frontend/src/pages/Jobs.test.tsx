@@ -26,7 +26,7 @@ import { buildEmptyHistoryResponse } from "../test/fixtures/monitorHistory";
 import { buildLatestCheck, buildReleaseProcessingStatusItem, buildReleaseProcessingStatusResponse } from "../test/fixtures/processingStatus";
 import { buildReleaseListResponse, buildReleaseOccurrenceItem } from "../test/fixtures/releases";
 import { buildStateDurationAvailable, buildStateDurationCurrentInsufficient } from "../test/fixtures/stateDuration";
-import { LaborPage } from "./Labor";
+import { JobsPage } from "./Jobs";
 
 vi.mock("../api/labor", () => ({
   getLaborMonitor: vi.fn(),
@@ -91,7 +91,7 @@ function resolveAll(overrides: {
 function renderPage() {
   return render(
     <MemoryRouter>
-      <LaborPage />
+      <JobsPage />
     </MemoryRouter>,
   );
 }
@@ -348,7 +348,7 @@ describe("State Duration V1 (Increment #24D)", () => {
     const section = await findSection("Current state");
     const why = within(section).getByText("Why Strengthening?");
     why.click();
-    expect(await within(section).findByText(/Together, Economic Intelligence classifies Labor/)).toBeInTheDocument();
+    expect(await within(section).findByText(/Together, MacroChipz classifies Jobs/)).toBeInTheDocument();
   });
 
   it("leaves the canonical current state and evaluation period completely unchanged", async () => {
@@ -358,7 +358,7 @@ describe("State Duration V1 (Increment #24D)", () => {
 
     const section = await findSection("Current state");
     expect(within(section).getByText("Cooling", { selector: "span" })).toBeInTheDocument();
-    expect(within(section).getByText(/Labor · September 2026/)).toBeInTheDocument();
+    expect(within(section).getByText(/Jobs · September 2026/)).toBeInTheDocument();
   });
 });
 
@@ -391,7 +391,7 @@ describe("Relate V1 composition, inside the existing WhyLaborState disclosure (I
 
     const section = await findSection("Current state");
     within(section).getByText("Why Cooling?").click();
-    expect(await within(section).findByText("Employment is Cooling and Unemployment is Deteriorating. Together, Economic Intelligence classifies Labor as Cooling.")).toBeInTheDocument();
+    expect(await within(section).findByText("Employment is Cooling and Unemployment is Deteriorating. Together, MacroChipz classifies Jobs as Cooling.")).toBeInTheDocument();
   });
 
   it("exact Employment/Unemployment/LaborState clause, verbatim", async () => {
@@ -407,7 +407,7 @@ describe("Relate V1 composition, inside the existing WhyLaborState disclosure (I
     const section = await findSection("Current state");
     within(section).getByText("Why Strengthening?").click();
     expect(
-      await within(section).findByText("Employment is Expanding and Unemployment is Improving. Together, Economic Intelligence classifies Labor as Strengthening."),
+      await within(section).findByText("Employment is Expanding and Unemployment is Improving. Together, MacroChipz classifies Jobs as Strengthening."),
     ).toBeInTheDocument();
   });
 
@@ -425,7 +425,7 @@ describe("Relate V1 composition, inside the existing WhyLaborState disclosure (I
     // The Hero badge itself.
     expect(within(section).getByText("Mixed", { selector: "span" })).toBeInTheDocument();
     within(section).getByText("Why Mixed?").click();
-    expect(await within(section).findByText(/classifies Labor as Mixed\.$/)).toBeInTheDocument();
+    expect(await within(section).findByText(/classifies Jobs as Mixed\.$/)).toBeInTheDocument();
   });
 
   it("Employment insufficient: no composed sentence, dedicated fragment only", async () => {
@@ -441,7 +441,7 @@ describe("Relate V1 composition, inside the existing WhyLaborState disclosure (I
     const section = await findSection("Current state");
     within(section).getByText("Why Insufficient data?").click();
     expect(await within(section).findByText("Employment does not currently have enough data to classify its state.")).toBeInTheDocument();
-    expect(within(section).queryByText(/classifies Labor as/i)).not.toBeInTheDocument();
+    expect(within(section).queryByText(/classifies Jobs as/i)).not.toBeInTheDocument();
   });
 
   it("Unemployment insufficient (Employment sufficient): dedicated fragment only", async () => {
@@ -457,7 +457,7 @@ describe("Relate V1 composition, inside the existing WhyLaborState disclosure (I
     const section = await findSection("Current state");
     within(section).getByText("Why Insufficient data?").click();
     expect(await within(section).findByText("Unemployment does not currently have enough data to classify its state.")).toBeInTheDocument();
-    expect(within(section).queryByText(/classifies Labor as/i)).not.toBeInTheDocument();
+    expect(within(section).queryByText(/classifies Jobs as/i)).not.toBeInTheDocument();
   });
 
   it("does not remove or replace the existing evidence table -- Employment/Unemployment/evaluation period dl remains the source of truth", async () => {
@@ -477,7 +477,7 @@ describe("Relate V1 composition, inside the existing WhyLaborState disclosure (I
     expect(within(section).getByText("Unemployment trend")).toBeInTheDocument();
     expect(within(section).getByText("Evaluation period")).toBeInTheDocument();
     // Both the dl AND the new composed sentence coexist.
-    expect(within(section).getByText(/Together, Economic Intelligence classifies Labor as/)).toBeInTheDocument();
+    expect(within(section).getByText(/Together, MacroChipz classifies Jobs as/)).toBeInTheDocument();
   });
 
   it("no new CTA is introduced by the composition sentence", async () => {
@@ -486,7 +486,7 @@ describe("Relate V1 composition, inside the existing WhyLaborState disclosure (I
 
     const section = await findSection("Current state");
     within(section).getByText("Why Stable?").click();
-    await within(section).findByText(/Together, Economic Intelligence classifies Labor as/);
+    await within(section).findByText(/Together, MacroChipz classifies Jobs as/);
     expect(within(section).queryByRole("link")).not.toBeInTheDocument();
   });
 });
@@ -586,17 +586,17 @@ describe("Unemployment", () => {
     renderPage();
 
     const section = await findSection("Unemployment");
-    expect(within(section).getByText(/Labor combines this unemployment trend with the Employment section/)).toBeInTheDocument();
+    expect(within(section).getByText(/MacroChipz combines this unemployment trend with the Employment section/)).toBeInTheDocument();
   });
 });
 
 describe("What Changed", () => {
-  it("shows the exact required copy when zero events are reported, never 'Labor remained stable'", async () => {
+  it("shows the exact required copy when zero events are reported, never 'Jobs remained stable'", async () => {
     resolveAll({ whatChanged: buildLaborWhatChanged({ changes: [] }) });
     renderPage();
 
     const section = await findSection("What changed");
-    expect(within(section).getByText("No canonical Labor changes were reported for this comparison.")).toBeInTheDocument();
+    expect(within(section).getByText("No canonical Jobs changes were reported for this comparison.")).toBeInTheDocument();
     expect(within(section).queryByText(/labor remained stable/i)).not.toBeInTheDocument();
   });
 
@@ -609,7 +609,7 @@ describe("What Changed", () => {
     renderPage();
 
     const section = await findSection("What changed");
-    expect(within(section).getByText(/Labor state:/)).toBeInTheDocument();
+    expect(within(section).getByText(/Jobs state:/)).toBeInTheDocument();
     expect(within(section).getByText(/Cooling/)).toBeInTheDocument();
     expect(within(section).getByText(/Mixed/)).toBeInTheDocument();
   });
@@ -682,7 +682,7 @@ describe("What Changed", () => {
     renderPage();
 
     const section = await findSection("What changed");
-    expect(within(section).getByText(/Labor state:/)).toBeInTheDocument();
+    expect(within(section).getByText(/Jobs state:/)).toBeInTheDocument();
     expect(within(section).getByText(/Condition/)).toBeInTheDocument();
     expect(within(section).getByText(/Metric updates/)).toBeInTheDocument();
   });
@@ -770,7 +770,7 @@ describe("failure isolation", () => {
     mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
     renderPage();
 
-    expect(await screen.findByText("Labor data could not be loaded.")).toBeInTheDocument();
+    expect(await screen.findByText("Jobs data could not be loaded.")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "What changed" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Latest data detected" })).toBeInTheDocument();
   });
@@ -823,12 +823,12 @@ describe("failure isolation", () => {
     mockedFetchRecent.mockRejectedValue(new Error("down"));
     renderPage();
 
-    expect(await screen.findByText("Labor data could not be loaded.")).toBeInTheDocument();
+    expect(await screen.findByText("Jobs data could not be loaded.")).toBeInTheDocument();
     expect(await screen.findByText("What changed could not be loaded.")).toBeInTheDocument();
     expect(await screen.findByText("Release-processing status is temporarily unavailable.")).toBeInTheDocument();
     expect(await screen.findByText("Upcoming releases could not be loaded.")).toBeInTheDocument();
     expect(await screen.findByText("Recent releases could not be loaded.")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "Labor" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Jobs" })).toBeInTheDocument();
   });
 });
 
@@ -838,7 +838,7 @@ describe("accessibility basics", () => {
     renderPage();
 
     await screen.findByRole("heading", { name: "Current state" });
-    expect(screen.getByRole("heading", { level: 1, name: "Labor" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Jobs" })).toBeInTheDocument();
     for (const name of ["Current state", "Employment", "Unemployment", "What changed", "Latest data detected", "Evidence & methodology"]) {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     }

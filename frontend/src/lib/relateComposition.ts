@@ -63,34 +63,34 @@ export function composeMonitorRelation(
   if (!inflationSufficient && !laborSufficient) {
     return {
       kind: "both-insufficient",
-      sentence: "Not enough data is currently available to describe how Inflation and Labor relate.",
+      sentence: "Not enough data is currently available to describe how Inflation and Jobs relate.",
     };
   }
 
   if (!inflationSufficient) {
     return {
       kind: "inflation-insufficient",
-      sentence: `Labor is ${laborStateLabel(labor.state)} as of ${formatPeriod(labor.period)}. Inflation does not currently have enough data to classify its state.`,
+      sentence: `Jobs is ${laborStateLabel(labor.state)} as of ${formatPeriod(labor.period)}. Inflation does not currently have enough data to classify its state.`,
     };
   }
 
   if (!laborSufficient) {
     return {
       kind: "labor-insufficient",
-      sentence: `Inflation is ${inflationStateLabel(inflation.state)} as of ${formatPeriod(inflation.period)}. Labor does not currently have enough data to classify its state.`,
+      sentence: `Inflation is ${inflationStateLabel(inflation.state)} as of ${formatPeriod(inflation.period)}. Jobs does not currently have enough data to classify its state.`,
     };
   }
 
   if (inflation.period === labor.period) {
     return {
       kind: "same-period",
-      sentence: `As of ${formatPeriod(inflation.period)}, Inflation is ${inflationStateLabel(inflation.state)} while Labor is ${laborStateLabel(labor.state)}.`,
+      sentence: `As of ${formatPeriod(inflation.period)}, Inflation is ${inflationStateLabel(inflation.state)} while Jobs is ${laborStateLabel(labor.state)}.`,
     };
   }
 
   return {
     kind: "different-period",
-    sentence: `Inflation is ${inflationStateLabel(inflation.state)} as of ${formatPeriod(inflation.period)}. Labor is ${laborStateLabel(labor.state)} as of ${formatPeriod(labor.period)}.`,
+    sentence: `Inflation is ${inflationStateLabel(inflation.state)} as of ${formatPeriod(inflation.period)}. Jobs is ${laborStateLabel(labor.state)} as of ${formatPeriod(labor.period)}.`,
   };
 }
 
@@ -139,6 +139,6 @@ export function composeLaborComponents(
   // path that could produce it.
   return {
     kind: "composed",
-    sentence: `Employment is ${employmentStateLabel(employment)} and Unemployment is ${unemploymentStateLabel(unemployment)}. Together, Economic Intelligence classifies Labor as ${laborStateLabel(laborState)}.`,
+    sentence: `Employment is ${employmentStateLabel(employment)} and Unemployment is ${unemploymentStateLabel(unemployment)}. Together, MacroChipz classifies Jobs as ${laborStateLabel(laborState)}.`,
   };
 }

@@ -9,7 +9,7 @@ import { ErrorMessage } from "../ErrorMessage";
 import { LoadingSkeleton } from "../LoadingSkeleton";
 
 const INFLATION_ERROR_MESSAGE = "Inflation data could not be loaded.";
-const LABOR_ERROR_MESSAGE = "Labor data could not be loaded.";
+const LABOR_ERROR_MESSAGE = "Jobs data could not be loaded.";
 
 /**
  * The Economic Overview's "How They Relate" section -- Relate V1,
@@ -78,17 +78,17 @@ export function HowTheyRelate({
         <div className="flex gap-4">
           <Link
             to="/inflation"
-            onClick={() => track("related_followed", { from_type: "labor", to_type: "inflation" })}
+            onClick={() => track("related_followed", { from_type: "jobs", to_type: "inflation" })}
             className="inline-block text-sm font-medium text-fg-secondary hover:text-fg"
           >
             View Inflation →
           </Link>
           <Link
-            to="/labor"
-            onClick={() => track("related_followed", { from_type: "inflation", to_type: "labor" })}
+            to="/jobs"
+            onClick={() => track("related_followed", { from_type: "inflation", to_type: "jobs" })}
             className="inline-block text-sm font-medium text-fg-secondary hover:text-fg"
           >
-            View Labor →
+            View Jobs →
           </Link>
         </div>
       </div>

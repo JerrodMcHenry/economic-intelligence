@@ -40,7 +40,7 @@ export function WhyLaborState({ result }: { result: LaborMonitorResult }) {
         Why {laborStateLabel(result.state)}?
       </summary>
       <div className="mt-2 max-w-sm rounded-md border border-line bg-surface p-3 text-sm">
-        <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-fg-secondary">
+        <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-fg-secondary">
           <dt className="text-fg-muted">Employment</dt>
           <dd className="text-right">{employmentStateLabel(result.employment.state)}</dd>
           <dt className="text-fg-muted">Unemployment trend</dt>

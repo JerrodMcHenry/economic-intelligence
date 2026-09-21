@@ -250,7 +250,7 @@ describe("CHECK_FAILED", () => {
     render(<LatestDataDetected items={[item]} />);
 
     expect(screen.getByText("Check unsuccessful.")).toBeInTheDocument();
-    expect(screen.getByText("Economic Intelligence could not complete the latest provider check.")).toBeInTheDocument();
+    expect(screen.getByText("MacroChipz could not complete the latest provider check.")).toBeInTheDocument();
     const bodyText = document.body.textContent ?? "";
     expect(bodyText).not.toMatch(/exception|stack trace|traceback|FREDAuthError|FREDTimeoutError/i);
   });

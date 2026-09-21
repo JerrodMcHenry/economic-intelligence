@@ -59,6 +59,6 @@ export function canonicalMonitorDomain(providerReleaseId: string): CanonicalMoni
 export function releaseMonitorCta(providerReleaseId: string): { label: string; to: string } {
   const domain = canonicalMonitorDomain(providerReleaseId);
   if (domain === "INFLATION") return { label: "View Inflation →", to: "/inflation" };
-  if (domain === "LABOR") return { label: "View Labor →", to: "/labor" };
+  if (domain === "LABOR") return { label: "View Jobs →", to: "/jobs" };
   return { label: "View Releases →", to: "/releases" };
 }

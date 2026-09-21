@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 
 import { usePageViewed } from "../analytics";
+import { ECONOMIC_WORLDS } from "../worlds/registry";
 import { PageContainer } from "../components/PageContainer";
 import { ThemeToggle } from "../components/ThemeToggle";
 
@@ -19,14 +20,24 @@ import { ThemeToggle } from "../components/ThemeToggle";
  * a nav slot: content first, then the IA commitment.
  * Below the `md` breakpoint the same single list collapses behind a
  * disclosure button rather than shrinking the desktop row.
+ *
+ * CONSUMER IA (#41). The primary navigation is now the economy plus
+ * two product surfaces, and nothing else:
+ *
+ *     Home · Inflation · Jobs · Rates · Calendar
+ *
+ * The three worlds come from `ECONOMIC_WORLDS` rather than being
+ * retyped here, so a world's label and route are defined once. What
+ * LEFT is as deliberate as what stayed: "Overview" was a name for our
+ * own architecture ("the intelligence workspace") rather than for a
+ * part of the economy, and its content is now simply what `/` is.
+ * "Labor" and "Releases" were the engineering domain's words; the
+ * reader's words are Jobs and Calendar.
  */
 const NAV_LINKS: ReadonlyArray<{ to: string; label: string; end?: boolean }> = [
   { to: "/", label: "Home", end: true },
-  { to: "/overview", label: "Overview" },
-  { to: "/inflation", label: "Inflation" },
-  { to: "/labor", label: "Labor" },
-  { to: "/rates", label: "Rates" },
-  { to: "/releases", label: "Releases" },
+  ...ECONOMIC_WORLDS.map((world) => ({ to: world.route, label: world.label })),
+  { to: "/calendar", label: "Calendar" },
 ];
 
 const NAV_LIST_ID = "primary-navigation-list";

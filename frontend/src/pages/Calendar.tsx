@@ -21,16 +21,16 @@ const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
  * anywhere in its import graph, calls the release calendar's explicit
  * sync write path (see frontend/src/test/no-release-sync-or-coupling.test.ts).
  */
-export function ReleasesPage() {
+export function CalendarPage() {
   const upcoming = useApiResource(fetchUpcomingReleases);
   const recent = useApiResource(fetchRecentReleases);
 
   return (
     <div>
       <PageHeader
-        title="Economic Releases"
+        title="Release calendar"
         titleAdornment={<ExplanationTrigger explanation={ECONOMIC_RELEASE} />}
-        description="Scheduled dates for the economic releases Economic Intelligence tracks."
+        description="Scheduled dates for the economic releases MacroChipz tracks."
       >
         <ReleaseScheduleDisclosure />
       </PageHeader>

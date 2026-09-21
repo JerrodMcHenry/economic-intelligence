@@ -57,10 +57,10 @@ export function RecentDataUpdates({ items }: { items: readonly ReleaseProcessing
         </div>
 
         <div>
-          <p className="text-sm font-semibold text-fg-secondary">Labor</p>
+          <p className="text-sm font-semibold text-fg-secondary">Jobs</p>
           <LatestDataDetected items={laborItems} />
-          <Link to="/labor" className="mt-4 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
-            View Labor →
+          <Link to="/jobs" className="mt-4 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
+            View Jobs →
           </Link>
         </div>
       </div>

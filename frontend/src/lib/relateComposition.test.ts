@@ -50,7 +50,7 @@ describe("composeMonitorRelation -- same period (§7)", () => {
     );
     expect(result).toEqual({
       kind: "same-period",
-      sentence: "As of July 2026, Inflation is Cooling while Labor is Strengthening.",
+      sentence: "As of July 2026, Inflation is Cooling while Jobs is Strengthening.",
     });
   });
 
@@ -69,7 +69,7 @@ describe("composeMonitorRelation -- different period (§8)", () => {
     );
     expect(result).toEqual({
       kind: "different-period",
-      sentence: "Inflation is Cooling as of July 2026. Labor is Strengthening as of August 2026.",
+      sentence: "Inflation is Cooling as of July 2026. Jobs is Strengthening as of August 2026.",
     });
   });
 
@@ -101,7 +101,7 @@ describe("composeMonitorRelation -- insufficient data (§9)", () => {
     );
     expect(result).toEqual({
       kind: "inflation-insufficient",
-      sentence: "Labor is Cooling as of July 2026. Inflation does not currently have enough data to classify its state.",
+      sentence: "Jobs is Cooling as of July 2026. Inflation does not currently have enough data to classify its state.",
     });
   });
 
@@ -112,7 +112,7 @@ describe("composeMonitorRelation -- insufficient data (§9)", () => {
     );
     expect(result).toEqual({
       kind: "labor-insufficient",
-      sentence: "Inflation is Heating as of July 2026. Labor does not currently have enough data to classify its state.",
+      sentence: "Inflation is Heating as of July 2026. Jobs does not currently have enough data to classify its state.",
     });
   });
 
@@ -123,7 +123,7 @@ describe("composeMonitorRelation -- insufficient data (§9)", () => {
     );
     expect(result).toEqual({
       kind: "both-insufficient",
-      sentence: "Not enough data is currently available to describe how Inflation and Labor relate.",
+      sentence: "Not enough data is currently available to describe how Inflation and Jobs relate.",
     });
   });
 
@@ -180,7 +180,7 @@ describe("composeLaborComponents -- composed (§18/§19)", () => {
     const result = composeLaborComponents("COOLING", "DETERIORATING", "COOLING");
     expect(result).toEqual({
       kind: "composed",
-      sentence: "Employment is Cooling and Unemployment is Deteriorating. Together, Economic Intelligence classifies Labor as Cooling.",
+      sentence: "Employment is Cooling and Unemployment is Deteriorating. Together, MacroChipz classifies Jobs as Cooling.",
     });
   });
 
@@ -190,7 +190,7 @@ describe("composeLaborComponents -- composed (§18/§19)", () => {
     // re-derives the value from employment/unemployment itself.
     const result = composeLaborComponents("EXPANDING", "IMPROVING", "MIXED");
     expect(result.kind).toBe("composed");
-    expect(result.sentence).toContain("classifies Labor as Mixed");
+    expect(result.sentence).toContain("classifies Jobs as Mixed");
   });
 
   it("is deterministic -- identical inputs produce identical output", () => {
@@ -224,7 +224,7 @@ describe("composeLaborComponents -- insufficient data (§21)", () => {
 
   it("no LaborState connection clause is produced when either component is insufficient", () => {
     const result = composeLaborComponents("INSUFFICIENT_DATA", "STABLE", "INSUFFICIENT_DATA");
-    expect(result.sentence).not.toMatch(/classifies Labor as/i);
+    expect(result.sentence).not.toMatch(/classifies Jobs as/i);
   });
 });
 

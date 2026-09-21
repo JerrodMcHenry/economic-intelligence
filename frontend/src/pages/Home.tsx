@@ -1,256 +1,167 @@
 import { Link } from "react-router-dom";
 
-import { Card } from "../components/Card";
-import { Disclosure } from "../components/Disclosure";
-import { Section } from "../components/Section";
-import { LATEST_REVISED_DATA } from "../content/explanations/inflation";
+import { getInflationMonitor, getInflationWhatChanged } from "../api/inflation";
+import { getLaborMonitor, getLaborWhatChanged } from "../api/labor";
+import { fetchReleaseProcessingStatus } from "../api/processingStatus";
+import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
+import { useApiResource } from "../api/useApiResource";
+import { useSinceLastVisit } from "../api/useSinceLastVisit";
+import { ErrorMessage } from "../components/ErrorMessage";
+import { LoadingSkeleton } from "../components/LoadingSkeleton";
+import { CurrentStateSection } from "../components/overview/CurrentStateSection";
+import { HowTheyRelate } from "../components/overview/HowTheyRelate";
+import { LaborWhatChangedPreview } from "../components/overview/LaborWhatChangedPreview";
+import { RecentDataUpdates } from "../components/overview/RecentDataUpdates";
+import { RecentReleasePreview } from "../components/overview/RecentReleasePreview";
+import { SinceLastVisit } from "../components/overview/SinceLastVisit";
+import { UpcomingReleasesPreview } from "../components/overview/UpcomingReleasesPreview";
+import { WhatChangedPreview } from "../components/overview/WhatChangedPreview";
+import { PageHeader } from "../components/PageHeader";
+import { ReleaseScheduleDisclosure } from "../components/releases/ReleaseScheduleDisclosure";
+
+const CHANGES_ERROR_MESSAGE = "What changed could not be loaded.";
+const LABOR_CHANGES_ERROR_MESSAGE = "Jobs what changed could not be loaded.";
+const PROCESSING_STATUS_ERROR_MESSAGE = "Release-processing status is temporarily unavailable.";
+const UPCOMING_ERROR_MESSAGE = "Upcoming releases could not be loaded.";
+const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
 
 /**
- * MacroChipz Home (Increment #27B, docs/product/product-ui-ux-v1.md
- * §5-10): the entrance to the research product, separate from Overview
- * (the intelligence workspace). Answers, in order: what MacroChipz is,
- * the three questions it is built around, how a conclusion is produced,
- * why it can be trusted, and what it currently covers.
+ * MacroChipz Home -- the live economic surface (Increment #19A as
+ * Overview; moved to its canonical `/` route in #41),
+ * extended in #20E.2 to be genuinely multi-domain. Composes SEVEN
+ * independent canonical read endpoints
+ * (`getInflationMonitor`/`getInflationWhatChanged`/`getLaborMonitor`/
+ * `getLaborWhatChanged`/`fetchReleaseProcessingStatus`/
+ * `fetchUpcomingReleases`/`fetchRecentReleases`), each loaded via its
+ * own independent `useApiResource` call. There is no aggregate
+ * `GET /api/v1/overview` endpoint and no `Promise.all`: one resource
+ * failing never blanks, blocks, or fabricates any other section (see
+ * docs/ENGINEERING_JOURNAL.md's #19A entry for why an aggregate
+ * endpoint was deliberately not built) -- Inflation's monitor failing
+ * never hides Labor's card, and vice versa, at every section
+ * (docs/architecture/labor-ui-v1.md §33/§38).
  *
- * Deliberately static: Home fetches nothing, so it never shows a
- * loading or error state and never presents a live economic
- * conclusion of its own -- current states live on Overview and the
- * domain pages, sourced from the backend.
- *
- * Honesty constraints (#27A §9, #26E/ADR-029): no claim that the
- * product "continuously" or "automatically" monitors anything --
- * scheduled maintenance is designed but not activated in production.
- * Only implemented domains (Inflation, Labor) are listed as coverage.
+ * Hierarchy: Since Your Last Check -> Current State -> How They Relate
+ * -> What Changed -> Recent Data Updates -> Releases. "Since Your Last
+ * Check" (Increment #25H, frozen by docs/product/since-last-visit-v1.md)
+ * is deliberately FIRST -- a returning-user orientation layer over a
+ * dedicated, already-categorized backend recap
+ * (`GET /api/v1/since-last-visit`, #25G) plus a local, server-watermark-
+ * driven checkpoint (`useSinceLastVisit`, `lib/sinceLastVisitCheckpoint.ts`)
+ * -- this page never re-derives a transition, a coverage state, or an
+ * evaluation period from raw data; it renders the backend's own
+ * already-categorized response verbatim (contract §63). "How They
+ * Relate" (Increment #23C,
+ * frozen by docs/product/relate-composition-v1.md) renders exactly one
+ * deterministic COMPOSITION sentence over Inflation's and Labor's own
+ * already-canonical states -- never a new economic conclusion, never
+ * an aggregate score, never a regime label; see
+ * components/overview/HowTheyRelate.tsx and lib/relateComposition.ts.
+ * Inflation and Labor are peers within Current State, How They Relate,
+ * What Changed, AND (Increment #22B) Recent Data Updates -- never
+ * subordinate to one another, and never combined into an aggregate
+ * "Economy State"/score (docs/architecture/labor-ui-v1.md §29/§30's own
+ * absolute prohibition, restated and extended by
+ * docs/product/overview-attention-model-v1.md and
+ * docs/product/relate-composition-v1.md). What Changed
+ * (Increment #22B) renders a deterministic 4-tier PRESENTATION
+ * salience over each domain's own already-canonical `changes[]`
+ * (lib/inflationSalience.ts/lib/laborSalience.ts) instead of a flat
+ * truncation -- never a score, never a magnitude ranking, never new
+ * economic semantics; see docs/product/overview-attention-model-v1.md
+ * for the frozen contract. Recent Data Updates (renamed from "Latest
+ * Data Detected", #19C) is restructured to one slot per canonical
+ * monitor domain (components/overview/RecentDataUpdates.tsx), keyed by
+ * `lib/releaseMonitorRelation.ts`'s migration-verified
+ * `CANONICAL_MONITOR_RELEASE_IDS` -- never the broader, unrelated
+ * `releaseCategory()` display tag. This page composes and formats
+ * only -- it never recalculates a metric, reclassifies a state,
+ * derives economic significance, ranks importance, or infers
+ * publication/data availability.
  */
-
-const PRIMARY_CTA_CLASSES =
-  "inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2.5 text-sm font-semibold text-brand-fg transition-colors hover:bg-brand-hover motion-reduce:transition-none";
-
-const CORE_QUESTIONS: ReadonlyArray<{ question: string; answer: string; answeredBy: string }> = [
-  {
-    question: "What is happening?",
-    answer: "Each domain is classified into a named economic state by a published, versioned methodology.",
-    answeredBy: "Current state",
-  },
-  {
-    question: "What changed?",
-    answer: "Changes between periods are detected and ranked, so a shift in state stands apart from a routine data update.",
-    answeredBy: "Change detection",
-  },
-  {
-    question: "Why?",
-    answer: "Every conclusion opens up to the methodology and the underlying observations that produced it.",
-    answeredBy: "Evidence",
-  },
-];
-
-const PIPELINE: ReadonlyArray<{ step: string; description: string }> = [
-  {
-    step: "Trusted economic data",
-    description: "Official series from FRED, organized around the economic release calendar.",
-  },
-  {
-    step: "Deterministic analysis",
-    description: "Versioned methodologies compute momentum the same way every time.",
-  },
-  {
-    step: "Economic state",
-    description: "Results are classified into a named state such as Cooling, Stable, Heating, or Mixed.",
-  },
-  {
-    step: "Change detection",
-    description: "Period-over-period changes are identified and separated from routine updates.",
-  },
-  {
-    step: "Evidence",
-    description: "Every figure traces back to the observations and rules behind it.",
-  },
-];
-
-const TRUST_PRINCIPLES: ReadonlyArray<{ title: string; body: string }> = [
-  {
-    title: "Sourced economic data",
-    body: "Every figure traces to a named FRED series — never an estimate the product invented.",
-  },
-  {
-    title: "Deterministic calculations",
-    body: "The same inputs always produce the same outputs. No randomness and no model weights in the canonical path.",
-  },
-  {
-    title: "Versioned methodologies",
-    body: "Each result names the methodology version that produced it, so the rules behind a conclusion never change silently.",
-  },
-  {
-    title: "Reproducible conclusions",
-    body: "Re-running the analysis on the same data reproduces the same economic state.",
-  },
-  {
-    title: "Visible supporting evidence",
-    body: "Every state has a “Why?” view that goes down to the individual observations.",
-  },
-  {
-    title: "AI is interpretive, not authoritative",
-    body: "Where AI is used, it may help explain results. It is never required for, and never determines, a canonical conclusion.",
-  },
-];
-
-const COVERAGE: ReadonlyArray<{ to: string; name: string; description: string; series: string }> = [
-  {
-    to: "/inflation",
-    name: "Inflation",
-    description:
-      "Underlying momentum in Core PCE, cross-checked against Core CPI, with headline inflation shown against the Federal Reserve’s 2% objective.",
-    series: "Core PCE · Core CPI · Headline PCE · Headline CPI",
-  },
-  {
-    to: "/labor",
-    name: "Labor",
-    description: "Payroll employment momentum and the trend in the unemployment rate, combined into one labor-market state.",
-    series: "Nonfarm payrolls · Unemployment rate",
-  },
-];
-
 export function HomePage() {
+  const sinceLastVisit = useSinceLastVisit();
+  const monitor = useApiResource(getInflationMonitor);
+  const whatChanged = useApiResource(getInflationWhatChanged);
+  const laborMonitor = useApiResource(getLaborMonitor);
+  const laborWhatChanged = useApiResource(getLaborWhatChanged);
+  const processingStatus = useApiResource(fetchReleaseProcessingStatus);
+  const upcoming = useApiResource(fetchUpcomingReleases);
+  const recent = useApiResource(fetchRecentReleases);
+
   return (
-    <div className="space-y-16 sm:space-y-20">
-      {/* Hero */}
-      <section aria-labelledby="home-hero-heading" className="pt-2 sm:pt-6">
-        <p className="type-label text-fg-muted">
-          <span className="text-brand">MacroChipz</span>
-          <span aria-hidden="true" className="mx-2 text-fg-faint">
-            /
-          </span>
-          <span>Economic Intelligence</span>
-        </p>
-        <h1 id="home-hero-heading" className="mt-4 max-w-4xl type-display text-fg">
-          Know what changed in the economy — and prove why.
-        </h1>
-        <p className="mt-5 max-w-2xl text-lg leading-relaxed text-fg-secondary">
-          MacroChipz turns trusted macroeconomic data into reproducible economic analysis so you can understand what changed,
-          how conditions are evolving, and what evidence supports the conclusion.
-        </p>
-        <div className="mt-8">
-          <Link to="/overview" className={PRIMARY_CTA_CLASSES}>
-            Explore the Overview
-            <span aria-hidden="true">→</span>
-          </Link>
-        </div>
-      </section>
+    <div>
+      <PageHeader title="The economy right now" description="Know what changed in the economy — and prove why." />
 
-      {/* The three questions */}
-      <Section id="questions" label="Built around three questions" title="What is happening, what changed, and why">
-        <ol className="grid gap-4 md:grid-cols-3">
-          {CORE_QUESTIONS.map((item, index) => (
-            <Card as="li" key={item.question}>
-              <p className="type-label text-fg-muted">
-                <span className="type-numeric">{String(index + 1).padStart(2, "0")}</span>
-                <span aria-hidden="true" className="mx-1.5 text-fg-faint">
-                  ·
-                </span>
-                {item.answeredBy}
-              </p>
-              <h3 className="mt-3 text-xl font-semibold tracking-tight text-fg">{item.question}</h3>
-              <p className="mt-2 text-fg-secondary">{item.answer}</p>
-            </Card>
-          ))}
-        </ol>
-      </Section>
+      <div className="mt-8 divide-y divide-line [&>*]:py-8 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
+        {/* Since Your Last Check (Increment #25H) -- deliberately first;
+            see this page's own docstring for why. */}
+        <SinceLastVisit sinceLastVisit={sinceLastVisit} />
 
-      {/* How it works */}
-      <Section
-        id="how-it-works"
-        label="How it works"
-        title="From source data to a conclusion you can check"
-        intro="Conclusions come from explicit, published rules applied to official data — not from a black-box model."
-      >
-        <ol className="grid gap-3 lg:grid-cols-5 lg:gap-0">
-          {PIPELINE.map((item, index) => (
-            <li key={item.step} className="relative flex gap-4 lg:flex-col lg:gap-0 lg:pr-6">
-              <div className="flex flex-col items-center lg:flex-row">
-                <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full border border-line-strong bg-surface text-sm font-semibold text-fg type-numeric">
-                  {index + 1}
-                </span>
-                {index < PIPELINE.length - 1 && (
-                  <span aria-hidden="true" className="mt-1 w-px flex-1 bg-line-strong lg:mt-0 lg:ml-2 lg:h-px lg:w-auto" />
-                )}
-              </div>
-              <div className="pb-4 lg:mt-4 lg:pb-0">
-                <h3 className="type-card-heading text-fg">{item.step}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-fg-secondary">{item.description}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </Section>
+        {/* Current State -- Inflation and Labor as independent peers */}
+        <CurrentStateSection inflation={monitor} labor={laborMonitor} />
 
-      {/* Trust model */}
-      <Section
-        id="trust"
-        label="Trust model"
-        title="Facts are sourced. Calculations are deterministic. AI is interpretive."
-        intro="No probabilistic component is required for the correctness, reproducibility, or availability of any economic conclusion MacroChipz presents."
-      >
-        <ul className="grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
-          {TRUST_PRINCIPLES.map((principle) => (
-            <li key={principle.title} className="bg-surface p-5 sm:p-6">
-              <h3 className="type-card-heading text-fg">{principle.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-fg-secondary">{principle.body}</p>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-4 max-w-prose">
-          <Disclosure summary={LATEST_REVISED_DATA.title}>
-            <div className="space-y-2 text-sm leading-relaxed text-fg-muted">
-              <p>{LATEST_REVISED_DATA.definition}</p>
-              <p>{LATEST_REVISED_DATA.whyItMatters}</p>
-            </div>
-          </Disclosure>
-        </div>
-      </Section>
+        {/* How They Relate (Increment #23C) -- Relate V1, deterministic
+            COMPOSITION only over the same two already-fetched monitor
+            resources above; see docs/product/relate-composition-v1.md */}
+        <HowTheyRelate inflation={monitor} labor={laborMonitor} />
 
-      {/* Current coverage */}
-      <Section
-        id="coverage"
-        label="Current coverage"
-        title="Two economic domains, analyzed in depth"
-        intro="MacroChipz currently covers inflation and the labor market. Each domain has its own methodology, current state, change history, and evidence."
-      >
-        <ul className="grid gap-4 md:grid-cols-2">
-          {COVERAGE.map((domain) => (
-            <Card as="li" key={domain.to} className="flex flex-col">
-              <h3 className="text-xl font-semibold tracking-tight text-fg">{domain.name}</h3>
-              <p className="mt-2 flex-1 text-fg-secondary">{domain.description}</p>
-              <p className="mt-4 type-meta text-fg-muted">{domain.series}</p>
-              <Link
-                to={domain.to}
-                className="mt-4 inline-flex items-center gap-1 self-start text-sm font-semibold text-brand hover:text-brand-hover"
-              >
-                Open {domain.name}
-                <span aria-hidden="true">→</span>
-              </Link>
-            </Card>
-          ))}
-        </ul>
-      </Section>
-
-      {/* Where next */}
-      <section
-        aria-labelledby="home-next-heading"
-        className="flex flex-col items-start gap-4 rounded-lg border border-line bg-surface-secondary p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8"
-      >
-        <div>
-          <h2 id="home-next-heading" className="type-section-heading text-fg">
-            Start with the Overview
+        {/* What Changed -- same peer structure, one shared heading */}
+        <section aria-labelledby="overview-what-changed-heading">
+          <h2 id="overview-what-changed-heading" className="text-sm font-medium text-fg-muted">
+            What Changed
           </h2>
-          <p className="mt-1 max-w-prose text-fg-secondary">
-            Current states, what changed, and upcoming releases for every covered domain, in one place.
-          </p>
-        </div>
-        <Link to="/overview" className={`${PRIMARY_CTA_CLASSES} flex-none`}>
-          Explore the Overview
-          <span aria-hidden="true">→</span>
-        </Link>
-      </section>
+
+          <div className="mt-3 space-y-6">
+            {whatChanged.status === "loading" && <LoadingSkeleton label="Loading Inflation what changed" heightClassName="h-24" />}
+            {whatChanged.status === "error" && <ErrorMessage message={CHANGES_ERROR_MESSAGE} onRetry={whatChanged.reload} />}
+            {whatChanged.status === "success" && (
+              <WhatChangedPreview
+                events={whatChanged.data.changes}
+                comparisonAvailable={whatChanged.data.primary_momentum_changes.comparison_available}
+              />
+            )}
+
+            {laborWhatChanged.status === "loading" && <LoadingSkeleton label="Loading Labor what changed" heightClassName="h-24" />}
+            {laborWhatChanged.status === "error" && <ErrorMessage message={LABOR_CHANGES_ERROR_MESSAGE} onRetry={laborWhatChanged.reload} />}
+            {laborWhatChanged.status === "success" && (
+              <LaborWhatChangedPreview events={laborWhatChanged.data.changes} comparisonAvailable={laborWhatChanged.data.comparison_available} />
+            )}
+          </div>
+        </section>
+
+        {/* Recent Data Updates (renamed/restructured from "Latest Data Detected", Increment #22B) */}
+        {processingStatus.status === "loading" && (
+          <LoadingSkeleton label="Loading recent data updates" heightClassName="h-32" />
+        )}
+        {processingStatus.status === "error" && (
+          <ErrorMessage message={PROCESSING_STATUS_ERROR_MESSAGE} onRetry={processingStatus.reload} />
+        )}
+        {processingStatus.status === "success" && <RecentDataUpdates items={processingStatus.data.occurrences} />}
+
+        {/* Releases -- one section, two independently-loading parts */}
+        <section aria-labelledby="overview-releases-heading">
+          <h2 id="overview-releases-heading" className="text-sm font-medium text-fg-muted">
+            Releases
+          </h2>
+
+          {upcoming.status === "loading" && <LoadingSkeleton label="Loading upcoming releases" heightClassName="h-24" />}
+          {upcoming.status === "error" && <ErrorMessage message={UPCOMING_ERROR_MESSAGE} onRetry={upcoming.reload} />}
+          {upcoming.status === "success" && <UpcomingReleasesPreview releases={upcoming.data.releases} />}
+
+          {recent.status === "loading" && <LoadingSkeleton label="Loading recent releases" heightClassName="h-8" />}
+          {recent.status === "error" && <ErrorMessage message={RECENT_ERROR_MESSAGE} onRetry={recent.reload} />}
+          {recent.status === "success" && <RecentReleasePreview releases={recent.data.releases} />}
+
+          <div className="mt-4">
+            <ReleaseScheduleDisclosure />
+          </div>
+
+          <Link to="/releases" className="mt-3 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
+            View release calendar →
+          </Link>
+        </section>
+      </div>
     </div>
   );
 }

@@ -56,25 +56,24 @@ describe("App", () => {
     renderAt("/");
     const nav = screen.getByRole("navigation", { name: "Primary" });
     const homeLink = within(nav).getByRole("link", { name: "Home" });
-    const overviewLink = within(nav).getByRole("link", { name: "Overview" });
-    const inflationLink = within(nav).getByRole("link", { name: "Inflation" });
-    const laborLink = within(nav).getByRole("link", { name: "Labor" });
-    const ratesLink = within(nav).getByRole("link", { name: "Rates" });
-    const releasesLink = within(nav).getByRole("link", { name: "Releases" });
 
     expect(homeLink).toHaveAttribute("href", "/");
-    expect(overviewLink).toHaveAttribute("href", "/overview");
-    expect(inflationLink).toHaveAttribute("href", "/inflation");
-    expect(laborLink).toHaveAttribute("href", "/labor");
-    expect(ratesLink).toHaveAttribute("href", "/rates");
-    expect(releasesLink).toHaveAttribute("href", "/releases");
-    // Only real, implemented destinations, in order. Rates joined in #30
-    // because rates_v1.0 genuinely shipped in #29 -- the condition
-    // docs/product/product-ui-ux-v1.md §11 set for adding a nav slot
-    // (content first, then the IA commitment). Still no placeholders for
-    // future Growth/Housing/Markets/etc.
+    expect(within(nav).getByRole("link", { name: "Inflation" })).toHaveAttribute("href", "/inflation");
+    expect(within(nav).getByRole("link", { name: "Jobs" })).toHaveAttribute("href", "/jobs");
+    expect(within(nav).getByRole("link", { name: "Rates" })).toHaveAttribute("href", "/rates");
+    expect(within(nav).getByRole("link", { name: "Calendar" })).toHaveAttribute("href", "/calendar");
+
+    // The consumer IA (#41): the economy, plus the two product surfaces
+    // that are not worlds. "Overview" named our architecture rather
+    // than a part of the economy and its content is now simply what `/`
+    // is; "Labor" and "Releases" were the engineering domain's words.
+    // Still no placeholders -- Housing arrives with #45, not before.
     const navOrder = within(nav).getAllByRole("link").map((link) => link.textContent);
-    expect(navOrder).toEqual(["Home", "Overview", "Inflation", "Labor", "Rates", "Releases"]);
+    expect(navOrder).toEqual(["Home", "Inflation", "Jobs", "Rates", "Calendar"]);
+
+    for (const gone of ["Overview", "Labor", "Releases", "Housing"]) {
+      expect(within(nav).queryByRole("link", { name: gone }), gone).not.toBeInTheDocument();
+    }
 
     const user = userEvent.setup();
     await user.tab(); // skip link first
@@ -94,16 +93,16 @@ describe("App", () => {
     renderAt("/inflation");
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(within(nav).getByRole("link", { name: "Inflation" })).toHaveAttribute("aria-current", "page");
-    for (const name of ["Home", "Overview", "Labor", "Rates", "Releases"]) {
+    for (const name of ["Home", "Jobs", "Rates", "Calendar"]) {
       expect(within(nav).getByRole("link", { name })).not.toHaveAttribute("aria-current");
     }
   });
 
   it("marks Home active only on the Home route, never on every page", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
-    renderAt("/overview");
+    renderAt("/calendar");
     const nav = screen.getByRole("navigation", { name: "Primary" });
-    expect(within(nav).getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByRole("link", { name: "Calendar" })).toHaveAttribute("aria-current", "page");
     expect(within(nav).getByRole("link", { name: "Home" })).not.toHaveAttribute("aria-current");
   });
 
@@ -129,24 +128,39 @@ describe("App", () => {
     const user = userEvent.setup();
     const toggle = screen.getByRole("button", { name: "Menu" });
     await user.click(toggle);
-    await user.click(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("link", { name: "Labor" }));
+    await user.click(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("link", { name: "Jobs" }));
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByRole("heading", { level: 1, name: "Labor" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Jobs" })).toBeInTheDocument();
   });
 
-  it("renders the Home route at /", () => {
-    renderAt("/");
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Know what changed in the economy — and prove why." }),
-    ).toBeInTheDocument();
-  });
-
-  it("renders the Overview route at /overview", () => {
-    // Only routing is under test here -- pages/Overview.test.tsx covers
-    // the page's own data loading and rendering behavior in full.
+  it("renders the live economic surface at /", () => {
+    // Only routing is under test here -- pages/Home.test.tsx covers the
+    // page's own data loading and rendering behavior in full.
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
-    renderAt("/overview");
-    expect(screen.getByRole("heading", { level: 1, name: "Economic Overview" })).toBeInTheDocument();
+    renderAt("/");
+    expect(screen.getByRole("heading", { level: 1, name: "The economy right now" })).toBeInTheDocument();
+  });
+
+  describe("old URLs keep working (#41)", () => {
+    // Links shared before #41 are not the reader's mistake. Each old
+    // path lands on its successor's content rather than a 404.
+    it.each([
+      ["/overview", "The economy right now"],
+      ["/labor", "Jobs"],
+      ["/releases", "Release calendar"],
+    ])("redirects %s to its successor", (from, heading) => {
+      vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+      renderAt(from);
+      expect(screen.getByRole("heading", { level: 1, name: heading })).toBeInTheDocument();
+    });
+
+    it("does not leave the old path in the reader's history", () => {
+      vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+      renderAt("/labor");
+      // `replace` rather than `push`: going Back must not bounce them
+      // through the redirect a second time.
+      expect(window.location.pathname).not.toBe("/labor");
+    });
   });
 
   it("renders the Inflation product route at /inflation", () => {
@@ -160,21 +174,21 @@ describe("App", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Inflation" })).toBeInTheDocument();
   });
 
-  it("renders the Labor product route at /labor", () => {
-    // Only routing is under test here -- the Labor page's own data
+  it("renders the Jobs product route at /jobs", () => {
+    // Only routing is under test here -- the Jobs page's own data
     // loading, formatting, and every economic-state rendering path have
-    // a dedicated, thoroughly-mocked test suite (see pages/Labor.test.tsx).
+    // a dedicated, thoroughly-mocked test suite (see pages/Jobs.test.tsx).
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
-    renderAt("/labor");
-    expect(screen.getByRole("heading", { level: 1, name: "Labor" })).toBeInTheDocument();
+    renderAt("/jobs");
+    expect(screen.getByRole("heading", { level: 1, name: "Jobs" })).toBeInTheDocument();
   });
 
-  it("renders the Releases product route at /releases", () => {
-    // Only routing is under test here -- pages/Releases.test.tsx covers
+  it("renders the Calendar product route at /calendar", () => {
+    // Only routing is under test here -- pages/Calendar.test.tsx covers
     // the page's own data loading and rendering behavior in full.
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
-    renderAt("/releases");
-    expect(screen.getByRole("heading", { level: 1, name: "Economic Releases" })).toBeInTheDocument();
+    renderAt("/calendar");
+    expect(screen.getByRole("heading", { level: 1, name: "Release calendar" })).toBeInTheDocument();
   });
 
   it("renders the Rates product route at /rates", () => {

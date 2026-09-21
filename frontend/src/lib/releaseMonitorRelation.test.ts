@@ -51,8 +51,8 @@ describe("releaseMonitorCta -- the frozen exact per-release navigation table (§
     expect(releaseMonitorCta("54")).toEqual({ label: "View Inflation →", to: "/inflation" });
   });
 
-  it("Employment Situation ('50') -> View Labor -> /labor", () => {
-    expect(releaseMonitorCta("50")).toEqual({ label: "View Labor →", to: "/labor" });
+  it("Employment Situation ('50') -> View Jobs -> /jobs", () => {
+    expect(releaseMonitorCta("50")).toEqual({ label: "View Jobs →", to: "/jobs" });
   });
 
   it("JOLTS ('192') -> View Releases -> /releases -- never /labor", () => {

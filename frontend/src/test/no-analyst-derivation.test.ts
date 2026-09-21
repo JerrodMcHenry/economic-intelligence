@@ -168,15 +168,17 @@ describe("suggested questions are deterministic UI copy", () => {
 
 describe("the Analyst is optional at the UI layer", () => {
   it("every page passes availability in rather than assuming it", () => {
-    for (const page of ["pages/Inflation.tsx", "pages/Labor.tsx", "pages/Rates.tsx"]) {
+    for (const page of ["pages/Inflation.tsx", "pages/Jobs.tsx", "pages/Rates.tsx"]) {
       const source = readFileSync(join(SRC_DIR, page), "utf8");
       expect(source, `${page} must render the Analyst surface`).toContain("AskMacroChipz");
       expect(source, `${page} must gate it on availability`).toMatch(/available=\{[^}]*analyst[^}]*\}/);
     }
   });
 
-  it("the Analyst is absent from Overview and Home, which stay purely canonical", () => {
-    for (const page of ["pages/Overview.tsx", "pages/Home.tsx"]) {
+  it("the Analyst is absent from Home and the product introduction, which stay purely canonical", () => {
+    // #41: the live surface moved to `pages/Home.tsx`; the product
+    // introduction it replaced is `pages/HomeIntro.tsx`.
+    for (const page of ["pages/Home.tsx", "pages/HomeIntro.tsx"]) {
       const source = readFileSync(join(SRC_DIR, page), "utf8");
       expect(source).not.toContain("AskMacroChipz");
       expect(source).not.toContain("api/analyst");

@@ -130,3 +130,17 @@ First chart built under this ADR: `VisualEvidenceChart.tsx`, the recent-yield se
 **The existing `/rates` yield-curve chart still carries defect 1.** #40C deliberately did not widen its scope to fix it — no code is shared between the two — so it remains this ADR's acceptance criterion for #41.
 
 **Trigger unchanged:** adopt visx primitives when touch tooltips are required on more than one chart. #40C required none: nothing on the chart depends on hover, by design.
+
+### Rates curve chart corrected (Increment #41)
+
+This ADR listed two defects in `YieldCurveChart` as acceptance criteria for #41. Both are now addressed, using the pattern #40C established.
+
+**1. `preserveAspectRatio="none"`.** Replaced with `xMidYMid meet` and a viewBox per breakpoint (`MOBILE 360×240`, `DESKTOP 760×260`), CSS-swapped at `sm`. This is the ADR's own prescribed fix, chosen over `ResizeObserver` measurement for the reason the ADR gave: measurement would reintroduce the server-rendering failure that disqualified Recharts.
+
+Verified in real Chrome through the DevTools protocol, not in jsdom: viewBox aspect and rendered aspect match to three decimals at **390 px (1.500 / 1.500)** and at **1440 px (2.923 / 2.923)**. The ~37% horizontal squash this ADR measured is gone.
+
+**2. The mixed ARIA pattern.** The module's docstring claimed the SVG was `aria-hidden` with a table beneath, while the code did labelled-image *and* a table. Reconciled to **labelled-image**, matching `VisualEvidenceChart`: `role="img"` with the existing `aria-label`, and the table kept as the equally authoritative published version. `display: none` on the inactive breakpoint keeps it out of the accessibility tree, so a screen reader still encounters one chart.
+
+No charting library was added, and `d3-scale` was again not required — the curve needs the same two linear interpolations #40C's note describes.
+
+**Nothing else in the repo was rebuilt.** #41 §9 scoped this to the one documented defect.

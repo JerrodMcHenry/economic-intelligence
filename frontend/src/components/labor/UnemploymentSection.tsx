@@ -5,6 +5,7 @@ import { unemploymentStateLabel, unemploymentStateTone } from "../../lib/laborLa
 import { ExplanationTrigger } from "../explanations/ExplanationTrigger";
 import { Badge } from "../inflation/Badge";
 import { EvidenceDisclosure } from "./EvidenceDisclosure";
+import { TwoSurveysNote } from "./TwoSurveysNote";
 
 /**
  * The Unemployment section -- UNRATE's own half of `labor_v1.0`.
@@ -46,8 +47,18 @@ export function UnemploymentSection({ unemployment, methodologyId, dataBasis }: 
       </div>
 
       <p className="mt-3 max-w-prose text-sm text-fg-muted">
-        Labor combines this unemployment trend with the Employment section above into one overall Labor state.
+        MacroChipz combines this unemployment trend with the Employment section above into one overall Jobs state.
       </p>
+
+      {/* #41: the two components measure DIFFERENT POPULATIONS, and
+          until now the frontend never said so. Placed here rather than
+          as its own section so the page keeps the seven-section
+          hierarchy frozen by docs/architecture/labor-ui-v1.md §7 --
+          and because this is the moment the reader has just met the
+          second measure. */}
+      <div className="mt-3">
+        <TwoSurveysNote />
+      </div>
 
       {unemployment.observations.length > 0 && (
         <p className="mt-2 text-xs text-fg-muted">

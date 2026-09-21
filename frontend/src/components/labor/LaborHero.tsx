@@ -51,7 +51,7 @@ export function LaborHero({
         <Badge label={laborStateLabel(result.state)} tone={laborStateTone(result.state)} size="xl" />
       </div>
       <p className="mt-2 text-sm text-fg-muted">
-        Labor{result.evaluation_period ? ` · ${formatPeriod(result.evaluation_period)}` : ""}
+        Jobs{result.evaluation_period ? ` · ${formatPeriod(result.evaluation_period)}` : ""}
       </p>
       <StateDurationLine resource={stateDuration} errorMessage={STATE_DURATION_ERROR_MESSAGE} resolveStateLabel={resolveLaborStateLabel} />
       <WhyLaborState result={result} />

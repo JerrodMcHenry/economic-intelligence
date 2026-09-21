@@ -30,7 +30,8 @@ import { describe, expect, it } from "vitest";
 
 const SRC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OVERVIEW_DIR = join(SRC_DIR, "components", "overview");
-const OVERVIEW_PAGE = join(SRC_DIR, "pages", "Overview.tsx");
+// Renamed in #41 when the live economic surface moved to `/`.
+const OVERVIEW_PAGE = join(SRC_DIR, "pages", "Home.tsx");
 
 function collectOverviewFiles(dir: string): string[] {
   const files: string[] = [];
@@ -117,6 +118,6 @@ describe("Economic Overview is read-only", () => {
       "useSinceLastVisit",
     ]);
     const violations = importedNames.filter((name) => name.length > 0 && !allowed.has(name));
-    expect(violations, `pages/Overview.tsx imports an undocumented api function: ${violations.join(", ")}`).toEqual([]);
+    expect(violations, `pages/Home.tsx imports an undocumented api function: ${violations.join(", ")}`).toEqual([]);
   });
 });
