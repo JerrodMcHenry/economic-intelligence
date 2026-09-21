@@ -7,6 +7,7 @@ import { InflationPage } from "./pages/Inflation";
 import { JobsPage } from "./pages/Jobs";
 import { NotFoundPage } from "./pages/NotFound";
 import { RatesPage } from "./pages/Rates";
+import { RevisionsPage } from "./pages/Revisions";
 
 /**
  * The routes that have not yet graduated into React Router framework
@@ -41,6 +42,12 @@ export function App() {
         <Route path="jobs" element={<JobsPage />} />
         <Route path="rates" element={<RatesPage />} />
         <Route path="calendar" element={<CalendarPage />} />
+
+        {/* Revision Intelligence (#43) is a CROSS-WORLD capability, not
+            a fourth economic world -- it is deliberately absent from
+            `ECONOMIC_WORLDS` and from primary navigation, and is
+            reached from the worlds where revisions actually occur. */}
+        <Route path="revisions" element={<RevisionsPage />} />
 
         {/* Compatibility. `replace` so the old URL does not sit in the
             reader's back button, waiting to bounce them again. */}

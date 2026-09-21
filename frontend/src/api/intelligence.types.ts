@@ -75,10 +75,21 @@ export interface ReleaseProcessedIntelligence extends IntelligenceEnvelope {
   };
 }
 
+/**
+ * What MacroChipz can honestly claim about an observation's history
+ * (#43). Three states, not one flag, because they license completely
+ * different sentences -- see `app/models/intelligence.py`.
+ */
+export type RevisionKnowledge = "FIRST_OBSERVATION" | "PROSPECTIVE_REVISION" | "BACKFILLED_BASELINE";
+
 export interface ObservationChangeIntelligence extends IntelligenceEnvelope {
   type: "OBSERVATION_CHANGE";
   payload: {
     change_type: "NEW" | "REVISED";
+    /** Additive in #43; defaults to the state that claims least. */
+    revision_knowledge?: RevisionKnowledge;
+    /** Whether `previous_value` is a reading MacroChipz actually recorded first. */
+    original_value_known?: boolean;
     previous_value: number | null;
     new_value: number | null;
     delta: number | null;

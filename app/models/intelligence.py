@@ -191,6 +191,25 @@ class ReleaseProcessedPayload(BaseModel):
     revised_observations: int
 
 
+#: What MacroChipz can HONESTLY claim to know about an observation's
+#: history (#43).
+#:
+#: These are deliberately three states rather than one "has history"
+#: flag, because they license completely different sentences:
+#:
+#: - `FIRST_OBSERVATION` -- MacroChipz learned a value. **Not a
+#:   revision.** There was no earlier value to change.
+#: - `PROSPECTIVE_REVISION` -- MacroChipz held value A, then observed
+#:   the provider publish B. The only case where "originally reported"
+#:   is a claim MacroChipz can actually prove.
+#: - `BACKFILLED_BASELINE` -- the value was imported when point-in-time
+#:   tracking began (#31 backfilled 1,072 observations). MacroChipz
+#:   knows the value as of that moment and **cannot** say what earlier
+#:   provider vintages were. Presenting this as an "original value"
+#:   would be inventing economic history.
+RevisionKnowledge = Literal["FIRST_OBSERVATION", "PROSPECTIVE_REVISION", "BACKFILLED_BASELINE"]
+
+
 class ObservationChangePayload(BaseModel):
     """One observation MacroChipz saw arrive or change.
 
@@ -203,6 +222,16 @@ class ObservationChangePayload(BaseModel):
     """
 
     change_type: Literal["NEW", "REVISED"]
+    #: ADDITIVE (#43), and the one thing a surface cannot honestly
+    #: infer for itself: `change_type` alone cannot distinguish a
+    #: revision MacroChipz WATCHED happen from a value it merely
+    #: imported at migration time. Defaults to the conservative state,
+    #: so an object built before #43 never claims to know an original
+    #: value it never saw.
+    revision_knowledge: RevisionKnowledge = "BACKFILLED_BASELINE"
+    #: Whether `previous_value` is a value MacroChipz genuinely
+    #: RECORDED before the change, rather than absent or reconstructed.
+    original_value_known: bool = False
     #: The value MacroChipz previously held. `None` for a NEW
     #: observation -- never a fabricated zero.
     previous_value: float | None

@@ -44,6 +44,7 @@ from app.models.intelligence import (
     ObservationChangeIntelligence,
     ObservationChangePayload,
     RatesChangeRef,
+    RevisionKnowledge,
     TimeSeriesVisualEvidence,
     VisualEvidencePoint,
     RatesMovementIntelligence,
@@ -59,6 +60,7 @@ from app.models.labor import (
     UNEMPLOYMENT_CONCEPT_ID,
 )
 from app.models.rates import METHODOLOGY_ID as RATES_METHODOLOGY_ID
+from app.repositories.observation_versions import ObservationVersionRepository
 from app.repositories.release_processing_read_repository import ReleaseProcessingReadRepository
 from app.services.intelligence.identity import (
     analysis_change_id,
@@ -245,7 +247,7 @@ class IntelligenceBuilder:
             )
 
             for update in own_observations:
-                obj = self._observation_change(update, series_by_id, release_id)
+                obj = self._observation_change(session, update, series_by_id, release_id)
                 if obj is not None:
                     objects.append(obj)
 
@@ -259,6 +261,7 @@ class IntelligenceBuilder:
 
     def _observation_change(
         self,
+        session: Session,
         update: ReleaseObservationUpdate,
         series_by_id: dict[str, EconomicSeries],
         release_id: str,
@@ -286,6 +289,13 @@ class IntelligenceBuilder:
         ]
         if update.change_type == "NEW":
             limitations.append("A first observation, not a revision: there was no previous value to compare.")
+
+        knowledge = self._revision_knowledge(session, series.series_id, update)
+        if knowledge == "BACKFILLED_BASELINE":
+            limitations.append(
+                "MacroChipz imported this value when point-in-time tracking began, so it cannot establish "
+                "what the provider had published for this period before then."
+            )
 
         return ObservationChangeIntelligence(
             id=observation_change_id(series.concept_id, update.observation_date, detected_at),
@@ -316,6 +326,11 @@ class IntelligenceBuilder:
             limitations=limitations,
             payload=ObservationChangePayload(
                 change_type="REVISED" if update.change_type == "REVISED" else "NEW",
+                revision_knowledge=knowledge,
+                # An original value is "known" only when MacroChipz
+                # actually recorded it BEFORE the change -- never when
+                # it was imported as a baseline.
+                original_value_known=knowledge == "PROSPECTIVE_REVISION" and update.previous_value is not None,
                 previous_value=update.previous_value,
                 new_value=update.new_value,
                 delta=delta,
@@ -518,6 +533,32 @@ class IntelligenceBuilder:
             available_sessions=len(points),
             points=points,
         )
+
+    @staticmethod
+    def _revision_knowledge(
+        session: Session, series_id: str, update: ReleaseObservationUpdate
+    ) -> RevisionKnowledge:
+        """What MacroChipz can honestly claim about this value's history.
+
+        `change_type` alone is not enough, and the difference is the
+        whole point of #43: a REVISED update whose earlier value was
+        imported at migration time is NOT a revision MacroChipz
+        watched happen, and calling it one would invent economic
+        history. So the stored version rows are consulted, and the
+        conservative answer is returned whenever they cannot prove
+        otherwise.
+        """
+        if update.change_type != "REVISED":
+            return "FIRST_OBSERVATION"
+
+        versions = ObservationVersionRepository(session).list_versions(series_id, update.observation_date)
+        if not versions:
+            # No version history at all: nothing proves MacroChipz held
+            # the earlier value prospectively.
+            return "BACKFILLED_BASELINE"
+
+        earliest = min(versions, key=lambda row: row.recorded_from)
+        return "BACKFILLED_BASELINE" if earliest.is_backfilled else "PROSPECTIVE_REVISION"
 
     # -- helpers -----------------------------------------------------
 

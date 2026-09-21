@@ -86,6 +86,9 @@ export type RouteTemplate =
   | "/jobs"
   | "/rates"
   | "/calendar"
+  // Revision Intelligence (#43). A cross-world capability, so it has a
+  // route template but deliberately no entry in `WORLD_BY_ROUTE`.
+  | "/revisions"
   // A permanent intelligence object page (#40). The TEMPLATE, never a
   // concrete id -- an id is a semantic identifier, and sending it would
   // report which specific object a reader opened.
@@ -221,6 +224,7 @@ export const ROUTE_TEMPLATES: ReadonlyArray<Exclude<RouteTemplate, "unknown_rout
   "/jobs",
   "/rates",
   "/calendar",
+  "/revisions",
   "/intelligence/:id",
 ];
 

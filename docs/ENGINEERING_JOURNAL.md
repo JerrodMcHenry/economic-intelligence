@@ -12304,3 +12304,107 @@ change and a COVERAGE sibling — and asserts the page shows neither, and
 that THE LEDE stays quiet rather than promoting an ineligible object to
 fill the slot. Fixtures that are clean prove nothing; these ones are
 dirty on purpose.
+
+## Increment #43 — Revision Intelligence
+
+The instruction was to turn observation versioning, replay and
+Structured Intelligence into a consumer feature answering one question:
+*the number changed — did that change what we thought was happening?*
+
+The first job was to find out whether the number had ever changed.
+
+### It has not. Not once.
+
+1,072 versioned observation rows. Every single one
+`change_type=BACKFILL, origin=BACKFILL, is_backfilled=true`. Zero
+observations with a second version. Zero superseded rows — every
+`recorded_to` is null, which means no value MacroChipz has ever stored
+has been replaced by a later one. All 358 `OBSERVATION_CHANGE` objects
+are `NEW` with a null previous value.
+
+The replay side looks healthier until you read the flag: 133 recorded
+monitor results, 133 `MATCH`, and every one carrying
+`inputs_include_backfilled: true`. They match because they compare
+today's data against itself. The service was already honest about that;
+it just needed someone to read it.
+
+So MacroChipz has captured no genuine revision, and #43 ships a feature
+whose populated state has never occurred. The instruction anticipated
+exactly this and was right to: the work is to make the empty state
+teach the feature, not to manufacture one.
+
+### The distinction the whole increment rests on
+
+`change_type` says `REVISED` for two completely different things: a
+value MacroChipz watched change, and a value whose earlier version was
+imported at migration time. The second is not a revision. Presenting a
+#31 backfill as "originally reported" would be inventing economic
+history — the most damaging thing this feature could do, and the
+easiest to do by accident, because the field name invites it.
+
+So the contract gained one small additive field, `revision_knowledge`,
+with three states rather than a boolean, because they license different
+sentences: `FIRST_OBSERVATION`, `PROSPECTIVE_REVISION`,
+`BACKFILLED_BASELINE`. It defaults to the state that claims least, so an
+object built before #43 never asserts an original value nobody saw. The
+builder derives it from the stored version rows and returns the
+conservative answer whenever they cannot prove otherwise.
+
+The frontend then reads that field and never reasons about versions
+itself. A guard test fails on `observation_versions`, `recorded_from`,
+`recorded_to` and `is_backfilled` appearing in the selection module at
+all.
+
+### What the empty state had to earn
+
+A dead "nothing here yet" panel would waste the only moment someone is
+curious about revisions. So `/revisions` explains what a revision is,
+lists exactly what will appear when one arrives, and says why the older
+ones cannot be reconstructed.
+
+That last part states no date, deliberately. The stored `recorded_from`
+on a backfilled row is the migration timestamp. Printing it as "tracking
+began on…" would dress a database event as an economic boundary, which
+is the same false precision the increment forbids everywhere else. A
+test asserts no ISO date appears on the page.
+
+### Colour that refuses to judge
+
+A downward revision is not bad news. Unemployment falling and inflation
+falling are opposite sentiments from identical arithmetic, and
+MacroChipz has no methodology that ranks either. So the comparison uses
+one neutral token for both values, carries direction in the words "Up"
+and "Down", and a test fails if a `state-*`, `feedback-*`, red or green
+token appears in the component.
+
+Ordering is by detection time and then by id. A test proves the larger
+revision does *not* sort first — there is no significance methodology
+in #43, so "the biggest revision" is not a sentence MacroChipz can say.
+
+### The #42A obligation, discharged
+
+#42A removed three legacy sections from the homepage and left
+`WhatChangedPreview` and `LaborWhatChangedPreview` unimported and
+untested. Repository search confirmed neither is imported anywhere, so
+both were retired. `SinceLastVisit`, `RecentDataUpdates` and the
+overview `LatestDataDetected` are also unrendered but still carry their
+own tests and a guard, so they were kept with that decision written
+down rather than deleted in the same sweep.
+
+One near-miss worth recording: `components/labor/LatestDataDetected.tsx`
+is a different file from `components/overview/LatestDataDetected.tsx`
+and the Jobs page still renders it. Same name, different component.
+Checked before deleting anything.
+
+### A small self-inflicted detour
+
+The "Revision history →" link went onto the Inflation and Jobs pages as
+a router `<Link>`, which needs router context, which the Inflation test
+suite does not provide — 56 tests went red at once. The fix was a plain
+anchor rather than wrapping 56 tests in a `MemoryRouter`: this is a
+cross-capability jump out of a world, a full navigation is fine, and
+the page stays renderable without a router. Rates deliberately got no
+link at all, because Treasury publishes one observation per business
+day and MacroChipz has never recorded a second version of one.
+Manufacturing symmetry there would have been the same mistake in a
+different costume.

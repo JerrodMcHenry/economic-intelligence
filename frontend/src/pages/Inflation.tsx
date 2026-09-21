@@ -108,6 +108,18 @@ export function InflationPage() {
           />
         )}
       </div>
+
+      {/* #43. A plain anchor rather than a router Link: this is a
+          cross-capability jump out of a world, and it keeps the page
+          renderable without router context. */}
+      <p className="mt-6">
+        <a
+          href="/revisions"
+          className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
+        >
+          Revision history →
+        </a>
+      </p>
     </div>
   );
 }
