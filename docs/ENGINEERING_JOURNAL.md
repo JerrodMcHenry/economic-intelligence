@@ -12135,3 +12135,172 @@ kept the two cases where the sentence genuinely names an actor.
 The lesson is small but repeatable: a rename across a product is not a
 `sed` over a repository. Curated copy and brand chrome are not the same
 category of string as UI labels, and the tests knew it before I did.
+
+## Increment #42 — THE LEDE and the MacroChipz homepage
+
+The instruction was to build a homepage that makes the economy feel
+alive within seconds, without inventing importance, urgency, causality
+or news. The first thing to find out was what the data would actually
+support.
+
+### Counting before designing
+
+1,899 Structured Intelligence objects. 1,488 of them COVERAGE. And
+what the homepage would have shown with no policy at all: eight
+coverage events from the jobs world, with effective periods in **2027**
+— future months, sitting at the top of the default ordering.
+
+Two findings went deeper than the counts, and neither is visible from
+the taxonomy:
+
+**All 44 "ECONOMIC" analysis changes are `UNAVAILABLE -> something`.**
+Not most. All of them. They record the confirmation relationship
+becoming computable during backfill. #39 classifies them ECONOMIC and
+it is right to — the field genuinely is an economic field — but
+"MacroChipz can now calculate this" is an availability event wearing an
+economic field's clothing. Filtering on `change_class` alone, which is
+the obvious implementation, would have put all 44 on the homepage as
+economic news.
+
+**All 358 observation changes are first observations**, `previous_value`
+null throughout. A value arriving for the first time in a backfill is
+not something that changed.
+
+Strip those out and exactly six objects remain eligible: the six
+Treasury maturities. Which is a narrow homepage, and an honest one.
+
+### The policy, and the sentence it is not allowed to say
+
+`homepage_presentation_v1.0` answers "what should MacroChipz show
+first?" and is forbidden from answering "what is economically most
+important?". #39 publishes no significance ranking and #42 did not add
+one.
+
+That boundary is enforced rather than asserted. A test reads the policy
+source and fails on the strings `score`, `weight`, `importance`,
+`priority`, `significance`, `severity`, `Math.random`, `Math.abs`,
+`percentile`, `magnitude` and `change_basis_points`. If a future
+increment wants to rank by size of move, it will have to delete a test
+that says out loud why it exists.
+
+Ordering is four structural keys — effective period, world, concept,
+then id as a total-order guarantee. The concept key is the only
+editorial one: the 10-year leads the rates world because it is the most
+widely referenced benchmark maturity. That is a fact about how people
+talk about rates, not a claim that it moved more, and the code says so
+in those words.
+
+### No clock, and why that is correctness rather than taste
+
+Nothing in the policy reads the time. The homepage is prerendered, so a
+policy that consulted a clock would bake one moment's answer into
+static HTML and then quietly lie about it for as long as the build
+lived.
+
+That was only possible because the ten future-dated objects all turned
+out to be COVERAGE, so the coverage filter already removed them and no
+"exclude the future" rule was needed. Worth checking rather than
+assuming — the time-dependent version of this policy would have looked
+perfectly reasonable in review.
+
+### The state I did not know I needed
+
+THE LEDE started with two states, active and quiet. Building the
+production bundle showed the defect: the prerendered homepage contained
+**"No new tracked change"**. The page fetches in the browser, so at
+prerender time there is no data, and passing an empty list to the
+policy produced the quiet state — which is a claim. A crawler would
+have read MacroChipz asserting the economy had produced nothing new,
+permanently, on a page that had never checked.
+
+So there are three states, and the third one matters most:
+**unknown is not quiet.** Before the answer is in, the lede says what
+it is and offers the three worlds, and asserts nothing about the
+economy at all.
+
+The quiet state also refuses the obvious fallback — showing the
+freshest ineligible object instead of nothing. That object is by
+definition one of the 1,488 coverage events the policy exists to keep
+off the page. A quiet day is a valid product state. An invented
+headline is not.
+
+### Time words the data cannot pay for
+
+`published_at` is null on every object MacroChipz holds. `recorded_at`
+spans two days because it is a backfill timestamp. So the homepage
+cannot say "today", "new", "just released" or "latest" about anything,
+and it does not: it shows the effective period, which is the one time
+concept the data actually supports. Slightly less exciting copy, and
+true.
+
+### What I found below the fold and chose not to fix
+
+The new lede filters coverage correctly. The legacy sections beneath it
+do not. Scrolling the homepage on a phone still reaches
+"Availability restored" rows and, in one place, the literal string
+`Unavailable -> 3.353016322755642` presented to a consumer.
+
+That is the same class of defect #42 was written to prevent, one
+section lower on the same page. I left it, deliberately: those sections
+are #19A-#25H with extensive frozen tests, rewriting six of them at the
+end of a long increment is how a scoped increment becomes an unscoped
+one, and #43 already owns the revision experience that should replace
+them. It is written up as the first residual limitation rather than
+quietly tolerated — a bounded limitation beats fabricated completeness,
+but only if it is actually stated.
+
+### One repair from the previous increment
+
+The prerendered homepage title read "MacroChipz — MacroChipz". #41's
+over-broad find-and-replace had rewritten the site title's category
+half. Caught by reading the built HTML rather than by any test, which
+is a reminder that the build output is worth looking at directly even
+when the suite is green.
+
+## Increment #42A — Legacy change surfaces removed from the homepage
+
+#42 built a presentation policy that keeps coverage and bootstrap
+events off the homepage, and then left three older sections rendering
+those same events two screens further down. Scrolling `/` on a phone
+still reached "Availability restored" rows and, in one place, the
+literal string `Unavailable -> 3.353016322755642` presented to a
+consumer.
+
+A filter that something else bypasses is decoration. So Since Your Last
+Check, What Changed, and Recent Data Updates were removed from the
+homepage composition.
+
+Removed from the composition — not redesigned, not deleted. Every
+component still exists, unchanged. `components/labor/LatestDataDetected.tsx`
+turned out to be a different file from the overview one with the same
+name, which is the sort of thing worth checking before deleting
+anything: the Jobs page still renders it.
+
+Nothing replaced them. The instruction was explicit that the homepage
+should not gain another feed, and #43 owns the Revision Intelligence
+experience that should eventually present this material properly.
+
+### What the removal exposed
+
+Two stale links, both pointing at `/releases` — a #41 compatibility
+redirect — so the homepage had been routing readers through a redirect
+to reach a canonical page. Fixed to `/calendar`.
+
+And a coverage gap worth stating rather than hiding: `WhatChangedPreview`
+and `LaborWhatChangedPreview` were tested only through Home integration
+tests. With the section gone, those tests went too, and the components
+are now rendered by no route and covered by no test. That is written
+into the documentation as a #43 obligation instead of being left for
+someone to discover.
+
+The policy itself needed no change. It was already correct; the legacy
+sections simply never consulted it.
+
+### The test that would have caught it earlier
+
+The new regression suite renders `/` with fixtures that deliberately
+CONTAIN the noise — an `UNAVAILABLE -> 3.353016322755642` analysis
+change and a COVERAGE sibling — and asserts the page shows neither, and
+that THE LEDE stays quiet rather than promoting an ineligible object to
+fill the slot. Fixtures that are clean prove nothing; these ones are
+dirty on purpose.

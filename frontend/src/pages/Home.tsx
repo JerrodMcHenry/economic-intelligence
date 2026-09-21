@@ -1,27 +1,22 @@
 import { Link } from "react-router-dom";
 
-import { getInflationMonitor, getInflationWhatChanged } from "../api/inflation";
-import { getLaborMonitor, getLaborWhatChanged } from "../api/labor";
-import { fetchReleaseProcessingStatus } from "../api/processingStatus";
+import { getInflationMonitor } from "../api/inflation";
+import { getLaborMonitor } from "../api/labor";
+import { listHomepageIntelligence } from "../api/intelligence";
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
 import { useApiResource } from "../api/useApiResource";
-import { useSinceLastVisit } from "../api/useSinceLastVisit";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { CurrentStateSection } from "../components/overview/CurrentStateSection";
 import { HowTheyRelate } from "../components/overview/HowTheyRelate";
-import { LaborWhatChangedPreview } from "../components/overview/LaborWhatChangedPreview";
-import { RecentDataUpdates } from "../components/overview/RecentDataUpdates";
 import { RecentReleasePreview } from "../components/overview/RecentReleasePreview";
-import { SinceLastVisit } from "../components/overview/SinceLastVisit";
 import { UpcomingReleasesPreview } from "../components/overview/UpcomingReleasesPreview";
-import { WhatChangedPreview } from "../components/overview/WhatChangedPreview";
 import { PageHeader } from "../components/PageHeader";
+import { RecentIntelligence } from "../components/homepage/RecentIntelligence";
+import { TheLede } from "../components/homepage/TheLede";
+import { selectHomepage } from "../homepage/presentationPolicy";
 import { ReleaseScheduleDisclosure } from "../components/releases/ReleaseScheduleDisclosure";
 
-const CHANGES_ERROR_MESSAGE = "What changed could not be loaded.";
-const LABOR_CHANGES_ERROR_MESSAGE = "Jobs what changed could not be loaded.";
-const PROCESSING_STATUS_ERROR_MESSAGE = "Release-processing status is temporarily unavailable.";
 const UPCOMING_ERROR_MESSAGE = "Upcoming releases could not be loaded.";
 const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
 
@@ -79,24 +74,60 @@ const RECENT_ERROR_MESSAGE = "Recent releases could not be loaded.";
  * derives economic significance, ranks importance, or infers
  * publication/data availability.
  */
+/**
+ * LEGACY CHANGE SURFACES WERE REMOVED FROM THIS PAGE IN #42A.
+ *
+ * Three sections used to sit below THE LEDE and were removed from the
+ * HOMEPAGE COMPOSITION ONLY -- not redesigned, not deleted, and their
+ * components remain in the tree:
+ *
+ * - **Since Your Last Check** recapped whatever the backend had
+ *   detected, which locally means coverage events: "Core CPI became
+ *   available for July 2026".
+ * - **What Changed** (`WhatChangedPreview` / `LaborWhatChangedPreview`)
+ *   renders `AVAILABILITY_LOST` / `AVAILABILITY_RESTORED` rows as
+ *   changes, and prints a null value as the bare word "Unavailable".
+ * - **Recent Data Updates** (`RecentDataUpdates` -> the overview
+ *   `LatestDataDetected`) rendered "Tracked analysis changes" as
+ *   `previous -> current`, which on this data reads
+ *   `Unavailable -> 3.353016322755642`.
+ *
+ * Each is incompatible with what #42 decided a consumer homepage may
+ * show: 1,488 of the 1,899 local intelligence objects are COVERAGE,
+ * and all 44 "ECONOMIC" analysis changes are `UNAVAILABLE -> x` first
+ * computations. `homepage_presentation_v1.0` excludes exactly that
+ * class of event from THE LEDE; leaving the same events rendered
+ * unfiltered two sections lower would have made the policy decorative.
+ *
+ * Nothing replaced them. #43 owns the Revision Intelligence experience
+ * that should, and these components are the raw material it will reuse
+ * or retire deliberately. `components/labor/LatestDataDetected.tsx` is
+ * a DIFFERENT component and is untouched -- the Jobs page still uses it.
+ */
 export function HomePage() {
-  const sinceLastVisit = useSinceLastVisit();
   const monitor = useApiResource(getInflationMonitor);
-  const whatChanged = useApiResource(getInflationWhatChanged);
   const laborMonitor = useApiResource(getLaborMonitor);
-  const laborWhatChanged = useApiResource(getLaborWhatChanged);
-  const processingStatus = useApiResource(fetchReleaseProcessingStatus);
   const upcoming = useApiResource(fetchUpcomingReleases);
   const recent = useApiResource(fetchRecentReleases);
+  // ONE request for the homepage's own selection (#42). The list
+  // endpoint is bounded and paged; the page does not walk the
+  // intelligence history to show a handful of things.
+  const intelligence = useApiResource(listHomepageIntelligence);
+
+  // THE LEDE is chosen by `homepage_presentation_v1.0` -- a
+  // deterministic PRESENTATION policy, never a claim about economic
+  // importance. A failed or pending request renders the QUIET state,
+  // which is a valid product state rather than an error.
+  const selection = selectHomepage(intelligence.status === "success" ? intelligence.data.items : []);
 
   return (
     <div>
       <PageHeader title="The economy right now" description="Know what changed in the economy — and prove why." />
 
       <div className="mt-8 divide-y divide-line [&>*]:py-8 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
-        {/* Since Your Last Check (Increment #25H) -- deliberately first;
-            see this page's own docstring for why. */}
-        <SinceLastVisit sinceLastVisit={sinceLastVisit} />
+        <TheLede object={selection.lede} status={intelligence.status === "success" ? "resolved" : "unknown"} />
+
+        <RecentIntelligence objects={selection.whatChanged} />
 
         {/* Current State -- Inflation and Labor as independent peers */}
         <CurrentStateSection inflation={monitor} labor={laborMonitor} />
@@ -105,39 +136,6 @@ export function HomePage() {
             COMPOSITION only over the same two already-fetched monitor
             resources above; see docs/product/relate-composition-v1.md */}
         <HowTheyRelate inflation={monitor} labor={laborMonitor} />
-
-        {/* What Changed -- same peer structure, one shared heading */}
-        <section aria-labelledby="overview-what-changed-heading">
-          <h2 id="overview-what-changed-heading" className="text-sm font-medium text-fg-muted">
-            What Changed
-          </h2>
-
-          <div className="mt-3 space-y-6">
-            {whatChanged.status === "loading" && <LoadingSkeleton label="Loading Inflation what changed" heightClassName="h-24" />}
-            {whatChanged.status === "error" && <ErrorMessage message={CHANGES_ERROR_MESSAGE} onRetry={whatChanged.reload} />}
-            {whatChanged.status === "success" && (
-              <WhatChangedPreview
-                events={whatChanged.data.changes}
-                comparisonAvailable={whatChanged.data.primary_momentum_changes.comparison_available}
-              />
-            )}
-
-            {laborWhatChanged.status === "loading" && <LoadingSkeleton label="Loading Labor what changed" heightClassName="h-24" />}
-            {laborWhatChanged.status === "error" && <ErrorMessage message={LABOR_CHANGES_ERROR_MESSAGE} onRetry={laborWhatChanged.reload} />}
-            {laborWhatChanged.status === "success" && (
-              <LaborWhatChangedPreview events={laborWhatChanged.data.changes} comparisonAvailable={laborWhatChanged.data.comparison_available} />
-            )}
-          </div>
-        </section>
-
-        {/* Recent Data Updates (renamed/restructured from "Latest Data Detected", Increment #22B) */}
-        {processingStatus.status === "loading" && (
-          <LoadingSkeleton label="Loading recent data updates" heightClassName="h-32" />
-        )}
-        {processingStatus.status === "error" && (
-          <ErrorMessage message={PROCESSING_STATUS_ERROR_MESSAGE} onRetry={processingStatus.reload} />
-        )}
-        {processingStatus.status === "success" && <RecentDataUpdates items={processingStatus.data.occurrences} />}
 
         {/* Releases -- one section, two independently-loading parts */}
         <section aria-labelledby="overview-releases-heading">
@@ -157,7 +155,7 @@ export function HomePage() {
             <ReleaseScheduleDisclosure />
           </div>
 
-          <Link to="/releases" className="mt-3 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
+          <Link to="/calendar" className="mt-3 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
             View release calendar →
           </Link>
         </section>

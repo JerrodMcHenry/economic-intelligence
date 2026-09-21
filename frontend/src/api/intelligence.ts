@@ -18,3 +18,19 @@ export function listIntelligence(params: { limit?: number; type?: string } = {})
   const suffix = query.toString();
   return apiGet<IntelligenceListResponse>(`/api/v1/intelligence${suffix ? `?${suffix}` : ""}`);
 }
+
+/**
+ * The bounded slice the homepage selects from (#42).
+ *
+ * `HOMEPAGE_SCAN_LIMIT` is the service's own maximum page size, not an
+ * arbitrary number: the homepage reads ONE page and selects from it,
+ * rather than walking 1,899 objects to show five. The consequence is
+ * honest and worth stating — if a newly eligible object ever falls
+ * outside the newest page, the homepage will not see it until the
+ * backend orders or filters on eligibility itself.
+ */
+export const HOMEPAGE_SCAN_LIMIT = 100;
+
+export function listHomepageIntelligence(): Promise<IntelligenceListResponse> {
+  return listIntelligence({ limit: HOMEPAGE_SCAN_LIMIT });
+}

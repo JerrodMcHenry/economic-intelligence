@@ -26,15 +26,9 @@ import { getLaborMonitor, getLaborWhatChanged } from "../api/labor";
 import { fetchReleaseProcessingStatus } from "../api/processingStatus";
 import { fetchRecentReleases, fetchUpcomingReleases } from "../api/releases";
 import { getSinceLastVisit } from "../api/sinceLastVisit";
-import {
-  buildChangeEvent,
-  buildMomentum,
-  buildMomentumSectionChanges,
-  buildMonitor,
-  buildWhatChanged,
-} from "../test/fixtures/inflation";
-import { buildLaborChangeEvent, buildLaborMonitor, buildLaborWhatChanged } from "../test/fixtures/labor";
-import { buildLatestCheck, buildReleaseContext, buildReleaseProcessingStatusItem, buildReleaseProcessingStatusResponse } from "../test/fixtures/processingStatus";
+import { buildMomentum, buildMonitor, buildWhatChanged } from "../test/fixtures/inflation";
+import { buildLaborMonitor, buildLaborWhatChanged } from "../test/fixtures/labor";
+import { buildReleaseProcessingStatusResponse } from "../test/fixtures/processingStatus";
 import { buildReleaseListResponse, buildReleaseOccurrenceItem } from "../test/fixtures/releases";
 import { buildSinceLastVisitResponse } from "../test/fixtures/sinceLastVisit";
 import { HomePage } from "./Home";
@@ -120,7 +114,7 @@ async function findSection(name: string) {
 }
 
 describe("loading", () => {
-  it("shows a stable loading state for all seven resources with no fabricated data", () => {
+  it("shows a stable loading state for every remaining resource, with no fabricated data", () => {
     mockedGetMonitor.mockReturnValue(new Promise(() => {}));
     mockedGetWhatChanged.mockReturnValue(new Promise(() => {}));
     mockedGetLaborMonitor.mockReturnValue(new Promise(() => {}));
@@ -131,7 +125,9 @@ describe("loading", () => {
 
     renderPage();
 
-    expect(screen.getAllByRole("status").length).toBeGreaterThanOrEqual(7);
+    // #42A removed three legacy change surfaces from `/`, and their
+    // loading skeletons went with them.
+    expect(screen.getAllByRole("status").length).toBeGreaterThanOrEqual(4);
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 });
@@ -469,425 +465,24 @@ describe("State Duration V1 exclusion (Increment #24D, frozen contract §41)", (
   });
 });
 
-describe("What Changed", () => {
-  it("renders only actual backend ChangeEvents, never an invented 'State remains X' narrative", async () => {
-    // State is MIXED, but the flat `changes` list contains ONLY metric
-    // events -- no STATE_CHANGED event at all. Overview must not
-    // synthesize a "remained"/"stayed" sentence from that absence.
-    resolveAll({
-      monitor: buildMonitor({ underlying_momentum: buildMomentum({ state: "MIXED" }) }),
-      whatChanged: buildWhatChanged({
-        changes: [buildChangeEvent({ component: "PRIMARY_MOMENTUM", event_type: "METRIC_CHANGED", field: "r_3m_annualized" })],
-      }),
-    });
-    renderPage();
-
-    const section = await findSection("What Changed");
-    expect(within(section).getByText(/3M annualized/)).toBeInTheDocument();
-    expect(screen.queryByText(/remains mixed/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/state remains/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/unchanged/i)).not.toBeInTheDocument();
-  });
-
-  it("THE SALIENCE TEST: a top-level structural state change outranks a routine metric update -- never truncated together", async () => {
-    // Frozen by docs/product/overview-attention-model-v1.md §6/§11: a
-    // section with only routine METRIC_CHANGED events (Confirmation,
-    // Target) must never crowd out a real STATE_CHANGED event from a
-    // later component (Headline CPI) -- exactly the defect #21 found
-    // in the OLD flat-truncate-to-3 behavior.
-    const events = [
-      buildChangeEvent({ component: "PRIMARY_MOMENTUM", event_type: "METRIC_CHANGED", field: "r_1m_annualized" }),
-      buildChangeEvent({ component: "TARGET", event_type: "METRIC_CHANGED", field: "target_gap_pp" }),
-      buildChangeEvent({ component: "PRIMARY_MOMENTUM", event_type: "STATE_CHANGED", field: "state", previous_value: "COOLING", current_value: "MIXED" }),
-      buildChangeEvent({ component: "HEADLINE_CPI", event_type: "STATE_CHANGED", field: "state", previous_value: "STABLE", current_value: "HEATING" }),
-      buildChangeEvent({ component: "CONFIRMATION", event_type: "CONFIRMATION_CHANGED", field: "relationship", previous_value: "CONFIRMS", current_value: "DIVERGES" }),
-    ];
-    resolveAll({ whatChanged: buildWhatChanged({ changes: events }) });
-    renderPage();
-
-    const section = await findSection("What Changed");
-    const inflationCard = within(section).getByText("Inflation").closest("div") as HTMLElement;
-    // Tier 1 (primary state) is visible as its own headline, unclicked.
-    expect(within(inflationCard).getByText(/Inflation state:/)).toBeInTheDocument();
-    // Tier 2 (Headline CPI's own state) and Tier 3 (Confirmation) are
-    // both visible, uncapped, alongside Tier 1 -- never truncated to 3.
-    expect(within(inflationCard).getByText(/Headline CPI/)).toBeInTheDocument();
-    const confirmationRow = within(inflationCard).getByText(/Confirmation:/).closest("li") as HTMLElement;
-    expect(confirmationRow.textContent).toMatch(/Confirms/);
-    expect(confirmationRow.textContent).toMatch(/Diverges/);
-    // The two routine metric events are collapsed, not deleted.
-    expect(within(inflationCard).getByText("Metric updates (2)")).toBeInTheDocument();
-    expect(within(inflationCard).getByText(/Target gap/)).toBeInTheDocument();
-  });
-
-  it("THE LABOR SALIENCE TEST: Labor state outranks a routine metric update -- never truncated together", async () => {
-    const events = [
-      buildLaborChangeEvent({ component: "UNEMPLOYMENT", event_type: "METRIC_CHANGED", field: "delta_pp" }),
-      buildLaborChangeEvent({ component: "EMPLOYMENT", event_type: "METRIC_CHANGED", field: "momentum_delta_jobs" }),
-      buildLaborChangeEvent({ component: "LABOR", event_type: "STATE_CHANGED", field: "state", previous_value: "COOLING", current_value: "MIXED" }),
-      buildLaborChangeEvent({ component: "EMPLOYMENT", event_type: "STATE_CHANGED", field: "state", previous_value: "STABLE", current_value: "COOLING" }),
-      buildLaborChangeEvent({ component: "UNEMPLOYMENT", event_type: "STATE_CHANGED", field: "state", previous_value: "STABLE", current_value: "DETERIORATING" }),
-    ];
-    resolveAll({ laborWhatChanged: buildLaborWhatChanged({ changes: events }) });
-    renderPage();
-
-    const section = await findSection("What Changed");
-    const laborCard = within(section).getByText("Jobs").closest("div") as HTMLElement;
-    expect(within(laborCard).getByText(/Labor state:/)).toBeInTheDocument();
-    // Tier 2 -- both Employment's and Unemployment's own state changes
-    // are visible simultaneously, uncapped.
-    expect(within(laborCard).getByText(/Employment State/)).toBeInTheDocument();
-    expect(within(laborCard).getByText(/Unemployment State/)).toBeInTheDocument();
-    expect(within(laborCard).getByText("Metric updates (2)")).toBeInTheDocument();
-  });
-
-  it("THE UNCAPPED-STRUCTURAL TEST: more than three structural events in one comparison all render, none hidden", async () => {
-    // Frozen by §11: the old MAX_EVENTS=3 truncation is retired for
-    // Tiers 1-3 entirely -- this constructs 4 real structural events
-    // for Inflation alone (Tier 1 state + Tier 2 Headline PCE state +
-    // Tier 2 Headline CPI state + Tier 3 Confirmation) and requires
-    // every one to be visible.
-    const events = [
-      buildChangeEvent({ component: "PRIMARY_MOMENTUM", event_type: "STATE_CHANGED", field: "state", previous_value: "COOLING", current_value: "MIXED" }),
-      buildChangeEvent({ component: "HEADLINE_PCE", event_type: "STATE_CHANGED", field: "state", previous_value: "STABLE", current_value: "HEATING" }),
-      buildChangeEvent({ component: "HEADLINE_CPI", event_type: "STATE_CHANGED", field: "state", previous_value: "STABLE", current_value: "HEATING" }),
-      buildChangeEvent({ component: "CONFIRMATION", event_type: "CONFIRMATION_CHANGED", field: "relationship", previous_value: "CONFIRMS", current_value: "DIVERGES" }),
-    ];
-    resolveAll({ whatChanged: buildWhatChanged({ changes: events }) });
-    renderPage();
-
-    const section = await findSection("What Changed");
-    const inflationCard = within(section).getByText("Inflation").closest("div") as HTMLElement;
-    expect(within(inflationCard).getByText(/Inflation state:/)).toBeInTheDocument();
-    expect(within(inflationCard).getByText(/Headline PCE/)).toBeInTheDocument();
-    expect(within(inflationCard).getByText(/Headline CPI/)).toBeInTheDocument();
-    expect(within(inflationCard).getByText(/Confirmation/)).toBeInTheDocument();
-  });
-
-  it("an availability event outranks routine metrics but stays below a domain-state change (§8)", async () => {
-    const events = [
-      buildChangeEvent({ component: "TARGET", event_type: "AVAILABILITY_LOST", field: "target_gap_pp", previous_value: 0.7, current_value: null }),
-      buildChangeEvent({ component: "CONFIRMATION", event_type: "METRIC_CHANGED", field: "r_1m_annualized" }),
-    ];
-    resolveAll({ whatChanged: buildWhatChanged({ changes: events }) });
-    renderPage();
-
-    const section = await findSection("What Changed");
-    const inflationCard = within(section).getByText("Inflation").closest("div") as HTMLElement;
-    // Data-availability fact, never economic direction.
-    expect(within(inflationCard).getByText(/Target.*became unavailable/)).toBeInTheDocument();
-    expect(within(inflationCard).queryByText(/improved|worsened|lost ground/i)).not.toBeInTheDocument();
-    // Still collapsed behind the metric disclosure, not promoted.
-    expect(within(inflationCard).getByText("Metric updates (1)")).toBeInTheDocument();
-  });
-
-  it("a metric-only comparison shows 'No structural change.', not 'Nothing changed' or a canonical-state word (§9/§10)", async () => {
-    resolveAll({
-      whatChanged: buildWhatChanged({
-        changes: [buildChangeEvent({ component: "TARGET", event_type: "METRIC_CHANGED", field: "target_gap_pp" })],
-      }),
-    });
-    renderPage();
-
-    const section = await findSection("What Changed");
-    const inflationCard = within(section).getByText("Inflation").closest("div") as HTMLElement;
-    expect(within(inflationCard).getByText("No structural change.")).toBeInTheDocument();
-    expect(within(inflationCard).getByText("Metric updates (1)")).toBeInTheDocument();
-    expect(within(inflationCard).queryByText(/Nothing changed/i)).not.toBeInTheDocument();
-    expect(within(inflationCard).queryByText("Stable")).not.toBeInTheDocument();
-  });
-
-  it("the Labor metric-only comparison shows the identical 'No structural change.' copy", async () => {
-    resolveAll({
-      laborWhatChanged: buildLaborWhatChanged({
-        changes: [buildLaborChangeEvent({ component: "UNEMPLOYMENT", event_type: "METRIC_CHANGED", field: "delta_pp" })],
-      }),
-    });
-    renderPage();
-
-    const section = await findSection("What Changed");
-    const laborCard = within(section).getByText("Jobs").closest("div") as HTMLElement;
-    expect(within(laborCard).getByText("No structural change.")).toBeInTheDocument();
-    expect(within(laborCard).getByText("Metric updates (1)")).toBeInTheDocument();
-  });
-
-  it("previous-period comparison unavailable renders its own distinct copy, never confused with zero events", async () => {
-    resolveAll({
-      whatChanged: buildWhatChanged({
-        primary_momentum_changes: buildMomentumSectionChanges({ comparison_available: false, previous_period: null, current_period: null }),
-        changes: [],
-      }),
-    });
-    renderPage();
-
-    const section = await findSection("What Changed");
-    const inflationCard = within(section).getByText("Inflation").closest("div") as HTMLElement;
-    expect(within(inflationCard).getByText("Previous-period comparison unavailable.")).toBeInTheDocument();
-    expect(within(inflationCard).queryByText("No canonical Inflation changes were reported for this comparison.")).not.toBeInTheDocument();
-  });
-
-  it("renders a state-field event using the existing state label, never the raw backend enum string alone", async () => {
-    resolveAll({
-      whatChanged: buildWhatChanged({
-        changes: [
-          buildChangeEvent({ component: "PRIMARY_MOMENTUM", event_type: "STATE_CHANGED", field: "state", previous_value: "COOLING", current_value: "MIXED" }),
-        ],
-      }),
-    });
-    renderPage();
-
-    const section = await findSection("What Changed");
-    expect(within(section).getByText(/Cooling/)).toBeInTheDocument();
-    expect(within(section).getByText(/Mixed/)).toBeInTheDocument();
-  });
-
-  it("shows a precise, non-inventive empty-state message when zero Inflation events are reported", async () => {
-    resolveAll({ whatChanged: buildWhatChanged({ changes: [] }) });
-    renderPage();
-
-    const section = await findSection("What Changed");
-    expect(within(section).getByText("No canonical Inflation changes were reported for this comparison.")).toBeInTheDocument();
-    expect(within(section).queryByText(/Inflation was unchanged/i)).not.toBeInTheDocument();
-  });
-
-  it("shows a precise, non-inventive empty-state message when zero Labor events are reported", async () => {
-    resolveAll({ laborWhatChanged: buildLaborWhatChanged({ changes: [] }) });
-    renderPage();
-
-    const section = await findSection("What Changed");
-    expect(within(section).getByText("No canonical Labor changes were reported for this comparison.")).toBeInTheDocument();
-    expect(within(section).queryByText(/Labor was unchanged/i)).not.toBeInTheDocument();
-  });
-
-  it("links to /inflation and /jobs via their own 'View Inflation'/'View Labor' (§18)", async () => {
-    resolveAll();
-    renderPage();
-
-    const section = await findSection("What Changed");
-    expect(within(section).getByRole("link", { name: "View Inflation →" })).toHaveAttribute("href", "/inflation");
-    expect(within(section).getByRole("link", { name: "View Jobs →" })).toHaveAttribute("href", "/jobs");
-    // The old, less-specific wording is fully retired.
-    expect(within(section).queryByText("See full comparison →")).not.toBeInTheDocument();
-  });
-
-  it("Inflation changes fails; Labor's own What Changed card still renders", async () => {
-    mockedGetMonitor.mockResolvedValue(buildMonitor());
-    mockedGetWhatChanged.mockRejectedValue(new Error("down"));
-    mockedGetLaborMonitor.mockResolvedValue(buildLaborMonitor());
-    mockedGetLaborWhatChanged.mockResolvedValue(
-      buildLaborWhatChanged({
-        changes: [
-          buildLaborChangeEvent({ component: "EMPLOYMENT", field: "condition", event_type: "STATE_CHANGED", previous_value: "FLAT", current_value: "EXPANDING" }),
-        ],
-      }),
-    );
-    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
-    mockedFetchUpcoming.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
-    mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
-    renderPage();
-
-    const section = await findSection("What Changed");
-    expect(within(section).getByText("What changed could not be loaded.")).toBeInTheDocument();
-    expect(within(section).getByText(/Condition/)).toBeInTheDocument();
-  });
-
-  it("Labor changes fails; Inflation's own What Changed card still renders", async () => {
-    mockedGetMonitor.mockResolvedValue(buildMonitor());
-    mockedGetWhatChanged.mockResolvedValue(
-      buildWhatChanged({ changes: [buildChangeEvent({ component: "TARGET", field: "target_gap_pp" })] }),
-    );
-    mockedGetLaborMonitor.mockResolvedValue(buildLaborMonitor());
-    mockedGetLaborWhatChanged.mockRejectedValue(new Error("down"));
-    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
-    mockedFetchUpcoming.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
-    mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
-    renderPage();
-
-    const section = await findSection("What Changed");
-    expect(within(section).getByText("Jobs what changed could not be loaded.")).toBeInTheDocument();
-    expect(within(section).getByText(/Target/)).toBeInTheDocument();
-  });
-});
-
-describe("Recent Data Updates", () => {
-  it("is its own independent resource, renamed from 'Latest Data Detected' (§14): renders real backend evidence between What Changed and Releases", async () => {
-    resolveAll({
-      // provider_release_id "54" (Personal Income and Outlays) -- the
-      // fixture default -- has a real canonical Inflation relation.
-      processingStatus: buildReleaseProcessingStatusResponse({
-        occurrences: [buildReleaseProcessingStatusItem({ latest_check: buildLatestCheck({ status: "CHANGES_DETECTED" }) })],
-      }),
-    });
-    renderPage();
-
-    const section = await findSection("Recent Data Updates");
-    expect(within(section).getByText("Data changes detected.")).toBeInTheDocument();
-
-    const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
-    expect(headings).toEqual(["Since Your Last Check", "Current State", "How They Relate", "What Changed", "Recent Data Updates", "Releases"]);
-    expect(screen.queryByRole("heading", { name: "Latest Data Detected" })).not.toBeInTheDocument();
-  });
-
-  it("shows the empty-state message in both domain slots when the backend returns zero mapped occurrences", async () => {
-    resolveAll({ processingStatus: buildReleaseProcessingStatusResponse({ occurrences: [] }) });
-    renderPage();
-
-    const section = await findSection("Recent Data Updates");
-    expect(within(section).getAllByText("No tracked release processing records are available yet.")).toHaveLength(2);
-  });
-
-  it("renders a Labor component value (EMPLOYMENT/UNEMPLOYMENT/LABOR) naturally, no special-case code needed", async () => {
-    resolveAll({
-      processingStatus: buildReleaseProcessingStatusResponse({
-        occurrences: [
-          buildReleaseProcessingStatusItem({
-            release: buildReleaseContext({ provider_release_id: "50", name: "Employment Situation" }),
-            latest_check: buildLatestCheck({ status: "CHANGES_DETECTED" }),
-            detected_analysis_changes: [
-              {
-                component: "EMPLOYMENT",
-                event_type: "STATE_CHANGED",
-                field: "state",
-                previous_value: "CONTRACTING",
-                current_value: "RECOVERING",
-                delta: null,
-                evaluation_period: "2026-07-01",
-                methodology_id: "labor_v1.0",
-                data_basis: "latest_revised_data",
-                recorded_at: "2026-07-05T12:00:00+00:00",
-              },
-            ],
-          }),
-        ],
-      }),
-    });
-    renderPage();
-
-    const section = await findSection("Recent Data Updates");
-    const laborSlot = within(section).getByText("Jobs").closest("div") as HTMLElement;
-    expect(within(laborSlot).getAllByText(/Employment/).length).toBeGreaterThan(0);
-    expect(within(laborSlot).getByText(/Recovering/)).toBeInTheDocument();
-    expect(within(laborSlot).getByText(/Contracting/)).toBeInTheDocument();
-  });
-
-  it("CPI ('10') and Personal Income and Outlays ('54') contribute to the Inflation slot", async () => {
-    resolveAll({
-      processingStatus: buildReleaseProcessingStatusResponse({
-        occurrences: [
-          buildReleaseProcessingStatusItem({
-            release: buildReleaseContext({ provider_release_id: "10", name: "Consumer Price Index" }),
-            latest_check: buildLatestCheck({ status: "CHANGES_DETECTED" }),
-          }),
-        ],
-      }),
-    });
-    renderPage();
-
-    const section = await findSection("Recent Data Updates");
-    const inflationSlot = within(section).getByText("Inflation").closest("div") as HTMLElement;
-    expect(within(inflationSlot).getByText("Consumer Price Index")).toBeInTheDocument();
-    const laborSlot = within(section).getByText("Jobs").closest("div") as HTMLElement;
-    expect(within(laborSlot).getByText("No tracked release processing records are available yet.")).toBeInTheDocument();
-  });
-
-  it("Employment Situation ('50') contributes to the Labor slot", async () => {
-    resolveAll({
-      processingStatus: buildReleaseProcessingStatusResponse({
-        occurrences: [
-          buildReleaseProcessingStatusItem({
-            release: buildReleaseContext({ provider_release_id: "50", name: "Employment Situation" }),
-            latest_check: buildLatestCheck({ status: "CHANGES_DETECTED" }),
-          }),
-        ],
-      }),
-    });
-    renderPage();
-
-    const section = await findSection("Recent Data Updates");
-    const laborSlot = within(section).getByText("Jobs").closest("div") as HTMLElement;
-    expect(within(laborSlot).getByText("Employment Situation")).toBeInTheDocument();
-  });
-
-  it("THE JOLTS-EXCLUSION REGRESSION TEST (§3A): JOLTS ('192') does NOT contribute to the Labor slot despite its releaseCategory() display tag reading 'Labor'", async () => {
-    resolveAll({
-      processingStatus: buildReleaseProcessingStatusResponse({
-        occurrences: [
-          buildReleaseProcessingStatusItem({
-            release: buildReleaseContext({ provider_release_id: "192", name: "Job Openings and Labor Turnover Survey" }),
-            latest_check: buildLatestCheck({ status: "CHANGES_DETECTED" }),
-          }),
-        ],
-      }),
-    });
-    renderPage();
-
-    const section = await findSection("Recent Data Updates");
-    // Neither slot shows JOLTS -- it has no canonical monitor relation
-    // at all, not even Labor's, despite being a labor-market release.
-    expect(within(section).queryByText("Job Openings and Labor Turnover Survey")).not.toBeInTheDocument();
-    expect(within(section).getAllByText("No tracked release processing records are available yet.")).toHaveLength(2);
-  });
-
-  it("GDP ('53') and Advance Retail Sales ('9') contribute to neither monitor slot", async () => {
-    resolveAll({
-      processingStatus: buildReleaseProcessingStatusResponse({
-        occurrences: [
-          buildReleaseProcessingStatusItem({
-            release: buildReleaseContext({ provider_release_id: "53", name: "Gross Domestic Product" }),
-            latest_check: buildLatestCheck({ status: "CHANGES_DETECTED" }),
-          }),
-          buildReleaseProcessingStatusItem({
-            release: buildReleaseContext({ provider_release_id: "9", name: "Advance Retail Sales" }),
-            latest_check: buildLatestCheck({ status: "CHANGES_DETECTED" }),
-          }),
-        ],
-      }),
-    });
-    renderPage();
-
-    const section = await findSection("Recent Data Updates");
-    expect(within(section).queryByText("Gross Domestic Product")).not.toBeInTheDocument();
-    expect(within(section).queryByText("Advance Retail Sales")).not.toBeInTheDocument();
-    expect(within(section).getAllByText("No tracked release processing records are available yet.")).toHaveLength(2);
-  });
-
-  it("both domain slots render independently when both have distinct evidence -- one failure/emptiness never blanks the other", async () => {
-    resolveAll({
-      processingStatus: buildReleaseProcessingStatusResponse({
-        occurrences: [
-          buildReleaseProcessingStatusItem({
-            release: buildReleaseContext({ provider_release_id: "10", name: "Consumer Price Index" }),
-            latest_check: buildLatestCheck({ status: "CHANGES_DETECTED" }),
-          }),
-          buildReleaseProcessingStatusItem({
-            release: buildReleaseContext({ provider_release_id: "50", name: "Employment Situation" }),
-            latest_check: buildLatestCheck({ status: "NO_CHANGE" }),
-          }),
-        ],
-      }),
-    });
-    renderPage();
-
-    const section = await findSection("Recent Data Updates");
-    const inflationSlot = within(section).getByText("Inflation").closest("div") as HTMLElement;
-    const laborSlot = within(section).getByText("Jobs").closest("div") as HTMLElement;
-    expect(within(inflationSlot).getByText("Consumer Price Index")).toBeInTheDocument();
-    expect(within(inflationSlot).getByText("Data changes detected.")).toBeInTheDocument();
-    expect(within(laborSlot).getByText("Employment Situation")).toBeInTheDocument();
-    expect(within(laborSlot).getByText("No new data detected in the latest check.")).toBeInTheDocument();
-  });
-
-  it("links to /inflation and /jobs via their own domain slot", async () => {
-    resolveAll({ processingStatus: buildReleaseProcessingStatusResponse({ occurrences: [] }) });
-    renderPage();
-
-    const section = await findSection("Recent Data Updates");
-    const inflationSlot = within(section).getByText("Inflation").closest("div") as HTMLElement;
-    const laborSlot = within(section).getByText("Jobs").closest("div") as HTMLElement;
-    expect(within(inflationSlot).getByRole("link", { name: "View Inflation →" })).toHaveAttribute("href", "/inflation");
-    expect(within(laborSlot).getByRole("link", { name: "View Jobs →" })).toHaveAttribute("href", "/jobs");
-  });
-});
+/*
+ * REMOVED IN #42A: the "What Changed" and "Recent Data Updates"
+ * integration blocks.
+ *
+ * Both sections were removed from the HOMEPAGE COMPOSITION because
+ * they render coverage/bootstrap events as consumer changes -- see
+ * `pages/Home.tsx`'s own header for the full reasoning. Their tests
+ * asserted behaviour of a page region that no longer exists, so they
+ * were removed with the region rather than rewritten to assert
+ * something they no longer describe.
+ *
+ * The COMPONENTS survive and are untouched. `SinceLastVisit` and the
+ * overview `LatestDataDetected` keep their own component tests
+ * (components/overview/*.test.tsx). `WhatChangedPreview` and
+ * `LaborWhatChangedPreview` are now rendered by no route and have no
+ * test of their own -- recorded as a #43 obligation rather than left
+ * to be discovered.
+ */
 
 describe("Releases", () => {
   it("THE RELEASE-ORDERING TEST: shows the first 3 upcoming occurrences in backend response order, never reordered", async () => {
@@ -931,7 +526,7 @@ describe("Releases", () => {
     // JOLTS -- category tag reads "Labor" on this same row, but it has
     // no canonical monitor relation, so its CTA is /releases, NEVER /labor.
     const joltsRow = within(section).getByText("JOLTS").closest("li") as HTMLElement;
-    expect(within(joltsRow).getByRole("link", { name: "View Releases →" })).toHaveAttribute("href", "/releases");
+    expect(within(joltsRow).getByRole("link", { name: "View Calendar →" })).toHaveAttribute("href", "/calendar");
     expect(within(joltsRow).queryByRole("link", { name: "View Jobs →" })).not.toBeInTheDocument();
   });
 
@@ -1008,140 +603,57 @@ describe("Releases", () => {
     expect(within(section).queryByText(/^Recently/)).not.toBeInTheDocument();
   });
 
-  it("links to /releases via 'View release calendar'", async () => {
+  it("links to /calendar via 'View release calendar'", async () => {
     resolveAll();
     renderPage();
 
     const section = await findSection("Releases");
     const link = within(section).getByRole("link", { name: "View release calendar →" });
-    expect(link).toHaveAttribute("href", "/releases");
+    expect(link).toHaveAttribute("href", "/calendar");
   });
 });
 
 describe("partial failure isolation", () => {
+  // Each resource still fails alone. #42A removed the What Changed and
+  // Recent Data Updates sections from `/`, so the cases that asserted
+  // THEIR isolation went with them; the principle is unchanged and is
+  // still proved by the sections that remain.
   it("Inflation monitor fails; everything else still renders", async () => {
+    resolveAll();
     mockedGetMonitor.mockRejectedValue(new Error("network down"));
-    mockedGetWhatChanged.mockResolvedValue(buildWhatChanged());
-    mockedGetLaborMonitor.mockResolvedValue(buildLaborMonitor());
-    mockedGetLaborWhatChanged.mockResolvedValue(buildLaborWhatChanged());
-    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
-    mockedFetchUpcoming.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
-    mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
     renderPage();
 
-    // Appears twice -- Current State's own card AND How They Relate
-    // (Increment #23C) each render their own copy of this error.
+    // Appears in Current State's own card AND in How They Relate --
+    // two independent sections, each reporting its own failure.
     expect((await screen.findAllByText("Inflation data could not be loaded.")).length).toBeGreaterThanOrEqual(1);
-    expect(await screen.findByRole("heading", { name: "What Changed" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Recent Data Updates" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Releases" })).toBeInTheDocument();
+    expect(await findSection("Current State")).toBeInTheDocument();
+    expect(await findSection("Releases")).toBeInTheDocument();
   });
 
-  it("What Changed fails; Current State, Recent Data Updates, and Releases still render", async () => {
-    mockedGetMonitor.mockResolvedValue(buildMonitor());
-    mockedGetWhatChanged.mockRejectedValue(new Error("network down"));
-    mockedGetLaborMonitor.mockResolvedValue(buildLaborMonitor());
-    mockedGetLaborWhatChanged.mockResolvedValue(buildLaborWhatChanged());
-    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
-    mockedFetchUpcoming.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
-    mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
-    renderPage();
-
-    expect(await screen.findByText("What changed could not be loaded.")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Current State" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Recent Data Updates" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Releases" })).toBeInTheDocument();
-  });
-
-  it("Release-processing status fails; Current State, What Changed, and Releases still render normally", async () => {
-    mockedGetMonitor.mockResolvedValue(buildMonitor());
-    mockedGetWhatChanged.mockResolvedValue(buildWhatChanged());
-    mockedGetLaborMonitor.mockResolvedValue(buildLaborMonitor());
-    mockedGetLaborWhatChanged.mockResolvedValue(buildLaborWhatChanged());
-    mockedFetchProcessingStatus.mockRejectedValue(new Error("network down"));
-    mockedFetchUpcoming.mockResolvedValue(buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem()] }));
-    mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
-    renderPage();
-
-    expect(await screen.findByText("Release-processing status is temporarily unavailable.")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Current State" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "What Changed" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Releases" })).toBeInTheDocument();
-    expect(await screen.findByText("Consumer Price Index")).toBeInTheDocument();
-  });
-
-  it("Recent Data Updates still renders when every OTHER resource fails", async () => {
-    mockedGetMonitor.mockRejectedValue(new Error("down"));
-    mockedGetWhatChanged.mockRejectedValue(new Error("down"));
-    mockedGetLaborMonitor.mockRejectedValue(new Error("down"));
-    mockedGetLaborWhatChanged.mockRejectedValue(new Error("down"));
-    mockedFetchProcessingStatus.mockResolvedValue(
-      buildReleaseProcessingStatusResponse({ occurrences: [buildReleaseProcessingStatusItem({ latest_check: buildLatestCheck({ status: "NO_CHANGE" }) })] }),
-    );
-    mockedFetchUpcoming.mockRejectedValue(new Error("down"));
-    mockedFetchRecent.mockRejectedValue(new Error("down"));
-    renderPage();
-
-    const section = await findSection("Recent Data Updates");
-    expect(within(section).getByText("No new data detected in the latest check.")).toBeInTheDocument();
-  });
-
-  it("Upcoming releases fail; Current State, What Changed, Recent Data Updates, and Recent still render", async () => {
-    mockedGetMonitor.mockResolvedValue(buildMonitor());
-    mockedGetWhatChanged.mockResolvedValue(buildWhatChanged());
-    mockedGetLaborMonitor.mockResolvedValue(buildLaborMonitor());
-    mockedGetLaborWhatChanged.mockResolvedValue(buildLaborWhatChanged());
-    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
+  it("Upcoming releases fail; Current State and Recent still render", async () => {
+    resolveAll();
     mockedFetchUpcoming.mockRejectedValue(new Error("network down"));
-    mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem()] }));
     renderPage();
 
     expect(await screen.findByText("Upcoming releases could not be loaded.")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Current State" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "What Changed" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Recent Data Updates" })).toBeInTheDocument();
-    expect(await screen.findByText("Consumer Price Index")).toBeInTheDocument();
-  });
-
-  it("Recent releases fail; Upcoming still renders", async () => {
-    mockedGetMonitor.mockResolvedValue(buildMonitor());
-    mockedGetWhatChanged.mockResolvedValue(buildWhatChanged());
-    mockedGetLaborMonitor.mockResolvedValue(buildLaborMonitor());
-    mockedGetLaborWhatChanged.mockResolvedValue(buildLaborWhatChanged());
-    mockedFetchProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
-    mockedFetchUpcoming.mockResolvedValue(
-      buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ name: "Advance Retail Sales" })] }),
-    );
-    mockedFetchRecent.mockRejectedValue(new Error("network down"));
-    renderPage();
-
-    expect(await screen.findByText("Recent releases could not be loaded.")).toBeInTheDocument();
-    expect(await screen.findByText("Advance Retail Sales")).toBeInTheDocument();
+    expect(await findSection("Current State")).toBeInTheDocument();
   });
 
   it("never renders a single Promise.all-style page-level failure -- each error is local to its own section", async () => {
+    resolveAll();
     mockedGetMonitor.mockRejectedValue(new Error("down"));
-    mockedGetWhatChanged.mockRejectedValue(new Error("down"));
     mockedGetLaborMonitor.mockRejectedValue(new Error("down"));
-    mockedGetLaborWhatChanged.mockRejectedValue(new Error("down"));
-    mockedFetchProcessingStatus.mockRejectedValue(new Error("down"));
     mockedFetchUpcoming.mockRejectedValue(new Error("down"));
     mockedFetchRecent.mockRejectedValue(new Error("down"));
     renderPage();
 
-    // Inflation/Labor errors each appear twice -- Current State's own
-    // card AND How They Relate (Increment #23C).
     expect((await screen.findAllByText("Inflation data could not be loaded.")).length).toBeGreaterThanOrEqual(1);
-    expect(await screen.findByText("What changed could not be loaded.")).toBeInTheDocument();
     expect((await screen.findAllByText("Jobs data could not be loaded.")).length).toBeGreaterThanOrEqual(1);
-    expect(await screen.findByText("Jobs what changed could not be loaded.")).toBeInTheDocument();
-    expect(await screen.findByText("Release-processing status is temporarily unavailable.")).toBeInTheDocument();
     expect(await screen.findByText("Upcoming releases could not be loaded.")).toBeInTheDocument();
     expect(await screen.findByText("Recent releases could not be loaded.")).toBeInTheDocument();
-    // Still exactly one page title, not a blanked/crashed page.
-    expect(screen.getByRole("heading", { level: 1, name: "The economy right now" })).toBeInTheDocument();
   });
 });
+
 
 describe("navigation", () => {
   it("exposes exactly the real CTAs, no dead links", async () => {
@@ -1151,17 +663,17 @@ describe("navigation", () => {
     await screen.findByRole("heading", { name: "Current State" });
     expect(screen.getByRole("link", { name: "Open Inflation →" })).toHaveAttribute("href", "/inflation");
     expect(screen.getByRole("link", { name: "Open Jobs →" })).toHaveAttribute("href", "/jobs");
-    // "View Inflation →"/"View Jobs →" now appear four times each --
-    // Since Your Last Check (Increment #25H), What Changed, Recent Data
-    // Updates (#22B), and How They Relate (Increment #23C).
+    // #42A: only How They Relate (Increment #23C) still offers these
+    // -- Since Your Last Check, What Changed and Recent Data Updates
+    // all left `/`.
     const inflationLinks = screen.getAllByRole("link", { name: "View Inflation →" });
     const laborLinks = screen.getAllByRole("link", { name: "View Jobs →" });
-    expect(inflationLinks).toHaveLength(4);
-    expect(laborLinks).toHaveLength(4);
+    expect(inflationLinks).toHaveLength(1);
+    expect(laborLinks).toHaveLength(1);
     for (const link of inflationLinks) expect(link).toHaveAttribute("href", "/inflation");
     for (const link of laborLinks) expect(link).toHaveAttribute("href", "/jobs");
     expect(screen.queryByRole("link", { name: "See full comparison →" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View release calendar →" })).toHaveAttribute("href", "/releases");
+    expect(screen.getByRole("link", { name: "View release calendar →" })).toHaveAttribute("href", "/calendar");
     // No dead/aspirational product surfaces.
     for (const name of ["Explore", "Compare", "Research", "Ask EI", "News", "Watchlist"]) {
       expect(screen.queryByRole("link", { name: new RegExp(name, "i") })).not.toBeInTheDocument();
@@ -1176,7 +688,8 @@ describe("page structure", () => {
 
     await screen.findByRole("heading", { name: "Current State" });
     expect(screen.getByRole("heading", { level: 1, name: "The economy right now" })).toBeInTheDocument();
-    for (const name of ["Current State", "How They Relate", "What Changed", "Recent Data Updates", "Releases"]) {
+    // #42A: "What Changed" and "Recent Data Updates" left `/`.
+    for (const name of ["Current State", "How They Relate", "Releases"]) {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     }
   });

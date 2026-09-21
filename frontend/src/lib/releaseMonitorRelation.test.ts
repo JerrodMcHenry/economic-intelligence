@@ -55,19 +55,19 @@ describe("releaseMonitorCta -- the frozen exact per-release navigation table (§
     expect(releaseMonitorCta("50")).toEqual({ label: "View Jobs →", to: "/jobs" });
   });
 
-  it("JOLTS ('192') -> View Releases -> /releases -- never /labor", () => {
-    expect(releaseMonitorCta("192")).toEqual({ label: "View Releases →", to: "/releases" });
+  it("JOLTS ('192') -> View Calendar -> /calendar -- never /labor", () => {
+    expect(releaseMonitorCta("192")).toEqual({ label: "View Calendar →", to: "/calendar" });
   });
 
-  it("GDP ('53') -> View Releases -> /releases", () => {
-    expect(releaseMonitorCta("53")).toEqual({ label: "View Releases →", to: "/releases" });
+  it("GDP ('53') -> View Calendar -> /calendar", () => {
+    expect(releaseMonitorCta("53")).toEqual({ label: "View Calendar →", to: "/calendar" });
   });
 
-  it("Advance Retail Sales ('9') -> View Releases -> /releases", () => {
-    expect(releaseMonitorCta("9")).toEqual({ label: "View Releases →", to: "/releases" });
+  it("Advance Retail Sales ('9') -> View Calendar -> /calendar", () => {
+    expect(releaseMonitorCta("9")).toEqual({ label: "View Calendar →", to: "/calendar" });
   });
 
   it("an unmapped release ID also gets the honest /releases fallback, never a dead end", () => {
-    expect(releaseMonitorCta("does-not-exist")).toEqual({ label: "View Releases →", to: "/releases" });
+    expect(releaseMonitorCta("does-not-exist")).toEqual({ label: "View Calendar →", to: "/calendar" });
   });
 });

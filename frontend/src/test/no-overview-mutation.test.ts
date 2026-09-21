@@ -93,7 +93,7 @@ describe("Economic Overview is read-only", () => {
     });
   }
 
-  it("Overview page imports only the seven documented canonical read functions from api/*", () => {
+  it("Home page imports only the documented canonical READ functions from api/*", () => {
     const contents = readFileSync(OVERVIEW_PAGE, "utf-8");
     const apiImportLines = contents
       .split("\n")
@@ -110,6 +110,11 @@ describe("Economic Overview is read-only", () => {
       "fetchReleaseProcessingStatus",
       "fetchUpcomingReleases",
       "fetchRecentReleases",
+      // #42: the homepage's own bounded read of Structured
+      // Intelligence, used to select THE LEDE. A GET like every other
+      // entry here -- this guard is about the page never MUTATING, and
+      // `listHomepageIntelligence` writes nothing.
+      "listHomepageIntelligence",
       "useApiResource",
       // Increment #25H: Since Last Visit V1's own dedicated resource
       // hook (app/api/since_last_visit.py's `GET /since-last-visit`,

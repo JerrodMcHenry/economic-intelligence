@@ -26,6 +26,7 @@
    framework to export `meta` beside its component; that is the route
    contract, not an accident of organisation. */
 import App from "../App";
+import { absoluteUrl } from "../lib/siteUrl";
 import { ECONOMIC_WORLDS } from "../worlds/registry";
 
 const SITE_NAME = "MacroChipz";
@@ -36,7 +37,7 @@ interface RouteMeta {
 }
 
 const HOME: RouteMeta = {
-  title: `${SITE_NAME} — MacroChipz`,
+  title: `${SITE_NAME} — Economic Intelligence`,
   description:
     "What changed in the economy, and the evidence behind each conclusion — inflation, jobs and Treasury rates, analysed by versioned methodologies.",
 };
@@ -68,14 +69,36 @@ export function meta({ location }: { location: { pathname: string } }) {
     return [{ title: HOME.title }, { name: "description", content: HOME.description }, { name: "robots", content: "noindex" }];
   }
 
-  return [
+  const tags: Array<Record<string, string>> = [
     { title: route.title },
     { name: "description", content: route.description },
     { property: "og:title", content: route.title },
     { property: "og:description", content: route.description },
     { property: "og:type", content: "website" },
     { property: "og:site_name", content: SITE_NAME },
+    { name: "twitter:card", content: "summary_large_image" },
+    { name: "twitter:title", content: route.title },
+    { name: "twitter:description", content: route.description },
   ];
+
+  // Absolute URLs only where the deployment origin is actually
+  // configured -- the same rule #40 set for permanent objects. A
+  // guessed canonical tells a crawler the real page lives somewhere it
+  // does not.
+  const url = absoluteUrl(pathname);
+  if (url !== null) {
+    tags.push({ property: "og:url", content: url });
+    tags.push({ tagName: "link", rel: "canonical", href: url });
+    // The generic card #40's build step already writes. #42 adds no
+    // graphics system and screenshots nothing.
+    const image = absoluteUrl("/og/default.png");
+    if (image !== null) {
+      tags.push({ property: "og:image", content: image });
+      tags.push({ name: "twitter:image", content: image });
+    }
+  }
+
+  return tags;
 }
 
 export default function CatchAll() {
