@@ -19,16 +19,58 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from app.concepts.bindings import active_binding
+from app.models.series import SeriesIdentity
+
 METHODOLOGY_ID = "inflation_v1.0"
 DATA_BASIS = "latest_revised_data"
 
 FED_OBJECTIVE_PERCENT = 2.0
 NEUTRAL_BAND_PP = 0.10
 
-PRIMARY_SERIES_ID = "PCEPILFE"
-CONFIRMATION_SERIES_ID = "CPILFESL"
-TARGET_SERIES_ID = "PCEPI"
-HEADLINE_CPI_SERIES_ID = "CPIAUCSL"
+# --- Economic concept identity (Increment #38, ADR-034) -------------
+#
+# These are what `inflation_v1.0` is ABOUT: source-neutral MacroChipz
+# identities that do not change when the provider does. The frozen
+# methodology's roles -- primary, confirmation, target, headline context
+# -- are expressed in concepts.
+PRIMARY_CONCEPT_ID = "us.pce.core.price-index.sa.monthly"
+CONFIRMATION_CONCEPT_ID = "us.cpi.core.price-index.sa.monthly"
+TARGET_CONCEPT_ID = "us.pce.headline.price-index.sa.monthly"
+HEADLINE_CPI_CONCEPT_ID = "us.cpi.headline.price-index.sa.monthly"
+
+# --- Stored series identifiers, DERIVED from the active binding ------
+#
+# Still the FRED identifiers today, and byte-identical to the literals
+# these lines replaced -- but no longer hardcoded here. They are now the
+# `storage_series_id` of whichever binding is active, so a future
+# provider cutover moves them by flipping one flag in
+# `app/concepts/bindings.py` rather than by editing a methodology module.
+#
+# These name a place to LOOK IN STORAGE. They are not MacroChipz's
+# identity for the concept, and canonical evidence no longer stamps
+# them from here -- see `SeriesIdentity` in app/models/series.py.
+PRIMARY_SERIES_ID = active_binding(PRIMARY_CONCEPT_ID).storage_series_id
+CONFIRMATION_SERIES_ID = active_binding(CONFIRMATION_CONCEPT_ID).storage_series_id
+TARGET_SERIES_ID = active_binding(TARGET_CONCEPT_ID).storage_series_id
+HEADLINE_CPI_SERIES_ID = active_binding(HEADLINE_CPI_CONCEPT_ID).storage_series_id
+
+
+class InflationSeriesIdentities(BaseModel):
+    """Who `inflation_v1.0`'s four input series actually are (#38).
+
+    Passed in by the caller rather than read from module constants, so
+    every piece of evidence the methodology stamps names the provider
+    that genuinely supplied the observations it used. One object rather
+    than four parameters, because the four always travel together and a
+    positional mix-up between two index series would be silent.
+    """
+
+    primary: SeriesIdentity
+    confirmation: SeriesIdentity
+    target: SeriesIdentity
+    headline_cpi: SeriesIdentity
+
 
 InflationState = Literal["COOLING", "HEATING", "STABLE", "MIXED", "INSUFFICIENT_DATA"]
 ConfirmationRelationship = Literal["CONFIRMS", "DIVERGES", "INCONCLUSIVE", "UNAVAILABLE"]
@@ -45,6 +87,15 @@ class InflationMetricEvidence(BaseModel):
     value by hand.
     """
 
+    #: What this measures, source-neutral (#38). Stable across a
+    #: provider migration.
+    concept_id: str
+    #: Who actually supplied the underlying observations, and their own
+    #: identifier for the series. Read from the persisted series row,
+    #: never from a module constant -- so after a provider cutover, old
+    #: evidence keeps naming the provider that really produced it
+    #: (ADR-034, Invariant D).
+    provider: str
     series_id: str
     calculation_period: date
     transformation: InflationTransformation
@@ -72,6 +123,10 @@ class SeriesMomentumResult(BaseModel):
     `r_12m` does.
     """
 
+    #: Source-neutral identity (#38). `series_id` below remains the
+    #: stored provider identifier, so both questions -- "what is this?"
+    #: and "where did it come from?" -- have their own field.
+    concept_id: str
     series_id: str
     calculation_period: date | None
     latest_observation_period: date | None

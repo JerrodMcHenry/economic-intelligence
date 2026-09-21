@@ -32,6 +32,16 @@ from app.domain.labor_what_changed import (
     compare_unemployment_section,
 )
 from app.models.labor import CONDITION_DEADBAND_JOBS, EmploymentResult, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP, UnemploymentResult
+from tests.identities import (
+    CONFIRMATION_IDENTITY,
+    EMPLOYMENT_IDENTITY,
+    HEADLINE_CPI_IDENTITY,
+    INFLATION_IDENTITIES,
+    LABOR_IDENTITIES,
+    PRIMARY_IDENTITY,
+    TARGET_IDENTITY,
+    UNEMPLOYMENT_IDENTITY,
+)
 
 # ---------------------------------------------------------------------
 # Real historical PAYEMS values (FRED native "Thousands of Persons"),
@@ -93,11 +103,11 @@ _UNRATE_PERCENT: dict[date, float] = {
 
 
 def _employment(period: date) -> EmploymentResult:
-    return compute_employment_result(_PAYEMS_JOBS, period, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+    return compute_employment_result(_PAYEMS_JOBS, period, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
 
 
 def _unemployment(period: date) -> UnemploymentResult:
-    return compute_unemployment_result(_UNRATE_PERCENT, period, UNEMPLOYMENT_DEADBAND_PP)
+    return compute_unemployment_result(_UNRATE_PERCENT, period, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
 
 
 def _labor_state(period: date) -> str:
@@ -377,8 +387,8 @@ class TestAvailabilityTransitions:
         gapped = dict(complete)
         del gapped[anchor]
 
-        previous_evidence = compute_employment_result(complete, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
-        current_evidence = compute_employment_result(gapped, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        previous_evidence = compute_employment_result(complete, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
+        current_evidence = compute_employment_result(gapped, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         assert previous_evidence.state != "INSUFFICIENT_DATA"
         assert current_evidence.state == "INSUFFICIENT_DATA"
 
@@ -395,8 +405,8 @@ class TestAvailabilityTransitions:
         gapped = dict(complete)
         del gapped[anchor]
 
-        previous_evidence = compute_employment_result(gapped, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
-        current_evidence = compute_employment_result(complete, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        previous_evidence = compute_employment_result(gapped, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
+        current_evidence = compute_employment_result(complete, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         result = compare_employment_section(anchor, anchor, previous_evidence, current_evidence)
         assert result.availability_restored is True
         assert result.availability_lost is False
@@ -414,8 +424,8 @@ class TestAvailabilityTransitions:
         gapped = dict(complete)
         del gapped[month_before(anchor, 6)]
 
-        prev_employment = compute_employment_result(complete, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
-        curr_employment = compute_employment_result(gapped, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        prev_employment = compute_employment_result(complete, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
+        curr_employment = compute_employment_result(gapped, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         unemployment_evidence = _unemployment(anchor)  # same both sides -- UNRATE untouched
         prev_labor_state = combine_labor_state(prev_employment.state, unemployment_evidence.state)
         curr_labor_state = combine_labor_state(curr_employment.state, unemployment_evidence.state)
@@ -435,8 +445,8 @@ class TestAvailabilityTransitions:
         gapped = dict(complete)
         del gapped[month_before(anchor, 13)]
 
-        lost_prev = compute_unemployment_result(complete, anchor, UNEMPLOYMENT_DEADBAND_PP)
-        lost_curr = compute_unemployment_result(gapped, anchor, UNEMPLOYMENT_DEADBAND_PP)
+        lost_prev = compute_unemployment_result(complete, anchor, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
+        lost_curr = compute_unemployment_result(gapped, anchor, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
         lost_result = compare_unemployment_section(anchor, anchor, lost_prev, lost_curr)
         assert lost_result.availability_lost is True
 
@@ -445,7 +455,7 @@ class TestAvailabilityTransitions:
 
     def test_both_sides_insufficient_produces_no_event(self):
         anchor = date(2009, 8, 1)
-        insufficient = compute_employment_result({}, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        insufficient = compute_employment_result({}, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         assert insufficient.state == "INSUFFICIENT_DATA"
         result = compare_employment_section(anchor, anchor, insufficient, insufficient)
         assert result.changes == []
@@ -487,8 +497,8 @@ class TestRealUnrate202510GapAtTheWhatChangedLayer:
         previous_period, current_period = month_before(date(2026, 10, 1), 1), date(2026, 10, 1)
         assert previous_period == date(2026, 9, 1)
 
-        previous_evidence = compute_unemployment_result(index, previous_period, UNEMPLOYMENT_DEADBAND_PP)
-        current_evidence = compute_unemployment_result(index, current_period, UNEMPLOYMENT_DEADBAND_PP)
+        previous_evidence = compute_unemployment_result(index, previous_period, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
+        current_evidence = compute_unemployment_result(index, current_period, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
         assert previous_evidence.state != "INSUFFICIENT_DATA"
         assert current_evidence.state == "INSUFFICIENT_DATA"
 
@@ -509,8 +519,8 @@ class TestRealUnrate202510GapAtTheWhatChangedLayer:
         index = self._index()
         previous_period, current_period = date(2026, 12, 1), date(2027, 1, 1)
 
-        previous_evidence = compute_unemployment_result(index, previous_period, UNEMPLOYMENT_DEADBAND_PP)
-        current_evidence = compute_unemployment_result(index, current_period, UNEMPLOYMENT_DEADBAND_PP)
+        previous_evidence = compute_unemployment_result(index, previous_period, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
+        current_evidence = compute_unemployment_result(index, current_period, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
         assert previous_evidence.state == "INSUFFICIENT_DATA"
         assert current_evidence.state != "INSUFFICIENT_DATA"
 
@@ -694,8 +704,8 @@ class TestPeriodPassthrough:
 
 class TestAssembleComparisonAvailable:
     def test_no_current_period_is_comparison_unavailable(self):
-        insufficient_employment = compute_employment_result({}, date(2020, 1, 1), CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
-        insufficient_unemployment = compute_unemployment_result({}, date(2020, 1, 1), UNEMPLOYMENT_DEADBAND_PP)
+        insufficient_employment = compute_employment_result({}, date(2020, 1, 1), CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
+        insufficient_unemployment = compute_unemployment_result({}, date(2020, 1, 1), UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
         employment_changes = compare_employment_section(None, None, insufficient_employment, insufficient_employment)
         unemployment_changes = compare_unemployment_section(None, None, insufficient_unemployment, insufficient_unemployment)
         labor_changes = compare_labor_state(None, None, "INSUFFICIENT_DATA", "INSUFFICIENT_DATA")
@@ -724,7 +734,7 @@ class TestAssembleComparisonAvailable:
         prev, curr = date(2021, 4, 1), date(2021, 5, 1)
         current_result = compute_labor_monitor_result_at(
             [], [], curr, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP
-        )
+        , identities=LABOR_IDENTITIES)
         employment_changes = compare_employment_section(prev, curr, _employment(prev), _employment(curr))
         unemployment_changes = compare_unemployment_section(prev, curr, _unemployment(prev), _unemployment(curr))
         labor_changes = compare_labor_state(prev, curr, _labor_state(prev), _labor_state(curr))

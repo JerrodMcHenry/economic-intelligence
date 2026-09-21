@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 
+import { track } from "../../analytics";
 import { askAnalyst } from "../../api/analyst";
 import type { AnalystContextRef, AnalystContextType, AnalystExplainResponse } from "../../api/analyst.types";
 import * as copy from "../../lib/analystCopy";
@@ -61,6 +62,11 @@ export function AskMacroChipz({
     setPending(true);
     setFailed(false);
     setAnswer(null);
+    // Increment #37: records ONLY which page context the question was
+    // asked from. The question text, the answer, and the evidence are
+    // never sent anywhere -- see docs/architecture/product-measurement.md
+    // "Prohibited data". `trimmed` is deliberately not referenced here.
+    track("analyst_asked", { context_type: contextType });
     try {
       setAnswer(await askAnalyst(contextRef, trimmed));
     } catch {

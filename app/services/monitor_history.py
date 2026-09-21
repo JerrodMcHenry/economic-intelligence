@@ -42,11 +42,15 @@ from app.db.models import RecordedMonitorResult
 from app.domain.inflation import compute_series_momentum_at
 from app.domain.labor import compute_labor_monitor_result_at
 from app.models.inflation import (
+    PRIMARY_CONCEPT_ID,
     METHODOLOGY_ID as INFLATION_METHODOLOGY_ID,
     PRIMARY_SERIES_ID,
     SeriesMomentumResult,
 )
 from app.models.labor import (
+    EMPLOYMENT_CONCEPT_ID,
+    LaborSeriesIdentities,
+    UNEMPLOYMENT_CONCEPT_ID,
     CONDITION_DEADBAND_JOBS,
     METHODOLOGY_ID as LABOR_METHODOLOGY_ID,
     MOMENTUM_DEADBAND_JOBS,
@@ -70,6 +74,8 @@ from app.models.monitor_history import (
 )
 from app.models.releases import PaginationMeta
 from app.models.replay import ReplayResult
+from app.repositories.series_repository import SeriesRepository
+from app.services.series_identity import resolve_identity
 from app.repositories.monitor_history_repository import MonitorHistoryRepository
 from app.repositories.observation_versions import ObservationVersionRepository
 from app.services.replay import RecomputedResult, ReplayService
@@ -185,7 +191,7 @@ class MonitorHistoryService:
         entry = self._entry(recorded, replayed, previous)
 
         then_inputs = _used_observations(recomputed_then) if recomputed_then is not None else {}
-        recomputed_today = self._recompute_on_current_data(repo, recorded)
+        recomputed_today = self._recompute_on_current_data(session, repo, recorded)
 
         historical_inputs = self._compare_inputs(session, recorded, then_inputs, recomputed_today)
         comparison = self._build_comparison(recorded, replayed, recomputed_today, historical_inputs)
@@ -237,7 +243,7 @@ class MonitorHistoryService:
 
     @staticmethod
     def _recompute_on_current_data(
-        repo: MonitorHistoryRepository, recorded: RecordedMonitorResult
+        session: Session, repo: MonitorHistoryRepository, recorded: RecordedMonitorResult
     ) -> RecomputedResult | None:
         """The same methodology, the same evaluation period, today's
         canonical observations.
@@ -252,7 +258,9 @@ class MonitorHistoryService:
 
         if recorded.monitor == "inflation":
             return compute_series_momentum_at(
-                repo.list_current_observations(PRIMARY_SERIES_ID), PRIMARY_SERIES_ID, recorded.evaluation_period
+                repo.list_current_observations(PRIMARY_SERIES_ID),
+                resolve_identity(SeriesRepository(session), PRIMARY_CONCEPT_ID),
+                recorded.evaluation_period,
             )
 
         return compute_labor_monitor_result_at(
@@ -262,6 +270,10 @@ class MonitorHistoryService:
             CONDITION_DEADBAND_JOBS,
             MOMENTUM_DEADBAND_JOBS,
             UNEMPLOYMENT_DEADBAND_PP,
+            identities=LaborSeriesIdentities(
+                employment=resolve_identity(SeriesRepository(session), EMPLOYMENT_CONCEPT_ID),
+                unemployment=resolve_identity(SeriesRepository(session), UNEMPLOYMENT_CONCEPT_ID),
+            ),
         )
 
     @staticmethod

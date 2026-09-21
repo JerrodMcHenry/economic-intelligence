@@ -7,9 +7,31 @@ import type { ReactNode } from "react";
  * "Latest revised data" and for evidence panels; carries no economic
  * meaning of its own.
  */
-export function Disclosure({ summary, children }: { summary: ReactNode; children: ReactNode }) {
+export function Disclosure({
+  summary,
+  children,
+  onOpen,
+}: {
+  summary: ReactNode;
+  children: ReactNode;
+  /**
+   * Called when the reader OPENS this disclosure (not when they close
+   * it). Optional, and deliberately meaningless to this component:
+   * `Disclosure` is used for evidence, methodology, data-basis notes
+   * and change lists alike, so only the call site knows which of those
+   * a given instance is. Keeping the semantics at the call site is
+   * what lets one primitive serve several different product events --
+   * see Increment #37's event vocabulary.
+   */
+  onOpen?: () => void;
+}) {
   return (
-    <details className="group">
+    <details
+      className="group"
+      onToggle={(event) => {
+        if (event.currentTarget.open) onOpen?.();
+      }}
+    >
       <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 text-sm font-medium text-fg-secondary hover:text-fg [&::-webkit-details-marker]:hidden">
         <svg
           viewBox="0 0 16 16"

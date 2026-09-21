@@ -43,6 +43,16 @@ from app.models.labor import (
     UnemploymentTrendState,
 )
 from app.models.series import Observation
+from tests.identities import (
+    CONFIRMATION_IDENTITY,
+    EMPLOYMENT_IDENTITY,
+    HEADLINE_CPI_IDENTITY,
+    INFLATION_IDENTITIES,
+    LABOR_IDENTITIES,
+    PRIMARY_IDENTITY,
+    TARGET_IDENTITY,
+    UNEMPLOYMENT_IDENTITY,
+)
 
 
 def _obs(year: int, month: int, value: float | None) -> Observation:
@@ -402,7 +412,7 @@ def _complete_payems_index(anchor: date) -> dict[date, float]:
 class TestComputeEmploymentResult:
     def test_complete_window_produces_a_real_state(self):
         anchor = date(2020, 6, 1)
-        result = compute_employment_result(_complete_payems_index(anchor), anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        result = compute_employment_result(_complete_payems_index(anchor), anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         assert result.state != "INSUFFICIENT_DATA"
         assert len(result.observations) == 7
 
@@ -414,7 +424,7 @@ class TestComputeEmploymentResult:
         anchor = date(2020, 6, 1)
         index = _complete_payems_index(anchor)
         del index[month_before(anchor, missing_offset)]
-        result = compute_employment_result(index, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        result = compute_employment_result(index, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         assert result.state == "INSUFFICIENT_DATA"
         assert result.momentum == "INSUFFICIENT_DATA"
 
@@ -425,7 +435,7 @@ class TestComputeEmploymentResult:
         anchor = date(2020, 6, 1)
         index = _complete_payems_index(anchor)
         del index[month_before(anchor, missing_offset)]
-        result = compute_employment_result(index, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        result = compute_employment_result(index, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         assert result.condition == "INSUFFICIENT_DATA"
 
     @pytest.mark.parametrize("missing_offset", [4, 5, 6])
@@ -438,7 +448,7 @@ class TestComputeEmploymentResult:
         anchor = date(2020, 6, 1)
         index = _complete_payems_index(anchor)
         del index[month_before(anchor, missing_offset)]
-        result = compute_employment_result(index, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        result = compute_employment_result(index, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         assert result.condition != "INSUFFICIENT_DATA"
         assert result.momentum == "INSUFFICIENT_DATA"
         assert result.state == "INSUFFICIENT_DATA"
@@ -448,7 +458,7 @@ class TestComputeEmploymentResult:
         index = _complete_payems_index(anchor)
         missing_month = month_before(anchor, 4)
         del index[missing_month]
-        result = compute_employment_result(index, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        result = compute_employment_result(index, anchor, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         assert len(result.observations) == 7
         missing_entries = [o for o in result.observations if o.observation_date == missing_month]
         assert len(missing_entries) == 1
@@ -463,7 +473,7 @@ def _complete_unrate_index(anchor: date) -> dict[date, float]:
 class TestComputeUnemploymentResult:
     def test_complete_window_produces_a_real_state(self):
         anchor = date(2020, 6, 1)
-        result = compute_unemployment_result(_complete_unrate_index(anchor), anchor, UNEMPLOYMENT_DEADBAND_PP)
+        result = compute_unemployment_result(_complete_unrate_index(anchor), anchor, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
         assert result.state != "INSUFFICIENT_DATA"
         assert len(result.observations) == 6
 
@@ -472,7 +482,7 @@ class TestComputeUnemploymentResult:
         anchor = date(2020, 6, 1)
         index = _complete_unrate_index(anchor)
         del index[month_before(anchor, missing_offset)]
-        result = compute_unemployment_result(index, anchor, UNEMPLOYMENT_DEADBAND_PP)
+        result = compute_unemployment_result(index, anchor, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
         assert result.state == "INSUFFICIENT_DATA"
 
     def test_known_real_historical_gap_shape_2025_10_unrate(self):
@@ -497,13 +507,13 @@ class TestComputeUnemploymentResult:
         assert gap_month not in {month_before(unaffected_anchor, n) for n in range(3)} | {
             month_before(unaffected_anchor, 12 + n) for n in range(3)
         }
-        result_unaffected = compute_unemployment_result(index_unaffected, unaffected_anchor, UNEMPLOYMENT_DEADBAND_PP)
+        result_unaffected = compute_unemployment_result(index_unaffected, unaffected_anchor, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
         assert result_unaffected.state != "INSUFFICIENT_DATA"
 
         affected_anchor = date(2026, 10, 1)
         index_affected = _complete_unrate_index(affected_anchor)
         del index_affected[gap_month]
-        result_affected = compute_unemployment_result(index_affected, affected_anchor, UNEMPLOYMENT_DEADBAND_PP)
+        result_affected = compute_unemployment_result(index_affected, affected_anchor, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
         assert result_affected.state == "INSUFFICIENT_DATA"
 
 
@@ -516,8 +526,8 @@ class TestDeterminism:
     def test_same_input_twice_is_byte_identical(self):
         payems = [Observation(date=month_before(date(2020, 6, 1), n), value=150_000.0 + n) for n in range(13)]
         unrate = [Observation(date=month_before(date(2020, 6, 1), n), value=4.0) for n in range(15)]
-        first = compute_labor_monitor_result(payems, unrate, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP)
-        second = compute_labor_monitor_result(payems, unrate, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP)
+        first = compute_labor_monitor_result(payems, unrate, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP, identities=LABOR_IDENTITIES)
+        second = compute_labor_monitor_result(payems, unrate, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP, identities=LABOR_IDENTITIES)
         assert first.model_dump() == second.model_dump()
 
 
@@ -554,7 +564,7 @@ class TestDetermineEvaluationPeriod:
 
 class TestComputeLaborMonitorResultEvaluationPeriod:
     def test_no_observations_at_all_is_insufficient_with_null_period(self):
-        result = compute_labor_monitor_result([], [], CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP)
+        result = compute_labor_monitor_result([], [], CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP, identities=LABOR_IDENTITIES)
         assert result.state == "INSUFFICIENT_DATA"
         assert result.evaluation_period is None
         assert result.employment.observations == []
@@ -564,7 +574,7 @@ class TestComputeLaborMonitorResultEvaluationPeriod:
         anchor = date(2020, 6, 1)
         payems = [Observation(date=month_before(anchor, n), value=150_000.0 + n) for n in range(13)]
         unrate = [Observation(date=month_before(anchor, n), value=4.0) for n in range(15)]
-        result = compute_labor_monitor_result(payems, unrate, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP)
+        result = compute_labor_monitor_result(payems, unrate, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP, identities=LABOR_IDENTITIES)
         assert result.evaluation_period == anchor
         # Every evidence observation date across both components must
         # be derived from this SAME anchor -- never two different
@@ -576,7 +586,7 @@ class TestComputeLaborMonitorResultEvaluationPeriod:
         payems = [Observation(date=month_before(date(2020, 8, 1), n), value=150_000.0 + n) for n in range(13)]
         # UNRATE only available through 2020-06 -- two months behind PAYEMS.
         unrate = [Observation(date=month_before(date(2020, 6, 1), n), value=4.0) for n in range(15)]
-        result = compute_labor_monitor_result(payems, unrate, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP)
+        result = compute_labor_monitor_result(payems, unrate, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP, identities=LABOR_IDENTITIES)
         assert result.evaluation_period == date(2020, 6, 1)
 
 
@@ -610,7 +620,7 @@ class TestAugust2009Regression:
 
     def test_august_2009_is_recovering_not_strengthening(self):
         index = _real_payems_jobs(self.RAW_THOUSANDS)
-        result = compute_employment_result(index, date(2009, 8, 1), CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        result = compute_employment_result(index, date(2009, 8, 1), CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         assert result.condition == "CONTRACTING"
         assert result.momentum == "IMPROVING"
         assert result.state == "RECOVERING"
@@ -622,7 +632,7 @@ class TestAugust2009Regression:
         (research/labor_momentum/outputs/v2_critical_months.csv) --
         current_3m = -331,333.33, prior_3m = -617,333.33."""
         index = _real_payems_jobs(self.RAW_THOUSANDS)
-        result = compute_employment_result(index, date(2009, 8, 1), CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        result = compute_employment_result(index, date(2009, 8, 1), CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         assert result.current_3m_avg_jobs == pytest.approx(-331_333.33, abs=1)
         assert result.prior_3m_avg_jobs == pytest.approx(-617_333.33, abs=1)
 
@@ -649,14 +659,14 @@ class TestApril2021ToJune2021Regression:
     @pytest.mark.parametrize("month", [date(2021, 4, 1), date(2021, 5, 1), date(2021, 6, 1)])
     def test_never_cooling(self, month: date):
         index = _real_payems_jobs(self.RAW_THOUSANDS)
-        result = compute_employment_result(index, month, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        result = compute_employment_result(index, month, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         assert result.state != "COOLING"
         assert result.condition == "EXPANDING"
 
     def test_april_and_may_2021_are_expanding_improving(self):
         index = _real_payems_jobs(self.RAW_THOUSANDS)
         for month in (date(2021, 4, 1), date(2021, 5, 1)):
-            result = compute_employment_result(index, month, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+            result = compute_employment_result(index, month, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
             assert result.momentum == "IMPROVING"
             assert result.state == "EXPANDING"
 
@@ -667,7 +677,7 @@ class TestApril2021ToJune2021Regression:
         COOLING, since the deceleration itself doesn't cross the
         momentum deadband."""
         index = _real_payems_jobs(self.RAW_THOUSANDS)
-        result = compute_employment_result(index, date(2021, 6, 1), CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+        result = compute_employment_result(index, date(2021, 6, 1), CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
         assert result.momentum == "STEADY"
         assert result.state == "EXPANDING"
 
@@ -693,8 +703,8 @@ class TestPayemsAffectedHorizons:
         changed_offsets = []
         for offset in range(-2, 10):
             t = month_before(m, -offset)  # t = m + offset
-            b = compute_employment_result(baseline, t, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
-            r = compute_employment_result(revised, t, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+            b = compute_employment_result(baseline, t, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
+            r = compute_employment_result(revised, t, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
             if b.current_3m_avg_jobs != r.current_3m_avg_jobs or b.prior_3m_avg_jobs != r.prior_3m_avg_jobs:
                 changed_offsets.append(offset)
 
@@ -713,8 +723,8 @@ class TestPayemsAffectedHorizons:
 
         for offset in (1, 2):
             t = month_before(m, -offset)
-            b = compute_employment_result(baseline, t, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
-            r = compute_employment_result(revised, t, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS)
+            b = compute_employment_result(baseline, t, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
+            r = compute_employment_result(revised, t, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, employment_identity=EMPLOYMENT_IDENTITY)
             assert b.current_3m_avg_jobs == r.current_3m_avg_jobs
             assert b.prior_3m_avg_jobs == r.prior_3m_avg_jobs
 
@@ -732,8 +742,8 @@ class TestUnrateAffectedHorizons:
         changed_offsets = []
         for offset in range(-2, 17):
             t = month_before(m, -offset)
-            b = compute_unemployment_result(baseline, t, UNEMPLOYMENT_DEADBAND_PP)
-            r = compute_unemployment_result(revised, t, UNEMPLOYMENT_DEADBAND_PP)
+            b = compute_unemployment_result(baseline, t, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
+            r = compute_unemployment_result(revised, t, UNEMPLOYMENT_DEADBAND_PP, unemployment_identity=UNEMPLOYMENT_IDENTITY)
             if b.current_3m_avg != r.current_3m_avg or b.prior_year_3m_avg != r.prior_year_3m_avg:
                 changed_offsets.append(offset)
 

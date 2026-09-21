@@ -25,6 +25,9 @@ from app.models.labor import METHODOLOGY_ID as LABOR_METHODOLOGY_ID, PAYEMS_SERI
 from app.models.series import Observation
 from app.repositories.observation_versions import ORIGIN_RELEASE_PROCESSING, ObservationVersionWriter
 from app.services.monitor_history import MonitorHistoryService, RecordedResultNotFoundError
+from tests.identities import (
+    PRIMARY_IDENTITY,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -125,7 +128,7 @@ def _state_for(history: dict[date, float], period: date = PERIOD) -> str:
     reproduction rather than a hard-coded state the frozen methodology
     may not actually produce."""
     return compute_series_momentum_at(
-        [Observation(date=d, value=v) for d, v in sorted(history.items())], PRIMARY_SERIES_ID, period
+        [Observation(date=d, value=v) for d, v in sorted(history.items())], PRIMARY_IDENTITY, period
     ).state
 
 

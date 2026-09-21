@@ -1,6 +1,5 @@
-/// <reference types="vitest/config" />
+import { reactRouter } from "@react-router/dev/vite";
 import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 // Local development only: the FastAPI backend's default `uvicorn` port.
@@ -11,7 +10,7 @@ import { defineConfig } from "vite";
 const BACKEND_PROXY_TARGET = process.env.BACKEND_PROXY_TARGET ?? "http://localhost:8000";
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [reactRouter(), tailwindcss()],
   server: {
     proxy: {
       // Frontend code calls relative paths like `/api/v1/...`; the dev
@@ -22,12 +21,5 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
-  },
-  test: {
-    environment: "jsdom",
-    setupFiles: ["./src/test/setup.ts"],
-    // No `globals: true` -- test files import `describe`/`it`/`expect`
-    // explicitly from "vitest", consistent with this project's
-    // preference for explicit imports over ambient globals.
   },
 });

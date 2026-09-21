@@ -59,6 +59,16 @@ from app.models.inflation import (
     TARGET_SERIES_ID,
 )
 from app.models.series import Observation
+from tests.identities import (
+    CONFIRMATION_IDENTITY,
+    EMPLOYMENT_IDENTITY,
+    HEADLINE_CPI_IDENTITY,
+    INFLATION_IDENTITIES,
+    LABOR_IDENTITIES,
+    PRIMARY_IDENTITY,
+    TARGET_IDENTITY,
+    UNEMPLOYMENT_IDENTITY,
+)
 
 
 def _obs(d: date, value: float | None) -> Observation:
@@ -156,7 +166,7 @@ class TestBuildIndexNumericSafety:
         CURRENT period must also make every horizon unavailable."""
         obs = [_obs(date(2024, 1, 1), 100.0), _obs(date(2024, 2, 1), float("nan"))]
         index = build_index(obs)
-        result = classify_period(index, "X", date(2024, 2, 1), date(2024, 2, 1), None)
+        result = classify_period(index, PRIMARY_IDENTITY, date(2024, 2, 1), date(2024, 2, 1), None)
         assert result.r_1m_annualized is None
         assert result.state == "INSUFFICIENT_DATA"
 
@@ -169,7 +179,7 @@ class TestAnnualizedCompounding:
     def test_1m_compounded_annualization(self):
         obs = [_obs(date(2024, 1, 1), 100.0), _obs(date(2024, 2, 1), 101.0)]
         index = build_index(obs)
-        result = classify_period(index, "X", date(2024, 2, 1), date(2024, 2, 1), None)
+        result = classify_period(index, PRIMARY_IDENTITY, date(2024, 2, 1), date(2024, 2, 1), None)
         expected = ((101.0 / 100.0) ** 12 - 1) * 100
         assert result.r_1m_annualized == pytest.approx(expected, rel=1e-12)
 
@@ -177,7 +187,7 @@ class TestAnnualizedCompounding:
         values = [100.0, 100.5, 101.0, 103.0]
         obs = _monthly_series(date(2024, 1, 1), values)
         index = build_index(obs)
-        result = classify_period(index, "X", date(2024, 4, 1), date(2024, 4, 1), None)
+        result = classify_period(index, PRIMARY_IDENTITY, date(2024, 4, 1), date(2024, 4, 1), None)
         expected = ((103.0 / 100.0) ** 4 - 1) * 100
         assert result.r_3m_annualized == pytest.approx(expected, rel=1e-12)
 
@@ -185,7 +195,7 @@ class TestAnnualizedCompounding:
         values = [100.0, 100.2, 100.4, 100.6, 100.8, 101.0, 103.0]
         obs = _monthly_series(date(2024, 1, 1), values)
         index = build_index(obs)
-        result = classify_period(index, "X", date(2024, 7, 1), date(2024, 7, 1), None)
+        result = classify_period(index, PRIMARY_IDENTITY, date(2024, 7, 1), date(2024, 7, 1), None)
         expected = ((103.0 / 100.0) ** 2 - 1) * 100
         assert result.r_6m_annualized == pytest.approx(expected, rel=1e-12)
 
@@ -193,7 +203,7 @@ class TestAnnualizedCompounding:
         values = [100.0] + [None] * 11 + [110.0]  # index 0 (Jan) .. index 12 (next Jan)
         obs = _monthly_series(date(2024, 1, 1), values)
         index = build_index(obs)
-        result = classify_period(index, "X", date(2025, 1, 1), date(2025, 1, 1), None)
+        result = classify_period(index, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), None)
         expected = (110.0 / 100.0 - 1) * 100  # NOT * 12
         assert result.r_12m == pytest.approx(expected, rel=1e-12)
         naive_wrong = ((110.0 - 100.0) / 100.0 * 100) * 12
@@ -380,7 +390,7 @@ class TestGoldenCalculation:
 
     def test_golden_fixture(self):
         index = self._index()
-        result = classify_period(index, "GOLDEN", date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
+        result = classify_period(index, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
 
         expected_r1m = ((110.0 / 109.0) ** 12 - 1) * 100
         expected_r3m = ((110.0 / 106.0) ** 4 - 1) * 100
@@ -406,7 +416,7 @@ class TestGoldenCalculation:
 
     def test_golden_fixture_provenance_endpoints(self):
         index = self._index()
-        result = classify_period(index, "GOLDEN", date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
+        result = classify_period(index, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
 
         assert result.evidence_3m.endpoint_date_current == date(2025, 1, 1)
         assert result.evidence_3m.endpoint_date_past == date(2024, 10, 1)
@@ -436,7 +446,7 @@ class TestCalendarEndpoints:
             date(2025, 1, 1): 110.0,  # t
         }
         index = build_index([_obs(d, v) for d, v in values.items()])
-        result = classify_period(index, "X", date(2025, 1, 1), date(2025, 1, 1), None)
+        result = classify_period(index, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), None)
         assert result.r_3m_annualized is None
         assert result.r_6m_annualized is not None
         assert result.r_12m is not None
@@ -455,7 +465,7 @@ class TestCalendarEndpoints:
             date(2024, 4, 1): 103.0,
         }
         index = build_index([_obs(d, v) for d, v in values.items()])
-        result = classify_period(index, "X", date(2024, 4, 1), date(2024, 4, 1), None)
+        result = classify_period(index, PRIMARY_IDENTITY, date(2024, 4, 1), date(2024, 4, 1), None)
         expected_r3m = ((103.0 / 100.0) ** 4 - 1) * 100
         assert result.r_3m_annualized == pytest.approx(expected_r3m, rel=1e-12)
         assert date(2024, 2, 1) not in index  # still genuinely missing, never interpolated
@@ -478,8 +488,8 @@ class TestCalendarEndpoints:
         with_extra_row[date(2020, 5, 1)] = 999.0  # an early, unrelated, extra row
         index_with_extra_row = build_index([_obs(d, v) for d, v in with_extra_row.items()])
 
-        r_without = classify_period(index_without_extra_row, "X", date(2025, 1, 1), date(2025, 1, 1), None)
-        r_with = classify_period(index_with_extra_row, "X", date(2025, 1, 1), date(2025, 1, 1), None)
+        r_without = classify_period(index_without_extra_row, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), None)
+        r_with = classify_period(index_with_extra_row, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), None)
 
         assert r_without.r_3m_annualized == r_with.r_3m_annualized
         assert r_without.evidence_3m.endpoint_date_past == r_with.evidence_3m.endpoint_date_past == date(2024, 10, 1)
@@ -493,7 +503,7 @@ class TestCalendarEndpoints:
             date(2025, 1, 1): 110.0,
         }
         index = build_index([_obs(d, v) for d, v in values.items()])
-        result = classify_period(index, "X", date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
+        result = classify_period(index, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
         assert result.r_1m_annualized is None
         assert result.state != "INSUFFICIENT_DATA"
         assert "r_1m" not in result.missing_required_metrics  # r_1m is never a "required" metric at all
@@ -506,7 +516,7 @@ class TestCalendarEndpoints:
             # t-6 (2024-07-01) deliberately absent
         }
         index = build_index([_obs(d, v) for d, v in values.items()])
-        result = classify_period(index, "X", date(2025, 1, 1), date(2025, 1, 1), None)
+        result = classify_period(index, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), None)
         assert result.state == "INSUFFICIENT_DATA"
         assert "r_6m" in result.missing_required_metrics
 
@@ -518,7 +528,7 @@ class TestCalendarEndpoints:
             # t-12 (2024-01-01) deliberately absent
         }
         index = build_index([_obs(d, v) for d, v in values.items()])
-        result = classify_period(index, "X", date(2025, 1, 1), date(2025, 1, 1), None)
+        result = classify_period(index, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), None)
         assert result.state == "INSUFFICIENT_DATA"
         assert "r_12m" in result.missing_required_metrics
 
@@ -551,7 +561,7 @@ class TestCalendarEndpoints:
         assert latest_valid == date(2025, 1, 1)  # NOT 2025-02 -- searched backward correctly
 
         momentum = compute_series_momentum(
-            [_obs(d, v) for d, v in values.items()], "X"
+            [_obs(d, v) for d, v in values.items()], PRIMARY_IDENTITY
         )
         assert momentum.latest_observation_period == date(2025, 2, 1)
         assert momentum.latest_valid_state_period == date(2025, 1, 1)
@@ -559,7 +569,7 @@ class TestCalendarEndpoints:
         assert momentum.state != "INSUFFICIENT_DATA"
 
     def test_entirely_empty_series_yields_insufficient_data_not_a_crash(self):
-        result = compute_series_momentum([], PRIMARY_SERIES_ID)
+        result = compute_series_momentum([], PRIMARY_IDENTITY)
         assert result.calculation_period is None
         assert result.latest_observation_period is None
         assert result.state == "INSUFFICIENT_DATA"
@@ -592,8 +602,8 @@ class TestPrimaryAuthority:
         confirmation_obs_a = [_obs(date(2024, 1, 1), 50.0), _obs(date(2025, 1, 1), 50.5)]
         confirmation_obs_b = [_obs(date(2024, 1, 1), 50.0), _obs(date(2025, 1, 1), 80.0)]  # wildly different
 
-        result_a = compute_inflation_monitor_result(primary_obs, confirmation_obs_a, primary_obs, [])
-        result_b = compute_inflation_monitor_result(primary_obs, confirmation_obs_b, primary_obs, [])
+        result_a = compute_inflation_monitor_result(primary_obs, confirmation_obs_a, primary_obs, [], identities=INFLATION_IDENTITIES)
+        result_b = compute_inflation_monitor_result(primary_obs, confirmation_obs_b, primary_obs, [], identities=INFLATION_IDENTITIES)
 
         assert result_a.underlying_momentum.state == result_b.underlying_momentum.state
         assert result_a.underlying_momentum.r_3m_annualized == result_b.underlying_momentum.r_3m_annualized
@@ -602,24 +612,24 @@ class TestPrimaryAuthority:
         primary_obs = self._primary_obs()
         with_confirmation = compute_inflation_monitor_result(
             primary_obs, [_obs(date(2024, 1, 1), 50.0), _obs(date(2025, 1, 1), 50.5)], primary_obs, []
-        )
-        without_confirmation = compute_inflation_monitor_result(primary_obs, [], primary_obs, [])
+        , identities=INFLATION_IDENTITIES)
+        without_confirmation = compute_inflation_monitor_result(primary_obs, [], primary_obs, [], identities=INFLATION_IDENTITIES)
 
         assert with_confirmation.underlying_momentum.state == without_confirmation.underlying_momentum.state
         assert with_confirmation.underlying_momentum == without_confirmation.underlying_momentum
 
     def test_changing_headline_cpi_cannot_change_core_pce_state(self):
         primary_obs = self._primary_obs()
-        result_a = compute_inflation_monitor_result(primary_obs, [], primary_obs, [_obs(date(2025, 1, 1), 500.0)])
-        result_b = compute_inflation_monitor_result(primary_obs, [], primary_obs, [_obs(date(2025, 1, 1), 5.0)])
+        result_a = compute_inflation_monitor_result(primary_obs, [], primary_obs, [_obs(date(2025, 1, 1), 500.0)], identities=INFLATION_IDENTITIES)
+        result_b = compute_inflation_monitor_result(primary_obs, [], primary_obs, [_obs(date(2025, 1, 1), 5.0)], identities=INFLATION_IDENTITIES)
         assert result_a.underlying_momentum == result_b.underlying_momentum
 
     def test_changing_headline_pce_cannot_change_core_pce_momentum_state(self):
         primary_obs = self._primary_obs()
         target_obs_a = [_obs(date(2024, 1, 1), 200.0), _obs(date(2025, 1, 1), 202.0)]
         target_obs_b = [_obs(date(2024, 1, 1), 200.0), _obs(date(2025, 1, 1), 260.0)]  # very different level
-        result_a = compute_inflation_monitor_result(primary_obs, [], target_obs_a, [])
-        result_b = compute_inflation_monitor_result(primary_obs, [], target_obs_b, [])
+        result_a = compute_inflation_monitor_result(primary_obs, [], target_obs_a, [], identities=INFLATION_IDENTITIES)
+        result_b = compute_inflation_monitor_result(primary_obs, [], target_obs_b, [], identities=INFLATION_IDENTITIES)
         assert result_a.underlying_momentum == result_b.underlying_momentum
         # but the target DOES legitimately differ between the two:
         assert result_a.target.headline_pce_yoy != result_b.target.headline_pce_yoy
@@ -694,7 +704,7 @@ class TestPeriodSemantics:
     def test_cpi_latest_later_than_pce(self):
         primary_obs = [_obs(date(2024, 1, 1), 100.0), _obs(date(2024, 7, 1), 103.0), _obs(date(2024, 10, 1), 106.0), _obs(date(2025, 1, 1), 110.0)]
         confirmation_obs = primary_obs + [_obs(date(2025, 2, 1), 111.0)]
-        confirmation = compute_confirmation(primary_obs, confirmation_obs)
+        confirmation = compute_confirmation(primary_obs, confirmation_obs, identities=INFLATION_IDENTITIES)
         # Both series ARE valid at 2025-01 -> that's the comparison period,
         # even though Core CPI's own *latest* extends to 2025-02.
         assert confirmation.latest_common_period == date(2025, 1, 1)
@@ -709,7 +719,7 @@ class TestPeriodSemantics:
             _obs(date(2025, 1, 1), 110.0),
             _obs(date(2025, 2, 1), 111.0),
         ]
-        confirmation = compute_confirmation(primary_obs, confirmation_obs)
+        confirmation = compute_confirmation(primary_obs, confirmation_obs, identities=INFLATION_IDENTITIES)
         assert confirmation.latest_common_period == date(2025, 1, 1)
         assert confirmation.primary_at_comparison_period.calculation_period == date(2025, 1, 1)
 
@@ -726,7 +736,7 @@ class TestPeriodSemantics:
 
         assert max(build_index(primary_obs)) == max(build_index(confirmation_obs)) == date(2025, 1, 1)
 
-        confirmation = compute_confirmation(primary_obs, confirmation_obs)
+        confirmation = compute_confirmation(primary_obs, confirmation_obs, identities=INFLATION_IDENTITIES)
 
         # Primary alone WOULD be valid at 2025-01, but confirmation's own
         # t-12 for 2025-01 (2024-01) is missing, so 2025-01 cannot be the
@@ -750,7 +760,7 @@ class TestPeriodSemantics:
             _obs(date(2010, 10, 1), 52.0),
             _obs(date(2011, 1, 1), 53.0),
         ]
-        confirmation = compute_confirmation(primary_obs, confirmation_obs)
+        confirmation = compute_confirmation(primary_obs, confirmation_obs, identities=INFLATION_IDENTITIES)
         assert confirmation.latest_common_period is None
         assert confirmation.relationship == "UNAVAILABLE"
         assert confirmation.primary_at_comparison_period is None
@@ -774,7 +784,7 @@ class TestPeriodSemantics:
             _obs(date(2024, 11, 1), 53.0),
             _obs(date(2025, 2, 1), 55.0),  # only August-anchored dates -- one month offset throughout
         ]
-        confirmation = compute_confirmation(primary_obs, confirmation_obs)
+        confirmation = compute_confirmation(primary_obs, confirmation_obs, identities=INFLATION_IDENTITIES)
         assert confirmation.latest_common_period is None
         assert confirmation.relationship == "UNAVAILABLE"
 
@@ -787,7 +797,7 @@ class TestPeriodSemantics:
 class TestTarget:
     def test_above_2_percent(self):
         obs = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 105.0)]
-        result = compute_target(obs)
+        result = compute_target(obs, target_identity=TARGET_IDENTITY)
         expected_yoy = (105.0 / 100.0 - 1) * 100
         assert result.headline_pce_yoy == pytest.approx(expected_yoy, rel=1e-12)
         assert result.target_gap_pp == pytest.approx(expected_yoy - 2.0, rel=1e-12)
@@ -796,18 +806,18 @@ class TestTarget:
 
     def test_exactly_2_percent(self):
         obs = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 102.0)]
-        result = compute_target(obs)
+        result = compute_target(obs, target_identity=TARGET_IDENTITY)
         assert result.headline_pce_yoy == pytest.approx(2.0, rel=1e-12)
         assert result.target_gap_pp == pytest.approx(0.0, abs=1e-9)
 
     def test_below_2_percent(self):
         obs = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 101.0)]
-        result = compute_target(obs)
+        result = compute_target(obs, target_identity=TARGET_IDENTITY)
         assert result.target_gap_pp < 0
 
     def test_missing_target_endpoint(self):
         obs = [_obs(date(2025, 1, 1), 110.0)]  # no t-12 at all
-        result = compute_target(obs)
+        result = compute_target(obs, target_identity=TARGET_IDENTITY)
         assert result.available is False
         assert result.headline_pce_yoy is None
         assert result.target_gap_pp is None
@@ -816,7 +826,7 @@ class TestTarget:
 
     def test_target_available_while_primary_unavailable(self):
         target_obs = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 105.0)]
-        result = compute_inflation_monitor_result([], [], target_obs, [])
+        result = compute_inflation_monitor_result([], [], target_obs, [], identities=INFLATION_IDENTITIES)
         assert result.coverage.target_available is True
         assert result.coverage.primary_available is False
 
@@ -827,7 +837,7 @@ class TestTarget:
             _obs(date(2024, 10, 1), 106.0),
             _obs(date(2025, 1, 1), 110.0),
         ]
-        result = compute_inflation_monitor_result(primary_obs, [], [], [])
+        result = compute_inflation_monitor_result(primary_obs, [], [], [], identities=INFLATION_IDENTITIES)
         assert result.coverage.primary_available is True
         assert result.coverage.target_available is False
 
@@ -842,18 +852,18 @@ class TestTarget:
             _obs(date(2025, 1, 1), 101.3),  # slow recent growth -> COOLING vs its own 12M
         ]
         target_obs = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 103.4)]  # 3.4% YoY, above 2.0 target
-        result = compute_inflation_monitor_result(primary_obs, [], target_obs, [])
+        result = compute_inflation_monitor_result(primary_obs, [], target_obs, [], identities=INFLATION_IDENTITIES)
         assert result.target.target_gap_pp > 0
         assert result.underlying_momentum.state in ("COOLING", "STABLE", "HEATING", "MIXED", "INSUFFICIENT_DATA")
         # The key invariant: target_gap_pp's sign/value is untouched by underlying_momentum's state.
-        result_b = compute_inflation_monitor_result([], [], target_obs, [])
+        result_b = compute_inflation_monitor_result([], [], target_obs, [], identities=INFLATION_IDENTITIES)
         assert result_b.target.target_gap_pp == result.target.target_gap_pp
 
     def test_does_not_substitute_cpi_for_missing_target(self):
         """Even with abundant Headline CPI data, a missing Headline PCE
         endpoint must never be silently replaced by CPI."""
         headline_cpi_obs = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 110.0)]
-        result = compute_inflation_monitor_result([], [], [], headline_cpi_obs)
+        result = compute_inflation_monitor_result([], [], [], headline_cpi_obs, identities=INFLATION_IDENTITIES)
         assert result.target.available is False
         assert result.target.headline_pce_yoy is None
 
@@ -865,7 +875,7 @@ class TestTarget:
 
 class TestCoverage:
     def test_all_unavailable_when_nothing_persisted(self):
-        result = compute_inflation_monitor_result([], [], [], [])
+        result = compute_inflation_monitor_result([], [], [], [], identities=INFLATION_IDENTITIES)
         assert result.coverage.primary_available is False
         assert result.coverage.confirmation_available is False
         assert result.coverage.target_available is False
@@ -875,7 +885,7 @@ class TestCoverage:
         """A single, brand-new observation (no 12M history) must NOT
         count as "available" merely because a row exists."""
         obs = [_obs(date(2025, 1, 1), 100.0)]
-        result = compute_inflation_monitor_result(obs, obs, obs, obs)
+        result = compute_inflation_monitor_result(obs, obs, obs, obs, identities=INFLATION_IDENTITIES)
         assert result.coverage.primary_available is False
         assert result.coverage.confirmation_available is False
         assert result.coverage.headline_cpi_available is False
@@ -889,7 +899,7 @@ class TestCoverage:
             _obs(date(2024, 10, 1), 106.0),
             _obs(date(2025, 1, 1), 110.0),
         ]
-        result = compute_inflation_monitor_result(full, full, full, full)
+        result = compute_inflation_monitor_result(full, full, full, full, identities=INFLATION_IDENTITIES)
         assert result.coverage.primary_available is True
         assert result.coverage.confirmation_available is True
         assert result.coverage.target_available is True
@@ -920,7 +930,7 @@ class TestConfirmationAvailableSemantics:
     def test_1_valid_common_period_confirms_and_available(self):
         """Identical full history on both sides -> same state at the
         same period -> CONFIRMS -> confirmation_available True."""
-        result = compute_inflation_monitor_result(self.FULL, self.FULL, [], [])
+        result = compute_inflation_monitor_result(self.FULL, self.FULL, [], [], identities=INFLATION_IDENTITIES)
         assert result.confirmation.relationship == "CONFIRMS"
         assert result.coverage.confirmation_available is True
 
@@ -937,7 +947,7 @@ class TestConfirmationAvailableSemantics:
             _obs(date(2024, 10, 1), 106.0),
             _obs(date(2025, 1, 1), 110.0),  # HEATING vs its own 12M
         ]
-        result = compute_inflation_monitor_result(cooling_primary, heating_confirmation, [], [])
+        result = compute_inflation_monitor_result(cooling_primary, heating_confirmation, [], [], identities=INFLATION_IDENTITIES)
         assert result.confirmation.relationship == "DIVERGES"
         assert result.coverage.confirmation_available is True
 
@@ -956,7 +966,7 @@ class TestConfirmationAvailableSemantics:
             _obs(date(2010, 10, 1), 52.0),
             _obs(date(2011, 1, 1), 53.0),
         ]
-        result = compute_inflation_monitor_result(primary_obs, confirmation_obs, [], [])
+        result = compute_inflation_monitor_result(primary_obs, confirmation_obs, [], [], identities=INFLATION_IDENTITIES)
 
         # Core CPI's OWN standalone availability is untouched and still visible:
         assert result.confirmation.confirmation_latest.state != "INSUFFICIENT_DATA"
@@ -968,14 +978,14 @@ class TestConfirmationAvailableSemantics:
         assert result.coverage.confirmation_available is False
 
     def test_3_primary_insufficient_is_unavailable(self):
-        result = compute_inflation_monitor_result([], self.FULL, [], [])
+        result = compute_inflation_monitor_result([], self.FULL, [], [], identities=INFLATION_IDENTITIES)
         assert result.confirmation.relationship == "UNAVAILABLE"
         assert result.coverage.confirmation_available is False
         # Core CPI's own standalone state is still reported, unaffected:
         assert result.confirmation.confirmation_latest.state != "INSUFFICIENT_DATA"
 
     def test_4_confirmation_insufficient_is_unavailable(self):
-        result = compute_inflation_monitor_result(self.FULL, [], [], [])
+        result = compute_inflation_monitor_result(self.FULL, [], [], [], identities=INFLATION_IDENTITIES)
         assert result.confirmation.relationship == "UNAVAILABLE"
         assert result.coverage.confirmation_available is False
         assert result.confirmation.confirmation_latest.state == "INSUFFICIENT_DATA"
@@ -996,7 +1006,7 @@ class TestConfirmationAvailableSemantics:
         ],
     )
     def test_5_invariant_holds_across_fixtures(self, primary_obs, confirmation_obs):
-        result = compute_inflation_monitor_result(primary_obs, confirmation_obs, [], [])
+        result = compute_inflation_monitor_result(primary_obs, confirmation_obs, [], [], identities=INFLATION_IDENTITIES)
         assert result.coverage.confirmation_available == (result.confirmation.relationship != "UNAVAILABLE")
 
 
@@ -1017,7 +1027,7 @@ class TestProvenance:
             date(2025, 1, 1): 110.0,
         }
         index = build_index([_obs(d, v) for d, v in values.items()])
-        result = classify_period(index, "PCEPILFE", date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
+        result = classify_period(index, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
 
         # Reproduce r_3m/r_6m/r_12m from evidence alone:
         e3, e6, e12 = result.evidence_3m, result.evidence_6m, result.evidence_12m
@@ -1038,7 +1048,7 @@ class TestProvenance:
     def test_evidence_carries_series_id_period_transformation_methodology_and_data_basis(self):
         values = {date(2024, 1, 1): 100.0, date(2024, 7, 1): 103.0, date(2024, 10, 1): 106.0, date(2025, 1, 1): 110.0}
         index = build_index([_obs(d, v) for d, v in values.items()])
-        result = classify_period(index, "PCEPILFE", date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
+        result = classify_period(index, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
 
         for evidence, expected_transformation in (
             (result.evidence_1m, "1m_annualized"),
@@ -1055,7 +1065,7 @@ class TestProvenance:
     def test_insufficient_data_still_carries_evidence_showing_what_was_missing(self):
         values = {date(2024, 7, 1): 103.0, date(2024, 10, 1): 106.0, date(2025, 1, 1): 110.0}  # no t-12
         index = build_index([_obs(d, v) for d, v in values.items()])
-        result = classify_period(index, "X", date(2025, 1, 1), date(2025, 1, 1), None)
+        result = classify_period(index, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), None)
         assert result.state == "INSUFFICIENT_DATA"
         assert result.evidence_12m is not None
         assert result.evidence_12m.value is None
@@ -1063,7 +1073,7 @@ class TestProvenance:
         assert result.evidence_12m.endpoint_date_past == date(2024, 1, 1)  # still names the exact missing date
 
     def test_no_observation_at_all_carries_no_evidence(self):
-        result = classify_period({}, "X", None, None, None)
+        result = classify_period({}, PRIMARY_IDENTITY, None, None, None)
         assert result.evidence_1m is None
         assert result.evidence_3m is None
         assert result.evidence_6m is None
@@ -1079,14 +1089,14 @@ class TestDeterminismAndNonMutation:
     def test_repeated_calls_produce_identical_results(self):
         values = {date(2024, 1, 1): 100.0, date(2024, 7, 1): 103.0, date(2024, 10, 1): 106.0, date(2025, 1, 1): 110.0}
         obs = [_obs(d, v) for d, v in values.items()]
-        r1 = compute_series_momentum(obs, "X")
-        r2 = compute_series_momentum(obs, "X")
+        r1 = compute_series_momentum(obs, PRIMARY_IDENTITY)
+        r2 = compute_series_momentum(obs, PRIMARY_IDENTITY)
         assert r1 == r2
 
     def test_full_pipeline_deterministic(self):
         primary_obs = [_obs(date(2024, 1, 1), 100.0), _obs(date(2024, 7, 1), 103.0), _obs(date(2024, 10, 1), 106.0), _obs(date(2025, 1, 1), 110.0)]
-        result_1 = compute_inflation_monitor_result(primary_obs, primary_obs, primary_obs, primary_obs)
-        result_2 = compute_inflation_monitor_result(primary_obs, primary_obs, primary_obs, primary_obs)
+        result_1 = compute_inflation_monitor_result(primary_obs, primary_obs, primary_obs, primary_obs, identities=INFLATION_IDENTITIES)
+        result_2 = compute_inflation_monitor_result(primary_obs, primary_obs, primary_obs, primary_obs, identities=INFLATION_IDENTITIES)
         assert result_1 == result_2
 
     def test_observations_list_not_mutated(self):
@@ -1098,7 +1108,7 @@ class TestDeterminismAndNonMutation:
     def test_index_dict_not_mutated_by_classify_period(self):
         index = build_index([_obs(date(2024, 1, 1), 100.0), _obs(date(2024, 2, 1), 101.0)])
         snapshot = dict(index)
-        classify_period(index, "X", date(2024, 2, 1), date(2024, 2, 1), None)
+        classify_period(index, PRIMARY_IDENTITY, date(2024, 2, 1), date(2024, 2, 1), None)
         assert index == snapshot
 
 
@@ -1111,7 +1121,7 @@ class TestHeadlineContext:
     def test_headline_pce_and_cpi_independently_classified(self):
         pce_obs = [_obs(date(2024, 1, 1), 100.0), _obs(date(2024, 7, 1), 103.0), _obs(date(2024, 10, 1), 106.0), _obs(date(2025, 1, 1), 110.0)]
         cpi_obs = [_obs(date(2024, 1, 1), 200.0), _obs(date(2024, 7, 1), 200.5), _obs(date(2024, 10, 1), 200.8), _obs(date(2025, 1, 1), 201.0)]
-        result = compute_headline_context(pce_obs, cpi_obs)
+        result = compute_headline_context(pce_obs, cpi_obs, identities=INFLATION_IDENTITIES)
         assert result.headline_pce.series_id == TARGET_SERIES_ID
         assert result.headline_cpi.series_id == HEADLINE_CPI_SERIES_ID
         assert result.headline_pce.state != result.headline_cpi.state or True  # no forced relationship either way
@@ -1119,7 +1129,7 @@ class TestHeadlineContext:
     def test_no_aggregate_headline_state_field_exists(self):
         pce_obs = [_obs(date(2024, 1, 1), 100.0)]
         cpi_obs = [_obs(date(2024, 1, 1), 200.0)]
-        result = compute_headline_context(pce_obs, cpi_obs)
+        result = compute_headline_context(pce_obs, cpi_obs, identities=INFLATION_IDENTITIES)
         assert set(type(result).model_fields.keys()) == {"headline_pce", "headline_cpi"}
 
 
@@ -1146,19 +1156,19 @@ class TestComputeSeriesMomentumAt:
     def test_evaluates_exactly_the_requested_period_even_if_insufficient(self):
         # 2024-07 lacks its own t-12 (2023-07) -- INSUFFICIENT_DATA there,
         # even though 2025-01 (the series' actual latest valid period) exists.
-        result = compute_series_momentum_at(self.FULL, "PCEPILFE", date(2024, 7, 1))
+        result = compute_series_momentum_at(self.FULL, PRIMARY_IDENTITY, date(2024, 7, 1))
         assert result.calculation_period == date(2024, 7, 1)
         assert result.state == "INSUFFICIENT_DATA"
 
     def test_never_substitutes_latest_valid_state_period(self):
-        result = compute_series_momentum_at(self.FULL, "PCEPILFE", date(2024, 7, 1))
+        result = compute_series_momentum_at(self.FULL, PRIMARY_IDENTITY, date(2024, 7, 1))
         assert result.calculation_period != date(2025, 1, 1)
         # but the series-level metadata fields still correctly report the true latest:
         assert result.latest_valid_state_period == date(2025, 1, 1)
         assert result.latest_observation_period == date(2025, 1, 1)
 
     def test_none_period_yields_insufficient_data(self):
-        result = compute_series_momentum_at(self.FULL, "PCEPILFE", None)
+        result = compute_series_momentum_at(self.FULL, PRIMARY_IDENTITY, None)
         assert result.calculation_period is None
         assert result.state == "INSUFFICIENT_DATA"
 
@@ -1167,8 +1177,8 @@ class TestComputeSeriesMomentumAt:
         wrapper, byte-for-byte identical to classify_period given the
         same index/period."""
         index = build_index(self.FULL)
-        direct = classify_period(index, "PCEPILFE", date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
-        via_at = compute_series_momentum_at(self.FULL, "PCEPILFE", date(2025, 1, 1))
+        direct = classify_period(index, PRIMARY_IDENTITY, date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1))
+        via_at = compute_series_momentum_at(self.FULL, PRIMARY_IDENTITY, date(2025, 1, 1))
         assert direct == via_at
 
 
@@ -1176,19 +1186,19 @@ class TestComputeTargetAt:
     FULL = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 110.0)]
 
     def test_evaluates_exactly_the_requested_period(self):
-        result = compute_target_at(self.FULL, date(2025, 1, 1))
+        result = compute_target_at(self.FULL, date(2025, 1, 1), target_identity=TARGET_IDENTITY)
         expected_yoy = (110.0 / 100.0 - 1) * 100
         assert result.headline_pce_yoy == pytest.approx(expected_yoy)
         assert result.available is True
 
     def test_insufficient_at_a_period_lacking_t12(self):
-        result = compute_target_at(self.FULL, date(2024, 6, 1))
+        result = compute_target_at(self.FULL, date(2024, 6, 1), target_identity=TARGET_IDENTITY)
         assert result.available is False
         assert result.headline_pce_yoy is None
         assert result.target_gap_pp is None
 
     def test_none_period_is_unavailable(self):
-        result = compute_target_at(self.FULL, None)
+        result = compute_target_at(self.FULL, None, target_identity=TARGET_IDENTITY)
         assert result.available is False
         assert result.calculation_period is None
 
@@ -1196,8 +1206,8 @@ class TestComputeTargetAt:
         """compute_target and compute_target_at share _build_target_result
         -- verified indirectly: both report the identical target_gap_pp
         for the same period/data."""
-        latest = compute_target(self.FULL)
-        at_same_period = compute_target_at(self.FULL, latest.calculation_period)
+        latest = compute_target(self.FULL, target_identity=TARGET_IDENTITY)
+        at_same_period = compute_target_at(self.FULL, latest.calculation_period, target_identity=TARGET_IDENTITY)
         assert latest == at_same_period
 
 
@@ -1264,7 +1274,7 @@ class TestComputeConfirmationAt:
     def test_both_series_evaluated_at_the_exact_same_period(self):
         primary_state, confirmation_state, relationship = compute_confirmation_at(
             self.PRIMARY, self.CONFIRMATION, date(2025, 1, 1)
-        )
+        , identities=INFLATION_IDENTITIES)
         assert primary_state.calculation_period == confirmation_state.calculation_period == date(2025, 1, 1)
         assert relationship in ("CONFIRMS", "DIVERGES", "INCONCLUSIVE", "UNAVAILABLE")
 
@@ -1291,16 +1301,16 @@ class TestComputeConfirmationAt:
         ]
         confirmation_with_gap = confirmation + [_obs(date(2025, 2, 1), 51.0)]
 
-        _, _, relationship_at_july_equivalent = compute_confirmation_at(primary, confirmation_with_gap, date(2025, 1, 1))
+        _, _, relationship_at_july_equivalent = compute_confirmation_at(primary, confirmation_with_gap, date(2025, 1, 1), identities=INFLATION_IDENTITIES)
         _, confirmation_state_at_august_equivalent, relationship_at_august_equivalent = compute_confirmation_at(
             primary, confirmation_with_gap, date(2025, 2, 1)
-        )
+        , identities=INFLATION_IDENTITIES)
         assert relationship_at_july_equivalent != "UNAVAILABLE"
         assert confirmation_state_at_august_equivalent.state == "INSUFFICIENT_DATA"
         assert relationship_at_august_equivalent == "UNAVAILABLE"
 
     def test_none_period_yields_unavailable(self):
-        primary_state, confirmation_state, relationship = compute_confirmation_at(self.PRIMARY, self.CONFIRMATION, None)
+        primary_state, confirmation_state, relationship = compute_confirmation_at(self.PRIMARY, self.CONFIRMATION, None, identities=INFLATION_IDENTITIES)
         assert primary_state.state == "INSUFFICIENT_DATA"
         assert confirmation_state.state == "INSUFFICIENT_DATA"
         assert relationship == "UNAVAILABLE"
@@ -1320,7 +1330,7 @@ class TestMonthOverMonthSeriesMomentum:
             _obs(date(2025, 2, 1), None),  # August-equivalent: row exists, value null -> INSUFFICIENT_DATA
         ]
         previous_period, current_period, previous_evidence, current_evidence = month_over_month_series_momentum(
-            observations, "PCEPILFE"
+            observations, PRIMARY_IDENTITY
         )
         assert current_period == date(2025, 2, 1)  # NOT date(2025, 1, 1)
         assert previous_period == date(2025, 1, 1)
@@ -1328,7 +1338,7 @@ class TestMonthOverMonthSeriesMomentum:
         assert previous_evidence.state != "INSUFFICIENT_DATA"
 
     def test_no_observations_at_all_returns_all_none(self):
-        result = month_over_month_series_momentum([], "PCEPILFE")
+        result = month_over_month_series_momentum([], PRIMARY_IDENTITY)
         assert result == (None, None, None, None)
 
     def test_previous_is_exact_calendar_month_never_a_search(self):
@@ -1338,7 +1348,7 @@ class TestMonthOverMonthSeriesMomentum:
             # nothing at 2024-12 -- previous_period must be exactly 2024-12, not a search back to 2024-01
         ]
         previous_period, current_period, previous_evidence, current_evidence = month_over_month_series_momentum(
-            observations, "PCEPILFE"
+            observations, PRIMARY_IDENTITY
         )
         assert current_period == date(2025, 1, 1)
         assert previous_period == date(2024, 12, 1)
@@ -1348,13 +1358,13 @@ class TestMonthOverMonthSeriesMomentum:
 class TestMonthOverMonthTarget:
     def test_current_period_is_latest_observation(self):
         observations = [_obs(date(2024, 1, 1), 100.0), _obs(date(2025, 1, 1), 110.0), _obs(date(2025, 2, 1), None)]
-        previous_period, current_period, previous_evidence, current_evidence = month_over_month_target(observations)
+        previous_period, current_period, previous_evidence, current_evidence = month_over_month_target(observations, target_identity=TARGET_IDENTITY)
         assert current_period == date(2025, 2, 1)
         assert current_evidence.available is False
         assert previous_evidence.available is True
 
     def test_empty_observations_returns_all_none(self):
-        assert month_over_month_target([]) == (None, None, None, None)
+        assert month_over_month_target([], target_identity=TARGET_IDENTITY) == (None, None, None, None)
 
 
 class TestMonthOverMonthConfirmation:
@@ -1380,7 +1390,7 @@ class TestMonthOverMonthConfirmation:
             current_primary,
             current_confirmation,
             current_relationship,
-        ) = month_over_month_confirmation(primary, confirmation)
+        ) = month_over_month_confirmation(primary, confirmation, identities=INFLATION_IDENTITIES)
 
         assert current_period == date(2025, 1, 1)  # NOT the Monitor's own latest_common_period (2024-10)
         assert current_relationship == "UNAVAILABLE"
@@ -1390,7 +1400,7 @@ class TestMonthOverMonthConfirmation:
     def test_no_shared_observation_returns_all_none(self):
         primary = [_obs(date(2024, 1, 1), 100.0)]
         confirmation = [_obs(date(2010, 1, 1), 50.0)]
-        result = month_over_month_confirmation(primary, confirmation)
+        result = month_over_month_confirmation(primary, confirmation, identities=INFLATION_IDENTITIES)
         assert result == (None, None, None, None, None, None, None, None)
 
     def test_both_series_at_exact_same_period_never_mismatched(self):
@@ -1405,6 +1415,6 @@ class TestMonthOverMonthConfirmation:
             current_primary,
             current_confirmation,
             current_relationship,
-        ) = month_over_month_confirmation(primary, confirmation)
+        ) = month_over_month_confirmation(primary, confirmation, identities=INFLATION_IDENTITIES)
         assert current_primary.calculation_period == current_confirmation.calculation_period == current_period
         assert previous_primary.calculation_period == previous_confirmation.calculation_period == previous_period

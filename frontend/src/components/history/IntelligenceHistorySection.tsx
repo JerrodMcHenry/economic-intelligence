@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { track } from "../../analytics";
 import type { ApiResourceState } from "../../api/useApiResource";
 import type { HistoryMonitor, MonitorHistoryResponse, RecordedIntelligenceEntry } from "../../api/monitorHistory.types";
 import { formatPeriod } from "../../lib/format";
@@ -113,7 +114,18 @@ function HistoryRow({
 
   return (
     <li>
-      <details className="group py-3" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <details
+        className="group py-3"
+        onToggle={(event) => {
+          const isOpen = event.currentTarget.open;
+          setOpen(isOpen);
+          // Increment #37: this row IS the revision surface today --
+          // opening it is what reveals what was known then against what
+          // revised data says now. Only which monitor is recorded,
+          // never which period or which conclusion.
+          if (isOpen) track("revision_opened", { monitor });
+        }}
+      >
         <summary className="flex cursor-pointer select-none list-none flex-wrap items-center gap-x-3 gap-y-2 [&::-webkit-details-marker]:hidden">
           <svg
             viewBox="0 0 16 16"

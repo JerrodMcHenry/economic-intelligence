@@ -10818,3 +10818,1197 @@ the increment worth doing was measuring things I had already written
 tests for and finding that two of them — production telemetry, and a
 documented deployment fix — existed only on paper. A checklist would
 have produced the same middleware and missed both.
+
+## Increment #35 — Audience, Content, Data & Product Feasibility Research (implementation paused again)
+
+Research and product definition only. No production code, no behaviour
+change, no deployment, nothing committed, no secret read. Deliverable:
+`docs/product/macrochipz-audience-content-data-opportunity-research-v1.md`.
+
+### Why this increment exists
+
+#34 left MacroChipz production-ready. That surfaced the question #28 had
+answered only for a *paid investor tool*: what should this become as a
+free consumer product? The brief asked explicitly for a disproof attempt
+rather than a justification, and the research obliged — most of the
+proposed product did not survive.
+
+### The five things that died, each to a measurement
+
+1. **The daily product.** Only **60 of ~252 business days in 2026 (23.8%)
+   have any curated release**. Independently, a Wikipedia-pageviews
+   measurement against the real BLS/FOMC calendars found **"inflation"
+   lifts 1.11× on CPI release day against a 1.08× placebo** — no event
+   response at all. The terms that *do* spike (FOMC 6.72×, CPI 2.80×) are
+   jargon with tiny baselines and a ~72-hour decay. "Today in the Economy"
+   would have manufactured activity that does not exist.
+
+2. **The Pulse as a differentiator.** Chicago Fed's CFNAI has collapsed 85
+   indicators into one number since 2001. recessiondashboard.com and
+   RecessionPulse ship the free consumer version *today*, with newsletters
+   and alerts we do not have. fredecondashboard.com's own pitch is
+   essentially our positioning statement, already written by someone else.
+
+3. **Radar as a content engine — killed by arithmetic.** On our own data a
+   2σ bar yields ~1 finding per series every two years, while a 600-test
+   monthly scan produces **27 false findings a month and 328 a year** under
+   a pure null. Worse: the brief's flagship example ("payroll growth
+   weakening while unemployment stays stable") **is itself a false
+   narrative** — Fed staff put 2026 breakeven employment growth near zero,
+   so that pattern is the expected arithmetic of slowing labour supply.
+   And CPS cannot resolve a change below 675,000 people while CES resolves
+   122,000, so "one moved, the other didn't" is guaranteed with zero
+   information content. Radar survives only pre-registered, FDR-corrected,
+   TOST-tested and vintage-stamped — which by definition cannot fill a
+   publishing calendar.
+
+4. **"Social and search feed the website."** Chartbeat across ~3,750
+   publisher sites: YouTube, Instagram, TikTok, LinkedIn, Threads and
+   Reddit each **under 0.5%** of referrals. Google organic to 2,576 sites
+   **−33% globally, −38% US** YoY. Pew's browsing study (68,879 searches):
+   clicks fall from 15% to 8% when an AI Overview appears. And Robinhood
+   shut **Sherwood News** on 2026-07-13 — confirmed here from its own
+   sitemap (**193 articles in June 2026 → 6 in July → 1 in August → 0**)
+   while the Snacks *newsletter* still ships daily.
+
+5. **The backward Time Machine.** `observation_versions` is
+   **1,072/1,072 backfilled, 0 genuinely observed, 0 REVISED events ever
+   captured**. ALFRED has exactly the right capability (`output_type=4`,
+   "Initial Release Only") and we cannot legally use it.
+
+### What survived
+
+**Revision intelligence — and it is the only unambiguous survivor.** Zero
+products. The most consumer-ready artifact anywhere is a static SF Fed
+chart. Candidate domains (revisions.watch, jobsrevised.com,
+truejobsnumber.com and five more) have **no A records**. GitHub: 7 repos
+at 0–1 stars. HN: two links. And the demand shock already fired — a
+**−911,000** benchmark revision, a fired BLS commissioner, a data
+blackout — producing op-eds and no supply.
+
+Two independent research passes, #28 (paid tool) and #35 (free consumer
+media), converged on the same feature. That is the strongest signal
+either document produced.
+
+Alongside it, the demand side: **66% of prospective homebuyers think the
+Fed sets mortgage rates**; 61% think government dictates lender rates;
+~half of under-45s think 20% down is required when the first-time median
+is 10%. Specific, measured, correctable beliefs attached to decisions
+CFPB prices at **over $1,000/year**.
+
+### Two corrections to the record
+
+**BEA's terms are now verified, and they permit commercial use.** #28
+recorded them as unverified. The document is at
+`apps.bea.gov/api/_pdf/bea_api_tos.pdf` (the path #28 tried 404s); it was
+downloaded and parsed locally, so the quotes are byte-exact. The
+attribution clause expressly contemplates entities "not-for-profit,
+commercial or otherwise" and restricts only *implied endorsement*.
+
+**#28 said FRED must not be the spine. The implementation still uses it
+as the spine** — 16 files, all six canonical series. That contradiction
+has been live for seven increments. It is now time-sensitive: the Fed
+Board's Data Download Program loses "Build Your Package" **the week of
+November 9** and redirects users to FRED, the one source we cannot
+redistribute from.
+
+### The honest answer to the hardest finding
+
+Stantcheva et al. find economic beliefs "hard to move experimentally,"
+and financial literacy hit a **decade low in 2026** despite fifteen years
+of free financial content. Why would MacroChipz break that pattern?
+
+The evidence supports exactly one answer, and it is not "better
+explanations." People already consult 7.6 sources and still lose money
+more often than those who consult 4.0. Only 20% of finfluencer
+recommendations carry disclosure. Gen Z's #1 and #2 trust criteria are
+"explains things clearly" and "isn't trying to sell me something" — the
+second ranked *higher* by non-investors. **The failure is trust, not
+clarity. MacroChipz's differentiator is provenance wearing an explainer's
+clothes** — which is what thirty-four increments actually built.
+
+### Cost, for the record
+
+**$14.92/month floor, $27.92/month defensible**, both with backups and
+PITR. Analyst: **$0.38 per 1,000 requests** measured, dominating the
+infra bill only above ~40,000 requests/month. Cost is not a constraint on
+any version of this product and should influence no decision.
+
+### Lesson
+
+**A measurement of your own database can kill a product feature faster
+than any amount of market research.** Three of the five deaths above —
+the daily cadence, Radar's frequency, the backward Time Machine — came
+from four SQL queries against tables this project already had. The
+external research was necessary to learn that the Pulse is a commodity
+and that nobody has built the revisions product; it was not necessary to
+learn that we only have data on 23.8% of business days. That was sitting
+in `release_occurrences` the whole time.
+
+## Increment #36 — Product Constitution & MacroChipz 2.0 Architecture (specification only)
+
+Specification and architecture only. No production code, no behaviour
+change, no deployment, nothing committed, no secret read. Deliverables:
+`docs/product/macrochipz-product-constitution-v1.md` (38 sections + build
+sequence) and `docs/architecture/macrochipz-2.0-architecture.md` (29
+sections).
+
+### Why this increment exists
+
+#35 produced evidence. #36 produces decisions. The point is that
+subsequent increments reference a document rather than re-arguing what
+MacroChipz is supposed to become. Where the Constitution conflicts with
+an older product document it wins; where it conflicts with an ADR, the
+ADR wins until explicitly superseded. Product intent does not override an
+engineering invariant.
+
+### What the audit changed
+
+Two assumptions I was carrying were wrong, and an agent audit caught
+both before they reached the architecture.
+
+**Rates does not come from FRED.** It comes from Treasury, already under
+MacroChipz-owned identifiers (`UST_NOMINAL_10Y`, deliberately not
+`DGS10`). So FRED supplies three separable things, not one: six monthly
+series, series search, and — exclusively — the release calendar. They
+carry very different migration difficulty, and Treasury is already the
+reference implementation for every adapter the migration needs.
+
+**Most of the new homepage already exists on `/overview`.**
+`CurrentStateSection` is the Pulse. The two what-changed previews are
+What Changed. `UpcomingReleasesPreview` is What's Next. `SinceLastVisit`
+and `HowTheyRelate` survive unchanged. The homepage increment is largely
+a re-composition, not a build.
+
+The audit also surfaced a latent provenance lie I would otherwise have
+shipped: `PCEPILFE`, `PAYEMS` and friends are FRED-shaped identifiers.
+BLS's own id for payrolls is `CES0000000001`. **Migrating the source
+without migrating the identifier would leave FRED's naming embedded in a
+system that no longer uses FRED.** Identity migrates with the source, or
+not at all.
+
+### Three decisions worth recording
+
+**THE LEDE replaces the eight-block homepage.** The proposed hierarchy
+put Radar third — a block whose honest state is usually empty — and
+revisions fifth, below the two most commoditised features. The rule that
+resolved it: **no homepage block whose honest state is usually empty.**
+THE LEDE is one slot filled by the highest-significance object, and
+because an explainer is a legitimate occupant, it is always full without
+ever inventing activity.
+
+**No composite economy score.** The brief floated an "Overall" lens. A
+single number across unlike domains needs weighting choices we cannot
+defend, and it is the single most-copied feature in the category — the
+Chicago Fed has shipped one since 2001. Six honest states beat one
+indefensible number.
+
+**I overrode #35 three times, and recorded why in the Constitution so it
+stays settled.** (1) #35 rejected "Today in the Economy"; it conflated a
+daily *content obligation* (correctly rejected) with a daily *surface*
+(fine, if it never pretends) — the quiet day is the design problem and
+solving it is the feature. (2) #35 said newsletter-first; it reasoned
+from referral economics to product architecture. Referral data says where
+users are *acquired*, not where value is *created* — and worlds, evidence
+and rabbit holes do not fit in an email. (3) #35 shelved Radar; its
+arithmetic refutes broad *scanning*, which is abandoned, but a small
+pre-registered registry of motivated detectors survives the same
+arithmetic. The findings that constrain what we may honestly *claim*
+remain binding and are not subject to override.
+
+### The architectural heart
+
+The **Structured Intelligence Object** is the one thing most likely to be
+built wrong, so the constraint is stated as an invariant: **it is a
+projection, never a source of truth.** If it cannot be recomputed from
+canonical facts plus methodology version plus data vintage, it cannot be
+published. Without that rule it becomes a second canonical store that
+drifts from the first.
+
+Three of its fields do the real work. `surfacing_rule` +
+`threshold_cleared` make "never manufacture activity" a structural
+property rather than editorial discipline — an object that cannot name
+why it is significant is not surfaced. `knowledge_basis` carries
+OBSERVED vs BACKFILLED end to end, taking the weakest basis of its
+inputs. And `limitations` is required rather than optional, because
+optional fields get omitted and that field is where the honesty lives.
+
+### The one architectural incompatibility
+
+The frontend is a client-only SPA. Crawlers and social scrapers do not
+execute JavaScript. **That is not an optimisation gap — it is a
+structural incompatibility with the sharing and SEO sections of the
+Constitution.** Recommended resolution: serve the HTML shell from
+FastAPI with per-route server-rendered `<head>`, keeping the SPA and its
+821 tests intact, rather than adding a Node SSR runtime and a second
+deployable. Recorded as ADR-039 candidate, not as a decision.
+
+### What survives
+
+Almost everything. All 13 pure domain modules, all five frozen
+methodologies, observation versioning, replay, the evidence and
+provenance model, the release pipeline, the #33 Analyst, the #34
+hardening, the design system — including the machine-enforced
+`state-*`/`feedback-*` separation, which turns out to be exactly what the
+accessibility requirement needs — and the 34 curated explanations that
+are already the seed of "Wait, Seriously?". What changes is the
+information architecture, the rendering model, the data sources, and one
+new projection layer. Removed: the legacy AI subsystem, unmounted since
+#34.
+
+### Lesson
+
+**A specification increment's real output is the arguments it ends.** The
+temptation was to write a document that describes a product; what was
+actually needed was one that settles questions so they stop being
+re-opened — which is why the overrides of #35 are recorded as standing
+decisions with reasons, why ten decision rules are stated as gates rather
+than aspirations, and why the Day-1 table classifies every feature
+including the ones being deferred. Deferral without a written reason is
+just an argument waiting to happen again.
+
+## Increment #36A — Final Architecture Decisions & Implementation Sequence (specification only)
+
+Bounded decision pass. No production code, no behaviour change, nothing
+committed, no secret read. Deliverables:
+`docs/architecture/macrochipz-2.0-implementation-sequence.md` (the
+authoritative roadmap), ADR-034, ADR-039, ADR-041, and targeted
+corrections to the #36 architecture document.
+
+### The brief contained a factual error, and it mattered
+
+The prompt described "existing React/Next.js frontend infrastructure."
+There is no Next.js in this repository. The frontend is **Vite 8.3 +
+React 19.2 + `react-router-dom` 7.18.3** in declarative mode. Had I
+taken the framing at face value I would have evaluated a migration
+*from* Next.js rather than *to* it, and reached a different answer.
+
+Two further repository facts reshaped the rendering decision, and
+neither is visible from the "single container image" framing the
+project has been using:
+
+- **The production image is Python-only.** No Node, no frontend build,
+  no `StaticFiles` mount. CI references "Render's Static Site build."
+- **Frontend and backend deploy cross-origin**, which is why #34 needed
+  a CORS allowlist and why `VITE_API_BASE_URL` exists.
+
+So the real shape is a backend container plus a separate static site.
+**Any option requiring a runtime Node server adds a third deployable
+that does not exist today** — the largest hidden cost in the comparison.
+
+### Decision 1 — rendering: I overturned my own #36 recommendation
+
+#36 proposed serving the document head from FastAPI. #36A rejects it.
+Route and metadata definitions would live in Python *and* React with
+nothing keeping them in agreement — a shared secret across two
+languages, drifting silently, on a product whose entire differentiator
+is that its claims are checkable. The brief was right that a
+server-rendered `<head>` never justified that.
+
+**Decided: React Router framework mode, v7 line, `ssr: false` +
+`prerender`** (ADR-039). Three facts settled it. React Router's current
+major is **8**, and `react-router-dom` has no 8.x at all — but
+`@react-router/dev@7.18.4` supports Vite 8, so framework mode is
+available **without** the 21-file import codemod. The vendor publishes
+a migration guide from exactly our starting point. And its official
+template pins our exact stack, down to `@tailwindcss/vite`.
+
+`ssr: false` + `prerender` **preserves the static-site deployment
+entirely** — no Node in production, no third deployable — and
+pre-rendered and server-rendered paths are mixable, so `ssr: true`
+later needs no framework migration. **That reversibility is the real
+argument: we are choosing the cheapest point on a path we can move
+along, not committing to an endpoint.**
+
+A finding that changed sequencing: **React 19 hoists `<title>` and
+`<meta>` natively.** Per-route dynamic metadata needs no architectural
+change at all; only metadata *in the initial byte stream* needs
+pre-rendering. Two separable steps, not one big one.
+
+Next.js was rejected as disproportionate: its own migration guide
+deletes `vite.config.ts` (which holds the Tailwind plugin, the dev
+proxy *and* the entire Vitest config), Vitest cannot test async Server
+Components by Next's own documentation, and ISR — its main advantage —
+needs a Node server to solve a problem that ~60 release days a year may
+not pose.
+
+### Decision 2 — ordering: four increments came off the critical path
+
+No migration blocks the Structured Intelligence Layer, the homepage, or
+anything else. Once concepts are separated from provider identity, FRED
+is just one binding behind a stable vocabulary.
+
+I also checked the one deadline I had been carrying: #35 flagged the
+Fed's Data Download Program retiring the week of 9 November. **That is
+H.15, and this repository has no Fed Board client** — rates come from
+Treasury directly. The concern does not apply. FRED's licensing blocks
+*public launch*, not development, so the migration track gates #47 and
+nothing before it.
+
+**Product becomes visible at #40 and recognisable at #42, three
+increments earlier than #36's plan.**
+
+### Decision 3 — the defect underneath the naming problem
+
+#36 found that `PAYEMS` and friends are FRED-shaped identifiers. #36A
+found the indirection already exists — the domain references
+`PRIMARY_SERIES_ID`, not `"PCEPILFE"` — so only the *values* are
+provider-shaped, and only two literals leak past it
+(`labor_release_processing.py:47-48`, which the code's own comment
+admits are duplicated "by convention").
+
+The real defect is elsewhere. `Observation` carries **exactly two
+fields, `date` and `value`** — no identity. So evidence is stamped from
+a module constant. **Swap FRED for BLS and the observations flow
+through unchanged, while evidence still says `PAYEMS`.** Evidence would
+assert a provenance that no longer reflects where the number came from.
+On a product whose differentiator is provenance, that is not a naming
+inconvenience; it is a correctness failure waiting for a migration to
+trigger it.
+
+ADR-034: concepts code-defined (methodologies depend on them, so they
+must be type-checked and un-changeable without a deploy), bindings
+per-adapter in code as Rates already does, and **no new table** — the
+database records concept *membership* via one additive column, while
+`observation_provenance` already records which binding produced each
+value. Dual bindings during cutover are both the verification
+mechanism and the rollback mechanism.
+
+### Decision 4 — #37 got smaller
+
+Ten events, each with the product question it answers written down; an
+event without one does not ship. Fire-and-forget, no-op by default, no
+cookies, no identity graph. **Return measurement needed nothing new** —
+Since Last Visit already keeps a client-side-only checkpoint, so a
+coarse `days_since_last_visit_bucket` falls out of existing state.
+
+I also moved OG tags, sitemap and robots *out* of #37 into the
+rendering increment where they architecturally belong, and email
+capture into Follow. #37 is analytics only.
+
+### Charting: the default answer failed the hard requirement
+
+Measured empirically against React 19.2.8 with no DOM rather than read
+from documentation: **Recharts renders a 127-byte empty `<div>` with
+zero `<svg>` elements.** Not a container problem — identical with full
+jsdom globals. It is a tracked regression from 2.x, open and unfixed
+fifteen months after 3.0. uPlot, Chart.js, Observable Plot, visx's
+`XYChart` and Nivo's `ResponsiveLine` fail the same test.
+
+ADR-041: hand-authored SVG over d3 math primitives (+15.7 KB measured
+through our own Vite build, against +126 KB for Recharts), keeping the
+`<svg>` element — and therefore the ARIA and the `--mc-*` tokens —
+ours. visx *primitives* pass SSR and are the designated escape hatch,
+triggered by needing touch tooltips on more than one chart. ECharts is
+reserved for server-side rendering only, guarded out of the client
+bundle.
+
+### Two corrections to our own record
+
+The charting evaluation read `YieldCurveChart.tsx` and found this
+project has been repeating two things that are not true.
+
+**The SVG is not `aria-hidden`.** Its own doc comment says so, and #35
+and #36 both repeated it, but the code uses `role="img"` +
+`aria-label`, *plus* an `sr-only` `<figcaption>`, *plus* the table —
+redundant rather than clean. And **`preserveAspectRatio="none"` squashes
+the chart roughly 37% horizontally at 390px**, on a product that calls
+mobile first-class. Both are now #41 acceptance criteria.
+
+Separately: #35 and #36 said there is no meta description. There is one
+— static and site-wide. The gap is *per-route* metadata.
+
+### Lesson
+
+**Three of this increment's four decisions turned on a fact about the
+repository that no amount of reasoning would have produced.** The
+rendering decision turned on the Dockerfile being Python-only. The
+identity decision turned on `Observation` having two fields. The
+charting decision turned on rendering Recharts server-side and counting
+the bytes. In each case the documentation-level answer and the
+measured answer differed, and in two of them I had already written the
+documentation-level answer into #36. Verify the thing itself — including
+the parts of your own record you are most confident about.
+
+## Increment #37 — Privacy-Conscious Measurement Foundation
+
+The first implementation increment of MacroChipz 2.0, and deliberately
+the smallest one in the roadmap. Frontend only; **no backend code was
+changed, so the backend suite was not run** — nothing in this increment
+can reach it. Nothing committed, nothing pushed, no secret read.
+
+New: `frontend/src/analytics/` (vocabulary, `track`, provider boundary,
+route hook, public surface), three test files, one architectural guard,
+and `docs/architecture/product-measurement.md`.
+
+### What this increment is
+
+One typed event vocabulary, one `track()` function, one provider
+boundary. There is no identity graph, no session replay, no
+fingerprinting, no funnels, no experimentation framework. Those are not
+deferred; they are excluded.
+
+**Analytics is disabled by default and that is the supported production
+state.** The whole point was to build the abstraction without inventing
+a dependency.
+
+### The provider decision was not mine to make
+
+#36A left provider selection open, and #37 confirmed why. **Cloudflare
+Web Analytics — free and cookieless — cannot carry custom events**, so
+it cannot answer the one question this increment exists for. Everything
+that can (Plausible $9/mo, Fathom $15/mo, self-hosted Umami) costs
+either money or operational surface.
+
+That is a trade between a small recurring cost and a small recurring
+burden. Both defensible, neither mine to pick. So the abstraction
+ships, the call sites are wired, and nothing is sent. Adding a provider
+later is one file plus one environment variable — no component changes.
+
+### #36A was wrong about return measurement, and I dropped it
+
+#36A proposed deriving `days_since_last_visit_bucket` from the existing
+Since Last Visit checkpoint, reasoning that return measurement needed no
+new storage. Reading the module killed it.
+
+`sinceLastVisitCheckpoint` stores a **server-issued data watermark**,
+and its own guard test proves the module never reads the browser clock.
+Time since that watermark measures **how stale the data a reader last
+saw was — not how long ago they visited.** Shipping it as a visit
+interval would have been exactly the fake precision the Constitution
+forbids, and it would have looked right in a dashboard forever.
+
+So return behaviour is not measured in #37. The two honest options are
+recorded, along with the precision note that a local checkpoint
+establishes behaviour *in one browser*, never a returning *person*.
+
+### Two judgement calls worth recording
+
+**`empty_state_viewed` is reserved rather than emitted**, and not
+because the feature is missing. Empty states exist today — but they are
+*data-availability artifacts* ("no rates data yet"), while the question
+the event exists to answer is about the **designed** honest-absence
+state that arrives with What Changed in #42. Emitting it now would
+measure a different thing and quietly poison the baseline.
+
+**`world_opened` overlaps `page_viewed`** and I kept it anyway. It
+survives the planned `/labor` → `/jobs` rename and the 2.0 designs
+where a world opens without a route change, and its property is
+self-describing where a route template requires knowing which routes are
+worlds. It is the one place #37 collects more than the strict minimum,
+so it is written down rather than left to be found.
+
+### Where the events live
+
+Semantic actions, never DOM coordinates. `usePageViewed()` sits once in
+`AppShell` so the pages stay unaware of analytics and a future route is
+instrumented by existing. `ExplanationTrigger` carries its own event
+because it means exactly one thing at all sixteen call sites.
+
+`Disclosure` was the interesting one. It gained an optional `onOpen`
+and is deliberately kept **ignorant of analytics**: it renders evidence,
+methodology, data-basis notes and change lists alike, so only the call
+site knows which product event an instance represents. Keeping the
+semantics at the call site is what lets one primitive serve several
+events without inventing a false one.
+
+### Two layers, on purpose
+
+The type system makes a wrong property a compile error. The runtime
+allowlist drops any undeclared key and any non-primitive value. The
+duplication is deliberate — types vanish at runtime, and the allowlist
+is what stands if a type is ever widened. Tested with a payload
+carrying a question and an email address: both dropped.
+
+`track()` never throws, returns `void` so nothing can await it, creates
+no promises so nothing can reject unobserved, and **does not log on
+failure** — a console error on every page view in a browser with an ad
+blocker would be noise reporting a state we consider normal.
+
+### Verification
+
+Frontend **1,406 passed** (1,366 before, +40). Typecheck clean, oxlint
+clean, production build clean in 267ms. Backend untouched and not run.
+
+Checked the built bundle rather than trusting the guard: `MODE:
+"production"` and `PROD:!0` are inlined, so the debug provider's console
+call is unreachable in production. Also grepped for vendor SDK names —
+the only hit was "segment" inside a react-router error string about
+malformed URL segments.
+
+### The mistake
+
+I broke the build twice with the same error: an `Edit` whose replacement
+dropped the closing `>` of a JSX opening tag, in `Disclosure` and
+`ExplanationTrigger`. Twelve test files failed to parse. Both were
+mechanical and obvious once read, and both came from writing a
+replacement string that ended at the last attribute I cared about
+instead of at the end of the tag I was replacing.
+
+### Lesson
+
+**The smallest increment in the roadmap was the one that caught a
+planning error.** #36A's return-measurement design survived two
+documents and a review, and died in ten minutes of reading the module
+it depended on. The same shape as #36A's own lesson, one increment
+later: the plan described what the checkpoint was *for*, and the code
+said what it actually *stores*. Those differed, and only one of them was
+true.
+
+## Increment #38 — Source-Neutral Economic Concept Identity
+
+Implements ADR-034. Establishes the identity boundary the source
+migrations (#M1–#M4) need, without performing any of them. Nothing
+committed, nothing pushed, no secret read or printed.
+
+New: `app/concepts/` (registry + bindings), `app/services/series_identity.py`,
+`app/models/series.SeriesIdentity`, one additive migration,
+`tests/test_concept_identity_boundary.py`, `tests/identities.py`, and
+`docs/architecture/economic-concept-identity.md`.
+
+### The defect, restated from the code
+
+#36A found that `PAYEMS` — a FRED identifier — was MacroChipz's
+canonical identity. The worse half is that `Observation` carries only a
+date and a value, so a methodology stamped its evidence from a
+module-level constant:
+
+    LaborObservationEvidence(series_id=PAYEMS_SERIES_ID, ...)
+
+**Change the provider and the observations flow through unchanged, while
+the evidence goes on saying `PAYEMS`.** On a product whose entire
+differentiator is that its claims are checkable, that is a correctness
+failure waiting for a migration to trigger it.
+
+### What was built
+
+Twelve concepts, twelve bindings, matching the twelve persisted series
+exactly. Concepts are code-defined (frozen methodologies depend on
+them, so they must be type-checked and versioned with the code);
+bindings carry the provider, the provider's own identifier, the native
+unit and the conversion factor, plus an `equivalence_basis` that must
+cite the methodology already using that series for that role. "The
+names match" is not a justification.
+
+`SeriesIdentity` — concept, provider, provider series id — now travels
+with the data, resolved from the persisted row by
+`SeriesRepository.get_identity`. Evidence carries all three.
+
+### Four things the implementation changed about the plan
+
+**1. The role constants kept their values.** ADR-034 said they would
+change. They did not, and changing them would have broken the invariant
+the ADR itself set: they flow into evidence's `series_id`, which
+Invariant C requires to be *the provider's* identifier. They are now
+*derived* from the active binding instead of hardcoded, and new
+`*_CONCEPT_ID` constants sit alongside.
+
+**2. Identity parameters are keyword-only.** Every existing positional
+call to a frozen methodology keeps working, and a positional mix-up
+between the employment and unemployment identities — which would
+attribute one survey's evidence to the other — is now impossible to
+write.
+
+**3. Bindings needed two provider-facing identifiers.** Treasury stores
+MacroChipz's own id (`UST_NOMINAL_10Y`) in `economic_series.series_id`
+while FRED stores the provider's (`PAYEMS`), so `provider_series_id`
+and `storage_series_id` are separate fields. That asymmetry is a
+pre-existing ambiguity in that column; #38 names and contains it rather
+than migrating six Treasury rows for naming symmetry.
+
+**4. The unit conversion moved to the binding.**
+`PAYEMS_JOBS_PER_NATIVE_UNIT = 1000` was documented as converting from
+*"FRED's native Thousands of Persons"* — so it was always a property of
+the provider. Whether BLS publishes CES in the same units is now
+explicitly a verification task for #M2, not an assumption inherited
+from FRED.
+
+### A production bug I introduced, and caught
+
+Requiring `concept_id` broke `SeriesRepository._upsert_series`, which
+never set it — so a canonical series created by a fresh sync would have
+had none, and the monitors would have raised instead of returning
+`INSUFFICIENT_DATA`. The fix has two parts, and the second is the
+better one: `_upsert_series` now sets `concept_id` by the same
+deterministic rule the backfill uses, and `get_identity` treats the
+column as a **denormalization of that rule** rather than the source of
+truth — falling back to the binding for the concept while still reading
+**provider and series id from the row**, which is what Invariants C and
+D actually require. That single change fixed 149 test failures, because
+they were all reporting the same real defect.
+
+### Migration
+
+One additive nullable column plus an index. Nullable **permanently**:
+`POST /series/{id}/sync` accepts arbitrary FRED series, and forcing NOT
+NULL would mean inventing a concept for each one — the fabricated
+identity ADR-034 exists to prevent. Canonical paths require a concept
+and fail loudly; generic endpoints do not care.
+
+Verified against the real database after applying: 12 of 12 series
+mapped, **0 unmapped**, 1,072 observations unchanged (checksum
+`9414455.108000`), 175 distinct observation dates unchanged, 714
+provenance rows unchanged, 1,072 observation versions unchanged, 133
+recorded monitor results unchanged.
+
+### The guard earned its keep immediately
+
+`test_no_domain_module_contains_a_provider_series_literal` failed on
+its first run — because `app/domain/labor_release_processing.py` still
+carried `PAYEMS_SERIES_ID = "PAYEMS"`, with its own comment conceding
+it was "kept in sync with app.models.labor **by convention**." I had
+written the guard for exactly that line in #36A and then forgotten to
+fix it. The guard remembered.
+
+### Lesson
+
+**A refactor is only as honest as the thing it makes impossible.**
+Renaming constants would have satisfied the letter of ADR-034 and left
+the defect entirely intact, because the defect was never *which*
+constant was used — it was that identity came from a constant at all
+while the data carried none. The test that matters is not "do the names
+look source-neutral", it is "can evidence still name a provider that
+did not supply the number", and that one is answerable only by making
+identity travel with the data.
+
+## Increment #39 — Structured Intelligence Layer
+
+The bridge between the canonical engine and the consumer surfaces #40–#46
+will build. Nothing committed, nothing pushed, no secret read.
+
+New: `app/models/intelligence.py`, `app/services/intelligence/`
+(builder, identity, service), `app/api/intelligence.py`, three test
+files, and `docs/architecture/structured-intelligence.md`.
+
+### The taxonomy came from the database, not the plan
+
+The brief proposed a `STATE_CHANGE` type. Before designing anything I
+counted what the engine has actually recorded, and found two things
+that changed the answer.
+
+**There are zero `STATE_CHANGED` rows.** Every one of the 1,532
+persisted analysis updates is `CONFIRMATION_CHANGED` (44) or
+`AVAILABILITY_RESTORED` (1,488). A `STATE_CHANGE` variant would have
+been a well-designed model with no data behind it. So the variant is
+`ANALYSIS_CHANGE`, carrying `event_type` as a typed field — which the
+Constitution needs anyway, since it requires state changes and metric
+drifts to be visually distinct.
+
+**And 97% of those rows record one bootstrap event** in which
+everything became computable at once. Surfacing that as economic
+intelligence would be exactly the manufactured activity the
+Constitution forbids. Hence `change_class`: `ECONOMIC` versus
+`COVERAGE`, a deterministic documented classification rather than a
+judgement, so a surface can filter without presentation guessing.
+
+Final taxonomy, all four flowing with real data: `RELEASE_PROCESSED`
+(3), `OBSERVATION_CHANGE` (358), `ANALYSIS_CHANGE` (1,532),
+`RATES_MOVEMENT` (6).
+
+### What I refused to build
+
+**No significance score.** THE LEDE will need to pick one object, and
+the temptation was to ship a ranking primitive now. But no frozen
+methodology publishes a notability threshold — `rates_v1.0` explicitly
+defines none — so any rule would have been invented here rather than
+cited, and it would have been invented inside a *canonical* object
+where it would look like a fact. Ordering is by time with the stable id
+as a total tiebreak. The interpretable primitives a surface can filter
+on already exist as named facts. Significance joins the contract when a
+methodology publishes a threshold to cite; BLS's own confidence
+intervals are the obvious first candidate.
+
+`RATES_MOVEMENT` carries that refusal in its own `limitations`: it
+reports the movement and its historical position, and says plainly that
+it is not claiming the movement matters.
+
+### Persistence: generate on read, no new table
+
+Evaluated against every criterion in the brief. Every input is already
+persisted; ids derive from semantic facts so permanent URLs resolve
+without a row; `observation_versions` and `recorded_monitor_results`
+mean reconstruction loses nothing about what MacroChipz knew.
+
+The decisive argument is the last one: **a stored projection can
+disagree with the facts it claims. A generated one cannot.** The
+trigger to revisit is written down — if an object ever needs to carry
+something not derivable from canonical data, such as a human
+correction, persistence becomes necessary and gets introduced then.
+
+### The identity guard fired in development
+
+Ids are semantic, not database rows: `observation:{concept}:{date}:
+{detected_at}`. The separator is a colon, and `_segment` rejects any
+dimension containing one rather than silently minting a colliding id.
+
+It rejected the first real timestamp I passed it, because ISO-8601
+contains colons. The right fix was the encoding, not the guard —
+timestamps are now compact (`20260919T184627419986Z`). A guard that
+fires the first time you use it is a guard worth having.
+
+Two identity properties worth recording: a **methodology change mints a
+new id** (a conclusion under a different methodology is a different
+conclusion), and a **provider migration does not** (ids key on #38's
+concept identity, so an object about core PCE survives its source
+moving from FRED to BEA).
+
+### Avoiding the god object
+
+Four variants with small typed payloads — and the test asserts it,
+capping each payload at 12 fields and 2 optional ones. A consumer
+switches on `type` and gets a payload where every field means
+something, rather than one model with thirty nullable columns where
+most mean nothing for any given object.
+
+### Verification
+
+Backend **2,128 passed, 2 skipped** (2,096 before, +32). Frontend
+untouched, so its suite was not re-run. Guards assert no model import,
+no provider client, no upward domain dependency, no Analyst dependency,
+and that the API route constructs no intelligence object itself.
+
+Verified by probe rather than assumption: list and detail both 200,
+`limit=101` and `limit=0` both 422, unknown and malformed ids both 404,
+`world=atlantis` 422, and two identical requests return byte-identical
+payloads.
+
+### Lesson
+
+**Counting the rows first changed the design twice in one increment.**
+The plan's `STATE_CHANGE` type had no data; the analysis-change table
+was 97% bootstrap noise. Both were ten minutes of SQL to discover and
+would have been months to unlearn — the first as a model nothing ever
+populated, the second as a homepage feed full of "MacroChipz can now
+compute this" presented as economic news. The engine's own record of
+what it has actually done is a better specification than any document
+about what it is for.
+
+## Increment #40 — Rendering Foundation & First Permanent Intelligence Object
+
+MacroChipz now has a URL for one economic fact:
+
+```
+/intelligence/rates%3AUST_NOMINAL_10Y%3A2026-09-18
+```
+
+It returns real HTML with a real `<title>`, a real description, a real
+Open Graph card, and the whole page already in the body. Before this
+increment every MacroChipz URL returned an empty root div, which is
+fine for an application and fatal for a publication.
+
+### Choosing the first object
+
+The spec forbade choosing whichever object was easiest to render, so
+the choice came from the database rather than from preference.
+`RATES_MOVEMENT` was the only #39 type with genuine per-observation
+Treasury provenance, a real frozen methodology, real evidence values,
+and deterministic historical context. `RELEASE_PROCESSED` would have
+been easier and would have shipped a page whose "evidence" was an
+operational log entry. The first permanent URL sets the standard for
+every one after it, so it had to be the one that could actually be
+verified.
+
+### The framework migration was smaller than the ADR predicted
+
+ADR-039 anticipated migrating `<Routes>` into `routes.ts`
+"incrementally". In practice the entire existing `<App/>` tree was
+preserved wholesale under a `*?` splat route, so **no pre-existing
+route was migrated at all**. Only `/intelligence/:id` is a real
+framework route. The blast radius was the application shell —
+`index.html` and `main.tsx` deleted, `root.tsx` and `entry.client.tsx`
+created — and not the routes. All 1,470 frontend tests pass, including
+every test written before this increment.
+
+### Two spikes answered by being wrong first
+
+`reactRouter()` and Vitest cannot share one Vite config. Fifteen of
+fifty-four test files failed with "React Router Vite plugin can't
+detect preamble" before the configs were split. The same failure
+resolved the second spike at no extra cost: `@vitejs/plugin-react` must
+*not* sit beside `reactRouter()`, which supplies its own React
+transform — it belongs in the Vitest config, where `reactRouter()` is
+absent. The vendor's upgrade guide and its own template had appeared to
+contradict each other; they were describing different configs.
+
+### What the page is not allowed to do
+
+Three prohibitions are enforced by a test rather than by review, in
+`src/test/no-intelligence-derivation.test.ts`: the rendering layer may
+not recompute a change magnitude, convert to basis points, compute a
+percentile, classify a world, or associate evidence. It formats; #39
+computes. A page that can derive a number is a page that can disagree
+with the engine.
+
+The guard needed three corrections, and each one is the same mistake:
+a pattern that matched the *shape* of a defect rather than the defect.
+`*100` caught legitimate percentile formatting. The OG-screenshot check
+matched its own docstring. And `published_at\s*[=:]` matched
+`published_at === null` — a comparison, not an assignment. Reading the
+field is the correct behaviour; inventing a value for it is the defect,
+and the guard now says so in a comment so the next person does not
+"fix" it in the wrong direction.
+
+That last one matters beyond the regex. `published_at` is `null` for a
+Treasury observation because Treasury does not publish an exact time.
+The page therefore says *"Not known — the source does not publish an
+exact time"*. Substituting `recorded_at` would have been one line and
+would have been a lie about provenance on a permanent URL.
+
+### Omission over guessing
+
+Two places chose to emit nothing rather than emit something plausible.
+When `VITE_SITE_URL` is unset, `canonical`, `og:url` and `og:image` are
+omitted entirely — a guessed canonical tells a crawler the real page
+lives somewhere it does not, which is worse than no canonical. When an
+object lacks the facts for a truthful OG card, the card is skipped and
+logged rather than filled in.
+
+The same instinct runs the other way for build failures. An unset
+`VITE_API_BASE_URL` prerenders nothing and succeeds, because
+frontend-only CI must not require a database. But an API that *answers
+badly* throws and fails the build, because the alternative is shipping
+permanent URLs with nothing behind them. `verify-build-output.mjs` then
+re-reads the actual generated HTML and fails the build if the metadata
+is missing, the body is an empty shell, or anything secret-shaped
+appears. Unit tests assert what the code intends; that script asserts
+what the build actually produced.
+
+### The cost, measured rather than assumed
+
+ADR-039 required measuring build time before committing to
+rebuild-per-release. Fixed cost is ~8.3 s. Marginal cost is **0.31 s per
+object** — 0.29 s to prerender, 0.017 s for the Satori→sharp card. That
+extrapolates to ~15 s at the current cap of 25 objects, ~84 s at 250,
+and ~161 s at 500: comfortable to roughly 250, unattractive past 500.
+The honest caveat is that this is linear extrapolation from n ≤ 6 and
+should be re-measured at n ≈ 100. The escape hatch was already decided
+and is still cheap: flip `ssr: true` in the same framework.
+
+### One event went live
+
+`share_initiated` is the first of #37's reserved events to be
+activated, for the reason #37 required: the affordance now exists. It
+records `object_type` and nothing else — not the URL, not the title,
+not the clipboard, not which app the reader chose. `normalizeRoute()`
+collapses `/intelligence/{anything}` to the template for the same
+reason: the id would turn `page_viewed` into a reading history. And
+because `track()` never throws and is called before the share attempt,
+sharing keeps working when analytics throws and when it is disabled
+entirely — both asserted by test.
+
+### Still true, and worth stating
+
+One route is crawlable. The rest of the site is still an empty shell to
+a crawler that does not run JavaScript. Unfurl behaviour has never been
+checked against a real platform, because that needs a public
+deployment. And a new object does not appear at its permanent URL until
+the site is rebuilt. Each is written down in
+`docs/architecture/rendering-and-permanent-objects.md` §13 rather than
+left to be discovered.
+
+## Increment #40A — Local development regression
+
+#40 was reported complete on the strength of 1,474 passing tests, a
+clean typecheck, a clean lint, and a green production build that
+prerendered six pages and verified its own output.
+
+`npm run dev` could not serve a single request.
+
+Under `ssr: false`, React Router allows a route to export `loader` only
+if that route is matched by a prerender path **in the same
+invocation**. Local development sets no `VITE_API_BASE_URL`, so nothing
+is prerendered, so the `loader` on `routes/intelligenceObject` was
+invalid, so the dev server threw and exited.
+
+What makes this worth writing down is the shape of the failure rather
+than the fix. The dev server printed its banner first. It reached
+
+```
+➜  Local:   http://localhost:5173/
+```
+
+and only died on the first request. Anyone glancing at the terminal
+would have concluded it was running. The #40A instruction to "wait long
+enough to ensure the prerender validation does not terminate the
+process" was exactly right, and it is the reason the reproduction took
+one attempt instead of several.
+
+### Three blind spots, not one bug
+
+Every automated check ran with an API available, which is the one
+configuration where the defect is invisible — prerendering the route
+makes `loader` legal. Unit tests could never have caught it, because
+the validation is React Router's own and runs only when the dev server
+or build assembles the route manifest. And #40 was *inspected* but
+never *run*: its documentation asserted that local development worked
+without a database, which was an assumption written in the voice of a
+verified fact.
+
+That last one is the real defect. The build was verified honestly and
+thoroughly; a sentence about something adjacent was not verified at
+all, and nothing in the process distinguished the two.
+
+### The obvious fix was wrong
+
+Deleting `loader` and keeping `clientLoader` makes `npm run dev` work
+immediately. It also makes the release build emit an empty shell — no
+`<h1>`, no title, no Open Graph tags — because under `ssr: false` a
+route with only `clientLoader` is not rendered during prerendering at
+all. That would have traded a broken dev server for a silently broken
+product, and it was caught by `verify-build-output.mjs`, the script
+written in #40 to check what the build actually produced rather than
+what the code intended. That script justified itself within a day.
+
+Both exports are genuinely required — in different configurations. So
+the *module* varies: two route modules, the prerendered one a thin
+re-export of the other plus `loader`, chosen in `src/routes.ts` from a
+single memoized decision that `react-router.config.ts` also reads. One
+answer, so the two cannot disagree. The condition is deliberately "will
+this build prerender an intelligence path", not "is the API URL set" —
+a reachable API holding no `RATES_MOVEMENT` objects prerenders nothing,
+and there a `loader` would be just as invalid.
+
+### Regression coverage, in two layers
+
+A fast unit test asserts the client-side variant exports no `loader`,
+`action` or `headers`, and that the two variants differ by exactly one
+export. A second guard, `npm run verify:spa-mode`, builds with no API
+and asserts React Router accepts it. The second exists because the
+first is only *our restatement* of the framework's rule; if React
+Router changes the rule, only the build notices. Both were checked by
+reintroducing the original defect and confirming each one fails.
+
+### Warnings, deliberately not silenced
+
+The `envFile` deprecation is emitted by Vite 8.3.0 because
+`@react-router/dev@7.18.4` sets `envFile: false` internally. It is not
+our configuration and patching a dependency to quiet it would be worse
+than the warning. Of the five React Router v8 future flags, none were
+adopted: two could plausibly affect this increment — route-module
+splitting, now that one route has two variants, and trailing-slash-aware
+data requests, which touch the `.data` files prerendering writes — and
+both deserve their own verification rather than being switched on to
+clean up console output. Enabling `v8_viteEnvironmentApi` was measured
+and does not remove the `envFile` warning; the two are unrelated.
+
+## Increment #40B — Consumer presentation pass
+
+#40 built a permanent, crawlable, shareable page for one economic
+fact. #40B asked whether a person without a finance background could
+read it. The honest answer was no: it opened with
+
+> 10-Year Treasury Par Yield (Nominal) is 5.01%
+
+and expressed every movement in basis points. Both are correct. Both
+assume the reader already works in fixed income.
+
+The page now opens with the name, the number, and the move, in that
+order — "10-year Treasury yield", "5.01%", "↑ Up 0.05 percentage
+points over the last 5 trading days" — and Treasury's own wording sits
+quietly beneath it. Nothing was removed; the precise version moved to
+where precision is what the reader came for.
+
+### The bug that was hiding in the copy
+
+#40's page said:
+
+> Against its own history (113 observations), this level sits at the
+> 57th percentile.
+
+That sentence names the wrong quantity. `RatesService._historical_context`
+ranks the current **5-session change** against every earlier 5-session
+change; `_CONTEXT_WINDOW` is `"5_SESSIONS"`. Both percentiles describe
+the **move**. Neither describes the level.
+
+It was not caught in #40 because nothing about it looked wrong. The
+number was real, the count was real, the sentence was fluent, and the
+architectural guard was watching for recalculation rather than for
+mislabelling. A guard that asks "did the frontend compute this?" cannot
+ask "did the frontend understand what it was given?" — and the second
+question is the one that decides whether a reader is misled.
+
+The fix was to read the backend rather than the field name. The page
+now says what is compared, distinguishes the signed rank from the
+magnitude rank, states the size of the record in the same breath as the
+comparison, and says outright that 113 moves is a few months of trading
+and not a statement about the long run.
+
+### Refusing the label
+
+The obvious product move is to answer "Is this unusual?" with yes or
+no. The section asks that question and then declines to answer it:
+
+> MacroChipz does not label this move unusual or ordinary. Its rates
+> methodology defines no threshold for that, so saying otherwise here
+> would be inventing one.
+
+A threshold invented in a React component is a significance methodology
+with no version, no test vectors and no methodology document — and it
+would be the one users actually see. Naming the refusal is more useful
+than a confident label nobody could check.
+
+### Units are presentation; canon is canon
+
+Basis points remain the stored, methodological unit. The page divides
+by one hundred to show percentage points, which is the same class of
+act as rendering `5.01` as `5.01%`, and shows the basis-point figure
+beside every window anyway. The distinction worth keeping straight:
+changing what a number IS would be a methodology change, and changing
+how it is WRITTEN is not.
+
+### "Why this matters", and the sentence it refuses to write
+
+Curated static prose keyed by exact concept id, reusing the same
+`Explanation` model the rest of the product uses. The temptation in an
+explainer about the 10-year is to say it sets mortgage rates. It does
+not. The copy says it is "a reference point, not a mechanism", that the
+10-year "does not set any of those rates", and that the relationship is
+loose and changes over time — and the architectural guard now fails the
+build on the words "determines", "controls" and "drives mortgage"
+appearing in that content.
+
+A concept with no curated entry renders no section at all. Silence is
+the right failure mode for an explainer; a generic paragraph pretending
+to be specific is not.
+
+### Verified in a browser, not only in jsdom
+
+The increment asked for real visual verification, and jsdom cannot
+provide it. Chrome was already installed, so the page was driven
+through the DevTools protocol at 1440×900 and at a true 390×900
+viewport: `scrollWidth` equals the viewport at both, and no element
+overflows except the evidence table inside its own scroll container,
+which is intended.
+
+That measurement also corrected a false alarm. Screenshots taken with
+`--window-size=390` looked badly clipped, on the new page and on the
+untouched Rates page alike. The layout was fine; headless Chrome had
+laid the page out at 500px and captured 390 of it. Forcing the viewport
+through `Emulation.setDeviceMetricsOverride` showed a clean 390px
+layout. Two minutes of measurement prevented a fix to a bug that did
+not exist.
+
+## Increment #40C — Visual evidence
+
+The permanent page could tell you the 10-year was at 5.01% and had
+risen 0.05 percentage points over five trading days. It could not show
+you that it had climbed from about 4.30 in late June. You can read six
+numbers and still not know the shape.
+
+#40C added the shape. The first question was whether #39 already
+carried it.
+
+### Tracing rather than assuming
+
+It did not, and the trace was short. `RatesMovementPayload` carries a
+title, a latest value, four change windows and two percentile ranks.
+`evidence` carries one observation — the latest. The absolute ceiling
+was five non-contiguous points, four of them only as a `from_value`
+attached to a change.
+
+Further up, `RateLevel` — what `RatesService` hands the intelligence
+builder — has no series either. So the builder could not have assembled
+one even if it wanted to.
+
+That mattered because the tempting shortcut was right there: the
+frontend already knows how to call an API, and there is an observations
+endpoint. Taking it would have produced a chart in an afternoon and a
+second account of reality forever. A chart built from a separate query
+can disagree with the object it sits under, and the chart is the half
+users believe, because it is the half they can see.
+
+So the contract was extended instead: `TimeSeriesVisualEvidence`,
+optional, carrying a concept id, a canonical unit, a requested and an
+available session count, and a list of dated values. No colours, no
+dimensions, no axis configuration, no component options — the backend
+supplies economic evidence and the frontend decides how to draw it. A
+test asserts that words like `color`, `width`, `ticks` and `chart`
+cannot appear as keys.
+
+The contract version was deliberately **not** bumped. It is documented
+as bumped on a breaking change, and an optional field is not one; a
+consumer written before #40C parses every object unchanged. Bumping
+would have announced a break that did not happen.
+
+### The window, and a subtlety worth writing down
+
+63 published sessions, because that is already a `rates_v1.0`
+comparison window. It is never called "three months": it is a session
+count, and the calendar span varies.
+
+Then a real subtlety surfaced in the data. The chart's first point is
+2026-06-22; the 63-session change's `from_date` is 2026-06-18. Both are
+correct. A 63-session *change* compares the latest observation with the
+one 63 sessions before it, which spans 64 observations; the latest 63
+observations span 62 steps. Anyone eyeballing the chart's endpoints
+against the "+0.55 over the last 63 trading days" figure would get
++0.50 and conclude something was broken.
+
+It is not an off-by-one to be corrected — the two answer different
+questions — so it was documented in the contract itself, and the
+caption states the series' own real date range rather than implying it
+matches a change window.
+
+### Drawing without lying
+
+X is positioned by date, not by array index. A publication gap
+therefore stays a gap, instead of being silently closed up by even
+spacing. That is what "never fabricate missing trading days" means
+once you are writing the path string.
+
+The y-axis is not zero-based, which is worth defending rather than
+assuming: a yield chart forced to a zero baseline flattens every real
+movement into a line near the top, and that is its own dishonesty. The
+axis labels always state actual values, so nothing about the scale is
+hidden.
+
+The line is a single neutral stroke. Semantic `state-*` and
+`feedback-*` colours mean something specific in this design system, and
+a yield moving up is neither good nor bad. A test fails if a red, green
+or semantic token appears inside the chart markup.
+
+### ADR-041's two defects became acceptance criteria
+
+The ADR had already diagnosed the existing yield-curve chart's
+`preserveAspectRatio="none"` — text and strokes squashed roughly 37%
+horizontally at 390px — and prescribed the fix: a viewBox per
+breakpoint with `xMidYMid meet`, because `ResizeObserver` measurement
+would reintroduce the server-rendering failure that disqualified
+Recharts in the first place. That is what was built, and it was
+verified rather than assumed: through the DevTools protocol, viewBox
+aspect and rendered aspect match to three decimals at both 390px
+(1.714) and 1440px (3.167).
+
+The ADR's second recorded defect was that the old chart used two ARIA
+patterns at once. This one picks a labelled image, with the numbers
+behind a disclosure as a real table — which serves sighted readers
+wanting exact values just as much as screen-reader users, and is the
+same "check this" instinct the rest of the page runs on.
+
+The old `/rates` chart still has the distortion bug. #40C did not widen
+to fix it; no code is shared, and it stays ADR-041's acceptance
+criterion for #41.
+
+### Proving the negative
+
+"No provider call during intelligence read" is awkward to test by
+mocking, and the first attempt did it badly: monkeypatching `httpx`
+inside an integration test, which promptly failed an existing guard
+forbidding integration tests from importing `httpx` at all. The guard
+was right and the test was wrong — the point of that rule is that a
+test file which cannot import a network client cannot accidentally use
+one.
+
+Rewritten as a static import check in the codebase's own idiom: parse
+every module on the read path — domain, service, builder, repository,
+contracts — and assert none imports an HTTP client, a provider client
+or a model SDK. Stronger than the mock, because it covers code paths no
+test exercises, and it needs no network library to state it.
+
+### Cost
+
+About 3.3 KB gzipped per page: +2.0 KB HTML, +1.3 KB JavaScript, and
++0.11 s of build time. The biggest raw contributor is the 63-row
+verification table, which is a deliberate purchase — it is what makes
+the chart checkable rather than decorative. Nothing in the numbers
+suggested a problem, so nothing was optimised.

@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# React Router framework mode typegen output (Increment #40)
+.react-router/
+build/

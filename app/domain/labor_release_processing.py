@@ -37,15 +37,18 @@ only) -- never `set[(component, date)]` pairs.
 from datetime import date
 
 # The two Labor canonical series -- restated as plain literals here
-# (not imported from app.models.labor) for the same reason
-# app.domain.release_processing restates PRIMARY_SERIES_ID etc. as
-# local names rather than importing app.domain.labor -- deliberate,
-# so this module stays a pure calendar/set utility with no dependency
-# on Labor's own model layer either. Kept in sync with
-# app.models.labor.PAYEMS_SERIES_ID/UNRATE_SERIES_ID by convention and
-# by the architecture-guard test that pins their literal values.
-PAYEMS_SERIES_ID = "PAYEMS"
-UNRATE_SERIES_ID = "UNRATE"
+# These are STORED SERIES identifiers -- the keys the release pipeline
+# reports changed observations under -- not MacroChipz's identity for
+# the concepts (#38, ADR-034). They are imported from app.models.labor,
+# where they are derived from the active provider binding.
+#
+# Increment #38 changed this. They were previously restated here as
+# literals, with a comment conceding they were "kept in sync with
+# app.models.labor... by convention" -- a duplication with nothing
+# keeping it true, and exactly the leak ADR-034's Invariant A forbids.
+# The independence that comment was protecting is worth less than not
+# having two sources of truth for the same identifier.
+from app.models.labor import PAYEMS_SERIES_ID, UNRATE_SERIES_ID
 
 LABOR_SERIES_IDS: frozenset[str] = frozenset({PAYEMS_SERIES_ID, UNRATE_SERIES_ID})
 

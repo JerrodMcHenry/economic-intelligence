@@ -1,0 +1,11 @@
+# MacroChipz (Increment #40)
+#
+# Permanent intelligence objects are indexable. Evidence endpoints and
+# the API are not: they are verification targets and machine contracts,
+# not landing pages.
+
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: /sitemap.xml

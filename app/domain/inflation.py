@@ -26,6 +26,7 @@ import math
 from datetime import date
 
 from app.models.inflation import (
+    InflationSeriesIdentities,
     NEUTRAL_BAND_PP,
     ConfirmationRelationship,
     FED_OBJECTIVE_PERCENT,
@@ -37,14 +38,10 @@ from app.models.inflation import (
     InflationState,
     InflationTransformation,
     ConfirmationResult,
-    CONFIRMATION_SERIES_ID,
-    HEADLINE_CPI_SERIES_ID,
-    PRIMARY_SERIES_ID,
     SeriesMomentumResult,
-    TARGET_SERIES_ID,
     TargetResult,
 )
-from app.models.series import Observation
+from app.models.series import Observation, SeriesIdentity
 
 _UNDERLYING_HORIZONS: tuple[int, ...] = (3, 6, 12)
 
@@ -199,7 +196,7 @@ def latest_shared_observation_period(
 
 def _metric_evidence(
     index: dict[date, float],
-    series_id: str,
+    identity: SeriesIdentity,
     calculation_period: date,
     months_back: int,
     transformation: InflationTransformation,
@@ -210,7 +207,9 @@ def _metric_evidence(
     compounded value -- `None` if either endpoint is unavailable."""
     endpoint_date_past = month_before(calculation_period, months_back)
     return InflationMetricEvidence(
-        series_id=series_id,
+        concept_id=identity.concept_id,
+        provider=identity.provider,
+        series_id=identity.provider_series_id,
         calculation_period=calculation_period,
         transformation=transformation,
         endpoint_date_current=calculation_period,
@@ -252,7 +251,7 @@ def classify_state(
 
 def classify_period(
     index: dict[date, float],
-    series_id: str,
+    identity: SeriesIdentity,
     calculation_period: date | None,
     latest_observation_period: date | None,
     latest_valid_state_period: date | None,
@@ -277,7 +276,8 @@ def classify_period(
     """
     if calculation_period is None:
         return SeriesMomentumResult(
-            series_id=series_id,
+            concept_id=identity.concept_id,
+            series_id=identity.provider_series_id,
             calculation_period=None,
             latest_observation_period=latest_observation_period,
             latest_valid_state_period=latest_valid_state_period,
@@ -296,10 +296,10 @@ def classify_period(
             evidence_12m=None,
         )
 
-    evidence_1m = _metric_evidence(index, series_id, calculation_period, 1, "1m_annualized")
-    evidence_3m = _metric_evidence(index, series_id, calculation_period, 3, "3m_annualized")
-    evidence_6m = _metric_evidence(index, series_id, calculation_period, 6, "6m_annualized")
-    evidence_12m = _metric_evidence(index, series_id, calculation_period, 12, "12m")
+    evidence_1m = _metric_evidence(index, identity, calculation_period, 1, "1m_annualized")
+    evidence_3m = _metric_evidence(index, identity, calculation_period, 3, "3m_annualized")
+    evidence_6m = _metric_evidence(index, identity, calculation_period, 6, "6m_annualized")
+    evidence_12m = _metric_evidence(index, identity, calculation_period, 12, "12m")
 
     r_3m, r_6m, r_12m = evidence_3m.value, evidence_6m.value, evidence_12m.value
 
@@ -322,7 +322,8 @@ def classify_period(
         state, lower_boundary, upper_boundary = classify_state(r_3m, r_6m, r_12m, neutral_band_pp)
 
     return SeriesMomentumResult(
-        series_id=series_id,
+        concept_id=identity.concept_id,
+        series_id=identity.provider_series_id,
         calculation_period=calculation_period,
         latest_observation_period=latest_observation_period,
         latest_valid_state_period=latest_valid_state_period,
@@ -344,7 +345,7 @@ def classify_period(
 
 def compute_series_momentum(
     observations: list[Observation],
-    series_id: str,
+    identity: SeriesIdentity,
     neutral_band_pp: float = NEUTRAL_BAND_PP,
 ) -> SeriesMomentumResult:
     """One series' own LATEST valid momentum classification --
@@ -357,13 +358,13 @@ def compute_series_momentum(
     latest_valid_state_period = find_latest_valid_state_period(index)
     calculation_period = latest_valid_state_period if latest_valid_state_period is not None else latest_observation_period
     return classify_period(
-        index, series_id, calculation_period, latest_observation_period, latest_valid_state_period, neutral_band_pp
+        index, identity, calculation_period, latest_observation_period, latest_valid_state_period, neutral_band_pp
     )
 
 
 def compute_series_momentum_at(
     observations: list[Observation],
-    series_id: str,
+    identity: SeriesIdentity,
     calculation_period: date | None,
     neutral_band_pp: float = NEUTRAL_BAND_PP,
 ) -> SeriesMomentumResult:
@@ -384,7 +385,7 @@ def compute_series_momentum_at(
     latest_observation_period = latest_observation_date(observations)
     latest_valid_state_period = find_latest_valid_state_period(index)
     return classify_period(
-        index, series_id, calculation_period, latest_observation_period, latest_valid_state_period, neutral_band_pp
+        index, identity, calculation_period, latest_observation_period, latest_valid_state_period, neutral_band_pp
     )
 
 
@@ -410,6 +411,8 @@ def compute_confirmation(
     primary_observations: list[Observation],
     confirmation_observations: list[Observation],
     neutral_band_pp: float = NEUTRAL_BAND_PP,
+    *,
+    identities: InflationSeriesIdentities,
 ) -> ConfirmationResult:
     """Core CPI confirmation of Core PCE. Core CPI is classified fully
     independently (same methodology, own latest state); it NEVER
@@ -423,7 +426,7 @@ def compute_confirmation(
     primary_index = build_index(primary_observations)
     confirmation_index = build_index(confirmation_observations)
 
-    confirmation_latest = compute_series_momentum(confirmation_observations, CONFIRMATION_SERIES_ID, neutral_band_pp)
+    confirmation_latest = compute_series_momentum(confirmation_observations, identities.confirmation, neutral_band_pp)
 
     latest_common_period = find_latest_common_period(primary_index, confirmation_index)
     if latest_common_period is None:
@@ -442,7 +445,7 @@ def compute_confirmation(
 
     primary_at_comparison = classify_period(
         primary_index,
-        PRIMARY_SERIES_ID,
+        identities.primary,
         latest_common_period,
         primary_latest_observation_period,
         primary_latest_valid_state_period,
@@ -450,7 +453,7 @@ def compute_confirmation(
     )
     confirmation_at_comparison = classify_period(
         confirmation_index,
-        CONFIRMATION_SERIES_ID,
+        identities.confirmation,
         latest_common_period,
         confirmation_latest_observation_period,
         confirmation_latest_valid_state_period,
@@ -473,6 +476,8 @@ def compute_confirmation_at(
     confirmation_observations: list[Observation],
     calculation_period: date | None,
     neutral_band_pp: float = NEUTRAL_BAND_PP,
+    *,
+    identities: InflationSeriesIdentities,
 ) -> tuple[SeriesMomentumResult, SeriesMomentumResult, ConfirmationRelationship]:
     """Core PCE's and Core CPI's canonical momentum, both at the exact
     SAME explicit `calculation_period`, plus the resulting relationship
@@ -486,9 +491,9 @@ def compute_confirmation_at(
     propagates straight through to two `INSUFFICIENT_DATA` results and
     an `UNAVAILABLE` relationship, via the same primitives used
     everywhere else -- no special-casing needed here."""
-    primary_state = compute_series_momentum_at(primary_observations, PRIMARY_SERIES_ID, calculation_period, neutral_band_pp)
+    primary_state = compute_series_momentum_at(primary_observations, identities.primary, calculation_period, neutral_band_pp)
     confirmation_state = compute_series_momentum_at(
-        confirmation_observations, CONFIRMATION_SERIES_ID, calculation_period, neutral_band_pp
+        confirmation_observations, identities.confirmation, calculation_period, neutral_band_pp
     )
     relationship = classify_confirmation_relationship(primary_state.state, confirmation_state.state)
     return primary_state, confirmation_state, relationship
@@ -498,6 +503,8 @@ def _build_target_result(
     index: dict[date, float],
     period: date | None,
     fed_objective_percent: float,
+    *,
+    target_identity: SeriesIdentity,
 ) -> TargetResult:
     """Shared assembly for `compute_target`/`compute_target_at`: given
     an index and an ALREADY-DECIDED period (found by search, or
@@ -517,7 +524,7 @@ def _build_target_result(
             evidence=None,
         )
 
-    evidence = _metric_evidence(index, TARGET_SERIES_ID, period, 12, "12m")
+    evidence = _metric_evidence(index, target_identity, period, 12, "12m")
     headline_pce_yoy = evidence.value
     target_gap_pp = headline_pce_yoy - fed_objective_percent if headline_pce_yoy is not None else None
 
@@ -534,6 +541,8 @@ def _build_target_result(
 def compute_target(
     observations: list[Observation],
     fed_objective_percent: float = FED_OBJECTIVE_PERCENT,
+    *,
+    target_identity: SeriesIdentity,
 ) -> TargetResult:
     """Headline PCE YoY vs. the Fed's longer-run objective, at the
     LATEST period for which `r_12m` is calculable. No categorical
@@ -542,13 +551,15 @@ def compute_target(
     any period in the supported history; never substitutes CPI."""
     index = build_index(observations)
     period = find_latest_period_with_valid_12m(index)
-    return _build_target_result(index, period, fed_objective_percent)
+    return _build_target_result(index, period, fed_objective_percent, target_identity=target_identity)
 
 
 def compute_target_at(
     observations: list[Observation],
     calculation_period: date | None,
     fed_objective_percent: float = FED_OBJECTIVE_PERCENT,
+    *,
+    target_identity: SeriesIdentity,
 ) -> TargetResult:
     """Target evidence at an EXPLICIT `calculation_period` -- never
     searched for. The primitive `inflation_what_changed_v1.0`'s target
@@ -558,21 +569,23 @@ def compute_target_at(
     via the same `_build_target_result` assembly `compute_target` uses
     -- no duplicated target-gap formula."""
     index = build_index(observations)
-    return _build_target_result(index, calculation_period, fed_objective_percent)
+    return _build_target_result(index, calculation_period, fed_objective_percent, target_identity=target_identity)
 
 
 def compute_headline_context(
     headline_pce_observations: list[Observation],
     headline_cpi_observations: list[Observation],
     neutral_band_pp: float = NEUTRAL_BAND_PP,
+    *,
+    identities: InflationSeriesIdentities,
 ) -> HeadlineContextResult:
     """Headline PCE and Headline CPI, each independently classified by
     the same methodology as Core PCE/Core CPI. No aggregate
     headline-context state and no majority vote -- deliberately just
     two independent results."""
     return HeadlineContextResult(
-        headline_pce=compute_series_momentum(headline_pce_observations, TARGET_SERIES_ID, neutral_band_pp),
-        headline_cpi=compute_series_momentum(headline_cpi_observations, HEADLINE_CPI_SERIES_ID, neutral_band_pp),
+        headline_pce=compute_series_momentum(headline_pce_observations, identities.target, neutral_band_pp),
+        headline_cpi=compute_series_momentum(headline_cpi_observations, identities.headline_cpi, neutral_band_pp),
     )
 
 
@@ -594,7 +607,7 @@ def compute_headline_context(
 
 def month_over_month_series_momentum(
     observations: list[Observation],
-    series_id: str,
+    identity: SeriesIdentity,
     neutral_band_pp: float = NEUTRAL_BAND_PP,
 ) -> tuple[date | None, date | None, SeriesMomentumResult | None, SeriesMomentumResult | None]:
     """The exact period pair + exact-period evidence
@@ -611,14 +624,16 @@ def month_over_month_series_momentum(
     if current_period is None:
         return None, None, None, None
     previous_period = month_before(current_period, 1)
-    previous_evidence = compute_series_momentum_at(observations, series_id, previous_period, neutral_band_pp)
-    current_evidence = compute_series_momentum_at(observations, series_id, current_period, neutral_band_pp)
+    previous_evidence = compute_series_momentum_at(observations, identity, previous_period, neutral_band_pp)
+    current_evidence = compute_series_momentum_at(observations, identity, current_period, neutral_band_pp)
     return previous_period, current_period, previous_evidence, current_evidence
 
 
 def month_over_month_target(
     observations: list[Observation],
     fed_objective_percent: float = FED_OBJECTIVE_PERCENT,
+    *,
+    target_identity: SeriesIdentity,
 ) -> tuple[date | None, date | None, TargetResult | None, TargetResult | None]:
     """The exact period pair + exact-period evidence
     `inflation_what_changed_v1.0`'s target section needs.
@@ -629,8 +644,8 @@ def month_over_month_target(
     if current_period is None:
         return None, None, None, None
     previous_period = month_before(current_period, 1)
-    previous_evidence = compute_target_at(observations, previous_period, fed_objective_percent)
-    current_evidence = compute_target_at(observations, current_period, fed_objective_percent)
+    previous_evidence = compute_target_at(observations, previous_period, fed_objective_percent, target_identity=target_identity)
+    current_evidence = compute_target_at(observations, current_period, fed_objective_percent, target_identity=target_identity)
     return previous_period, current_period, previous_evidence, current_evidence
 
 
@@ -638,6 +653,8 @@ def month_over_month_confirmation(
     primary_observations: list[Observation],
     confirmation_observations: list[Observation],
     neutral_band_pp: float = NEUTRAL_BAND_PP,
+    *,
+    identities: InflationSeriesIdentities,
 ) -> tuple[
     date | None,
     date | None,
@@ -664,10 +681,10 @@ def month_over_month_confirmation(
         return None, None, None, None, None, None, None, None
     previous_period = month_before(current_period, 1)
     previous_primary, previous_confirmation, previous_relationship = compute_confirmation_at(
-        primary_observations, confirmation_observations, previous_period, neutral_band_pp
+        primary_observations, confirmation_observations, previous_period, neutral_band_pp, identities=identities
     )
     current_primary, current_confirmation, current_relationship = compute_confirmation_at(
-        primary_observations, confirmation_observations, current_period, neutral_band_pp
+        primary_observations, confirmation_observations, current_period, neutral_band_pp, identities=identities
     )
     return (
         previous_period,
@@ -688,6 +705,8 @@ def compute_inflation_monitor_result(
     headline_cpi_observations: list[Observation],
     neutral_band_pp: float = NEUTRAL_BAND_PP,
     fed_objective_percent: float = FED_OBJECTIVE_PERCENT,
+    *,
+    identities: InflationSeriesIdentities,
 ) -> InflationMonitorResult:
     """Assemble the complete canonical `inflation_v1.0` result from four
     independently-supplied observation lists. `target_observations` and
@@ -701,10 +720,10 @@ def compute_inflation_monitor_result(
     a result with identical numbers, states, periods, and relationship
     -- run twice, byte-for-byte reproducible after serialization.
     """
-    underlying_momentum = compute_series_momentum(primary_observations, PRIMARY_SERIES_ID, neutral_band_pp)
-    confirmation = compute_confirmation(primary_observations, confirmation_observations, neutral_band_pp)
-    target = compute_target(target_observations, fed_objective_percent)
-    headline_context = compute_headline_context(target_observations, headline_cpi_observations, neutral_band_pp)
+    underlying_momentum = compute_series_momentum(primary_observations, identities.primary, neutral_band_pp)
+    confirmation = compute_confirmation(primary_observations, confirmation_observations, neutral_band_pp, identities=identities)
+    target = compute_target(target_observations, fed_objective_percent, target_identity=identities.target)
+    headline_context = compute_headline_context(target_observations, headline_cpi_observations, neutral_band_pp, identities=identities)
 
     coverage = InflationCoverage(
         primary_available=underlying_momentum.state != "INSUFFICIENT_DATA",

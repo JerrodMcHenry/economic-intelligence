@@ -41,6 +41,11 @@ from app.domain.inflation_what_changed import (
 )
 from app.domain.state_duration import StateDurationPoint, evaluate_state_duration
 from app.models.inflation import (
+    CONFIRMATION_CONCEPT_ID,
+    HEADLINE_CPI_CONCEPT_ID,
+    InflationSeriesIdentities,
+    PRIMARY_CONCEPT_ID,
+    TARGET_CONCEPT_ID,
     CONFIRMATION_SERIES_ID,
     DATA_BASIS,
     HEADLINE_CPI_SERIES_ID,
@@ -53,6 +58,7 @@ from app.models.inflation_what_changed import InflationWhatChangedResult
 from app.models.series import Observation
 from app.models.state_duration import HISTORY_TYPE, StateDurationAvailable, StateDurationCurrentInsufficient, StateDurationResult
 from app.repositories.series_repository import SeriesRepository
+from app.services.series_identity import resolve_identity
 
 # Frozen (`docs/product/state-duration-v1.md` §11): 60 calendar months,
 # the same order-of-magnitude tradeoff already defended and shipped by
@@ -76,12 +82,14 @@ class InflationMonitorService:
         confirmation_observations = self._load(repo, CONFIRMATION_SERIES_ID)
         target_observations = self._load(repo, TARGET_SERIES_ID)
         headline_cpi_observations = self._load(repo, HEADLINE_CPI_SERIES_ID)
+        identities = self._identities(repo)
 
         return compute_inflation_monitor_result(
             primary_observations=primary_observations,
             confirmation_observations=confirmation_observations,
             target_observations=target_observations,
             headline_cpi_observations=headline_cpi_observations,
+            identities=identities,
         )
 
     def get_what_changed_result(self, session: Session) -> InflationWhatChangedResult:
@@ -101,16 +109,17 @@ class InflationMonitorService:
         confirmation_observations = self._load(repo, CONFIRMATION_SERIES_ID)
         target_observations = self._load(repo, TARGET_SERIES_ID)
         headline_cpi_observations = self._load(repo, HEADLINE_CPI_SERIES_ID)
+        identities = self._identities(repo)
 
         primary_previous_period, primary_current_period, primary_previous_evidence, primary_current_evidence = (
-            month_over_month_series_momentum(primary_observations, PRIMARY_SERIES_ID)
+            month_over_month_series_momentum(primary_observations, identities.primary)
         )
         primary_momentum_changes = compare_series_momentum_section(
             "PRIMARY_MOMENTUM", primary_previous_period, primary_current_period, primary_previous_evidence, primary_current_evidence
         )
 
         target_previous_period, target_current_period, target_previous_evidence, target_current_evidence = (
-            month_over_month_target(target_observations)
+            month_over_month_target(target_observations, target_identity=identities.target)
         )
         target_changes = compare_target_section(
             target_previous_period, target_current_period, target_previous_evidence, target_current_evidence
@@ -121,7 +130,7 @@ class InflationMonitorService:
         # will in practice coincide with target's (same raw data), an
         # emergent consequence of sharing a series, not a forced rule.
         headline_pce_previous_period, headline_pce_current_period, headline_pce_previous_evidence, headline_pce_current_evidence = (
-            month_over_month_series_momentum(target_observations, TARGET_SERIES_ID)
+            month_over_month_series_momentum(target_observations, identities.target)
         )
         headline_pce_changes = compare_series_momentum_section(
             "HEADLINE_PCE",
@@ -132,7 +141,7 @@ class InflationMonitorService:
         )
 
         headline_cpi_previous_period, headline_cpi_current_period, headline_cpi_previous_evidence, headline_cpi_current_evidence = (
-            month_over_month_series_momentum(headline_cpi_observations, HEADLINE_CPI_SERIES_ID)
+            month_over_month_series_momentum(headline_cpi_observations, identities.headline_cpi)
         )
         headline_cpi_changes = compare_series_momentum_section(
             "HEADLINE_CPI",
@@ -151,7 +160,7 @@ class InflationMonitorService:
             confirmation_current_primary_state,
             confirmation_current_confirmation_state,
             confirmation_current_relationship,
-        ) = month_over_month_confirmation(primary_observations, confirmation_observations)
+        ) = month_over_month_confirmation(primary_observations, confirmation_observations, identities=identities)
         confirmation_changes = compare_confirmation_section(
             confirmation_previous_period,
             confirmation_current_period,
@@ -168,6 +177,7 @@ class InflationMonitorService:
             confirmation_observations=confirmation_observations,
             target_observations=target_observations,
             headline_cpi_observations=headline_cpi_observations,
+            identities=identities,
         )
 
         return assemble_what_changed_result(
@@ -194,8 +204,9 @@ class InflationMonitorService:
         """
         repo = SeriesRepository(session)
         primary_observations = self._load(repo, PRIMARY_SERIES_ID)
+        primary_identity = resolve_identity(repo, PRIMARY_CONCEPT_ID)
 
-        current = compute_series_momentum(primary_observations, PRIMARY_SERIES_ID)
+        current = compute_series_momentum(primary_observations, primary_identity)
         if current.state == "INSUFFICIENT_DATA" or current.calculation_period is None:
             # Unified per §14: a null current period always co-occurs
             # with INSUFFICIENT_DATA in this domain's existing code; no
@@ -211,7 +222,7 @@ class InflationMonitorService:
         sequence: list[StateDurationPoint] = []
         for months_back in range(_STATE_DURATION_LOOKBACK_BOUND_MONTHS):
             period = month_before(anchor_period, months_back)
-            result_at = compute_series_momentum_at(primary_observations, PRIMARY_SERIES_ID, period)
+            result_at = compute_series_momentum_at(primary_observations, primary_identity, period)
             sequence.append(StateDurationPoint(period=period, state=result_at.state))
 
         evaluation = evaluate_state_duration(sequence, _STATE_DURATION_LOOKBACK_BOUND_MONTHS)
@@ -227,6 +238,17 @@ class InflationMonitorService:
             methodology_id=METHODOLOGY_ID,
             data_basis=DATA_BASIS,
             history_type=HISTORY_TYPE,
+        )
+
+    @staticmethod
+    def _identities(repo: SeriesRepository) -> InflationSeriesIdentities:
+        """Who `inflation_v1.0`'s four inputs actually are, read from
+        the persisted rows (#38) rather than from module constants."""
+        return InflationSeriesIdentities(
+            primary=resolve_identity(repo, PRIMARY_CONCEPT_ID),
+            confirmation=resolve_identity(repo, CONFIRMATION_CONCEPT_ID),
+            target=resolve_identity(repo, TARGET_CONCEPT_ID),
+            headline_cpi=resolve_identity(repo, HEADLINE_CPI_CONCEPT_ID),
         )
 
     @staticmethod

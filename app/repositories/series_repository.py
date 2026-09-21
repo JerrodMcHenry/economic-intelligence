@@ -13,9 +13,31 @@ from typing import Literal
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.concepts.bindings import AmbiguousBindingError, UnknownBindingError, concept_id_for_stored_series
 from app.db.models import EconomicObservation, EconomicSeries
-from app.models.series import SeriesResponse
+from app.models.series import SeriesIdentity, SeriesResponse
 from app.repositories.observation_versions import ORIGIN_SERIES_SYNC, ObservationVersionWriter
+
+
+def _concept_id_or_none(storage_series_id: str) -> str | None:
+    """The concept a stored series supplies, or `None` for an arbitrary
+    provider series (#38, ADR-034).
+
+    The SAME deterministic rule the backfill migration uses: an explicit
+    registered binding, or nothing. `None` is the correct, expected
+    answer for a series synced through the generic endpoint -- those are
+    not canonical MacroChipz concepts, and inferring one from a title is
+    exactly what ADR-034 forbids.
+    """
+    try:
+        return concept_id_for_stored_series(storage_series_id)
+    except (UnknownBindingError, AmbiguousBindingError):
+        return None
+
+
+class MissingConceptIdentityError(LookupError):
+    """A persisted series that canonical code reads carries no
+    `concept_id`. A configuration error, never missing data."""
 
 
 class SeriesRepository:
@@ -27,6 +49,51 @@ class SeriesRepository:
         return self._session.execute(
             select(EconomicSeries).where(EconomicSeries.series_id == series_id)
         ).scalar_one_or_none()
+
+    def get_identity(self, series_id: str) -> SeriesIdentity | None:
+        """Who a persisted series actually is (#38, ADR-034).
+
+        All three fields are read from the stored row -- the concept it
+        supplies, the provider that supplied it, and that provider's own
+        identifier. This is the function that makes evidence honest:
+        before #38 a methodology stamped its evidence from a module
+        constant, so a provider cutover would have left old evidence
+        naming a provider that no longer supplied anything.
+
+        Returns `None` when the series is not persisted at all, matching
+        `get_series_by_series_id`'s own missing-series semantics.
+
+        Raises `MissingConceptIdentityError` when the series EXISTS but
+        carries no concept. That is deliberately not `None`: a series
+        the canonical methodologies read must have a registered concept,
+        and silently treating it as absent would turn a configuration
+        error into a confident `INSUFFICIENT_DATA` that looks like an
+        economic finding.
+        """
+        series = self.get_series_by_series_id(series_id)
+        if series is None:
+            return None
+
+        # `concept_id` is a denormalization of a deterministic mapping,
+        # so a row that predates the column -- or one written by a path
+        # that does not set it -- still resolves, by the SAME rule the
+        # backfill used. Only a series with no registered binding at all
+        # is genuinely unidentifiable, and that raises.
+        concept_id = series.concept_id or _concept_id_or_none(series.series_id)
+        if concept_id is None:
+            raise MissingConceptIdentityError(
+                f"Persisted series {series_id!r} has no concept_id and no registered binding. "
+                f"It is not a MacroChipz economic concept; see app/concepts/bindings.py."
+            )
+
+        # Provider and provider-series identity ALWAYS come from the row,
+        # never from the binding table -- that is what keeps historical
+        # evidence honest after a provider cutover (ADR-034, Invariant D).
+        return SeriesIdentity(
+            concept_id=concept_id,
+            provider=series.source,
+            provider_series_id=series.series_id,
+        )
 
     def search_series(self, query: str, limit: int) -> list[EconomicSeries]:
         """Case-insensitive substring match against persisted series'
@@ -174,6 +241,7 @@ class SeriesRepository:
         if series is None:
             series = EconomicSeries(
                 series_id=data.series_id,
+                concept_id=_concept_id_or_none(data.series_id),
                 title=data.title,
                 units=data.units,
                 source=data.source,
@@ -184,6 +252,11 @@ class SeriesRepository:
             series.title = data.title
             series.units = data.units
             series.source = data.source
+            # Backfill a row that predates concept identity (#38), or one
+            # created before its binding was registered. Never CLEARED
+            # here: an existing concept is not un-set by a re-sync.
+            if series.concept_id is None:
+                series.concept_id = _concept_id_or_none(data.series_id)
 
         return series
 

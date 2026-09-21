@@ -46,8 +46,20 @@ from sqlalchemy.orm import Session
 from app.db.models import RecordedMonitorResult
 from app.domain.inflation import compute_series_momentum_at
 from app.domain.labor import compute_labor_monitor_result_at
-from app.models.inflation import METHODOLOGY_ID as INFLATION_METHODOLOGY_ID, PRIMARY_SERIES_ID, SeriesMomentumResult
+from app.models.inflation import (
+    CONFIRMATION_CONCEPT_ID,
+    HEADLINE_CPI_CONCEPT_ID,
+    InflationSeriesIdentities,
+    METHODOLOGY_ID as INFLATION_METHODOLOGY_ID,
+    PRIMARY_CONCEPT_ID,
+    PRIMARY_SERIES_ID,
+    SeriesMomentumResult,
+    TARGET_CONCEPT_ID,
+)
 from app.models.labor import (
+    EMPLOYMENT_CONCEPT_ID,
+    LaborSeriesIdentities,
+    UNEMPLOYMENT_CONCEPT_ID,
     CONDITION_DEADBAND_JOBS,
     LaborMonitorResult,
     METHODOLOGY_ID as LABOR_METHODOLOGY_ID,
@@ -58,6 +70,8 @@ from app.models.labor import (
 )
 from app.models.replay import ReplayResult
 from app.models.series import Observation
+from app.repositories.series_repository import SeriesRepository
+from app.services.series_identity import resolve_identity
 from app.repositories.observation_versions import AsOfObservation, ObservationVersionRepository
 
 #: Which canonical series each recorded monitor's own state depends on.
@@ -140,7 +154,7 @@ class ReplayService:
         observation_count = sum(len(rows) for rows in as_of.values())
         includes_backfilled = any(row.is_backfilled for rows in as_of.values() for row in rows)
 
-        replayed_state = self._recompute(recorded, as_of).state
+        replayed_state = self._recompute(recorded, as_of, *self._identities(session)).state
 
         return ReplayResult(
             **base,
@@ -167,7 +181,34 @@ class ReplayService:
         return None
 
     @staticmethod
-    def _recompute(recorded: RecordedMonitorResult, as_of: dict[str, list[AsOfObservation]]) -> RecomputedResult:
+    def _identities(session: Session) -> tuple[InflationSeriesIdentities, LaborSeriesIdentities]:
+        """Identity for a REPLAY is read from the persisted series rows
+        (#38), never from the active binding. That distinction is the
+        whole of ADR-034's Invariant D: after a future provider cutover,
+        replaying a historical conclusion must still name the provider
+        that actually produced those observations, not whichever
+        provider is current."""
+        repo = SeriesRepository(session)
+        return (
+            InflationSeriesIdentities(
+                primary=resolve_identity(repo, PRIMARY_CONCEPT_ID),
+                confirmation=resolve_identity(repo, CONFIRMATION_CONCEPT_ID),
+                target=resolve_identity(repo, TARGET_CONCEPT_ID),
+                headline_cpi=resolve_identity(repo, HEADLINE_CPI_CONCEPT_ID),
+            ),
+            LaborSeriesIdentities(
+                employment=resolve_identity(repo, EMPLOYMENT_CONCEPT_ID),
+                unemployment=resolve_identity(repo, UNEMPLOYMENT_CONCEPT_ID),
+            ),
+        )
+
+    @staticmethod
+    def _recompute(
+        recorded: RecordedMonitorResult,
+        as_of: dict[str, list[AsOfObservation]],
+        inflation_identities: InflationSeriesIdentities,
+        labor_identities: LaborSeriesIdentities,
+    ) -> RecomputedResult:
         """Re-run the SAME deterministic primitive that produced the
         recorded row, returning the WHOLE result rather than only its
         state. No new economic logic lives here.
@@ -183,7 +224,9 @@ class ReplayService:
         period = recorded.evaluation_period
 
         if recorded.monitor == "inflation":
-            return compute_series_momentum_at(_as_observations(as_of[PRIMARY_SERIES_ID]), PRIMARY_SERIES_ID, period)
+            return compute_series_momentum_at(
+                _as_observations(as_of[PRIMARY_SERIES_ID]), inflation_identities.primary, period
+            )
 
         return compute_labor_monitor_result_at(
             _as_observations(as_of[PAYEMS_SERIES_ID]),
@@ -192,6 +235,7 @@ class ReplayService:
             CONDITION_DEADBAND_JOBS,
             MOMENTUM_DEADBAND_JOBS,
             UNEMPLOYMENT_DEADBAND_PP,
+            identities=labor_identities,
         )
 
     def replay_with_recomputed_result(
@@ -216,7 +260,7 @@ class ReplayService:
         versions = ObservationVersionRepository(session)
         series_ids = _MONITOR_INPUT_SERIES[recorded.monitor]
         as_of = {series_id: versions.get_observations_as_of(series_id, recorded.calculated_at) for series_id in series_ids}
-        return replayed, self._recompute(recorded, as_of)
+        return replayed, self._recompute(recorded, as_of, *self._identities(session))
 
     def list_replayable_results(self, session: Session, monitor: str | None = None, limit: int = 50) -> list[int]:
         """Recorded-result ids, newest first -- the entry point for

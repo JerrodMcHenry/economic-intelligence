@@ -20,6 +20,16 @@ from app.domain.inflation_what_changed import (
 )
 from app.models.inflation import ConfirmationRelationship, InflationState, SeriesMomentumResult, TargetResult
 from app.models.inflation_what_changed import ChangeEvent
+from tests.identities import (
+    CONFIRMATION_IDENTITY,
+    EMPLOYMENT_IDENTITY,
+    HEADLINE_CPI_IDENTITY,
+    INFLATION_IDENTITIES,
+    LABOR_IDENTITIES,
+    PRIMARY_IDENTITY,
+    TARGET_IDENTITY,
+    UNEMPLOYMENT_IDENTITY,
+)
 
 JAN, FEB, MAR = date(2025, 1, 1), date(2025, 2, 1), date(2025, 3, 1)
 
@@ -38,6 +48,7 @@ def _momentum(
     comparator."""
     missing = [name for name, value in (("r_3m", r3), ("r_6m", r6), ("r_12m", r12)) if value is None]
     return SeriesMomentumResult(
+        concept_id=PRIMARY_IDENTITY.concept_id,
         series_id="PCEPILFE",
         calculation_period=period,
         latest_observation_period=period,

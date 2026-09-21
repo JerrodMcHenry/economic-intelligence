@@ -25,6 +25,7 @@ re-derive or re-convert anywhere else in this module.
 from datetime import date
 
 from app.models.labor import (
+    LaborSeriesIdentities,
     LaborObservationEvidence,
     EmploymentCondition,
     EmploymentMomentum,
@@ -38,7 +39,7 @@ from app.models.labor import (
     UnemploymentResult,
     UnemploymentTrendState,
 )
-from app.models.series import Observation
+from app.models.series import Observation, SeriesIdentity
 
 # ---------------------------------------------------------------------
 # Calendar arithmetic and index construction
@@ -170,6 +171,8 @@ def compute_employment_result(
     t: date,
     condition_deadband_jobs: float,
     momentum_deadband_jobs: float,
+    *,
+    employment_identity: SeriesIdentity,
 ) -> EmploymentResult:
     """The complete PAYEMS-owned result at exact calendar month `t`.
     Requires exact PAYEMS observations at `t` through `t-6` (7
@@ -187,7 +190,9 @@ def compute_employment_result(
 
     observations = [
         LaborObservationEvidence(
-            series_id=PAYEMS_SERIES_ID,
+            concept_id=employment_identity.concept_id,
+            provider=employment_identity.provider,
+            series_id=employment_identity.provider_series_id,
             observation_date=month_before(t, offset),
             # Evidence preserves the canonical jobs-unit value (already
             # converted, matching every other _jobs field on this
@@ -241,7 +246,9 @@ def classify_unemployment_trend_state(delta_pp: float | None, deadband_pp: float
     return "STABLE"
 
 
-def compute_unemployment_result(index: dict[date, float], t: date, deadband_pp: float) -> UnemploymentResult:
+def compute_unemployment_result(
+    index: dict[date, float], t: date, deadband_pp: float, *, unemployment_identity: SeriesIdentity
+) -> UnemploymentResult:
     """The complete UNRATE-owned result at exact calendar month `t`.
     Requires exact UNRATE observations at `t, t-1, t-2, t-12, t-13,
     t-14` (six specific months, per LABOR_V1_FROZEN_METHODOLOGY.md
@@ -254,7 +261,13 @@ def compute_unemployment_result(index: dict[date, float], t: date, deadband_pp: 
 
     required_months = [month_before(t, offset) for offset in range(3)] + [month_before(t, 12 + offset) for offset in range(3)]
     observations = [
-        LaborObservationEvidence(series_id=UNRATE_SERIES_ID, observation_date=month, value=index.get(month))
+        LaborObservationEvidence(
+            concept_id=unemployment_identity.concept_id,
+            provider=unemployment_identity.provider,
+            series_id=unemployment_identity.provider_series_id,
+            observation_date=month,
+            value=index.get(month),
+        )
         for month in required_months
     ]
 
@@ -353,6 +366,8 @@ def compute_labor_monitor_result_at(
     condition_deadband_jobs: float,
     momentum_deadband_jobs: float,
     unemployment_deadband_pp: float,
+    *,
+    identities: LaborSeriesIdentities,
 ) -> LaborMonitorResult:
     """The complete canonical `labor_v1.0` result at an EXPLICIT,
     caller-given `period` -- never searched, never restricted to
@@ -377,8 +392,10 @@ def compute_labor_monitor_result_at(
     payems_index = build_jobs_index(payems_observations)
     unrate_index = build_rate_index(unrate_observations)
 
-    employment = compute_employment_result(payems_index, period, condition_deadband_jobs, momentum_deadband_jobs)
-    unemployment = compute_unemployment_result(unrate_index, period, unemployment_deadband_pp)
+    employment = compute_employment_result(
+        payems_index, period, condition_deadband_jobs, momentum_deadband_jobs, employment_identity=identities.employment
+    )
+    unemployment = compute_unemployment_result(unrate_index, period, unemployment_deadband_pp, unemployment_identity=identities.unemployment)
     state = combine_labor_state(employment.state, unemployment.state)
 
     return LaborMonitorResult(
@@ -413,6 +430,8 @@ def compute_labor_monitor_result(
     condition_deadband_jobs: float,
     momentum_deadband_jobs: float,
     unemployment_deadband_pp: float,
+    *,
+    identities: LaborSeriesIdentities,
 ) -> LaborMonitorResult:
     """The complete canonical `labor_v1.0` result, computed entirely
     from the given observation lists. Deterministic: the same two
@@ -440,4 +459,5 @@ def compute_labor_monitor_result(
         condition_deadband_jobs,
         momentum_deadband_jobs,
         unemployment_deadband_pp,
+        identities=identities,
     )

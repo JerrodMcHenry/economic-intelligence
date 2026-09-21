@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import { track } from "../../analytics";
 import type { SeriesMomentumResult } from "../../api/inflation.types";
 import type { LaborMonitorResult } from "../../api/labor.types";
 import type { ApiResourceState } from "../../api/useApiResource";
@@ -68,11 +69,25 @@ export function HowTheyRelate({
           </p>
         )}
 
+        {/*
+          Increment #37: these two CTAs are the only "related economic
+          idea" navigation that exists today, so they are where the
+          rabbit-hole question gets its first evidence. The event records
+          which relationship was followed, not who followed it.
+        */}
         <div className="flex gap-4">
-          <Link to="/inflation" className="inline-block text-sm font-medium text-fg-secondary hover:text-fg">
+          <Link
+            to="/inflation"
+            onClick={() => track("related_followed", { from_type: "labor", to_type: "inflation" })}
+            className="inline-block text-sm font-medium text-fg-secondary hover:text-fg"
+          >
             View Inflation →
           </Link>
-          <Link to="/labor" className="inline-block text-sm font-medium text-fg-secondary hover:text-fg">
+          <Link
+            to="/labor"
+            onClick={() => track("related_followed", { from_type: "inflation", to_type: "labor" })}
+            className="inline-block text-sm font-medium text-fg-secondary hover:text-fg"
+          >
             View Labor →
           </Link>
         </div>

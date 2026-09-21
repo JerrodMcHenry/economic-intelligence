@@ -42,10 +42,13 @@ from app.domain.state_duration import StateDurationPoint, evaluate_state_duratio
 from app.models.labor import (
     CONDITION_DEADBAND_JOBS,
     DATA_BASIS,
+    EMPLOYMENT_CONCEPT_ID,
     LaborMonitorResult,
+    LaborSeriesIdentities,
     METHODOLOGY_ID,
     MOMENTUM_DEADBAND_JOBS,
     PAYEMS_SERIES_ID,
+    UNEMPLOYMENT_CONCEPT_ID,
     UNEMPLOYMENT_DEADBAND_PP,
     UNRATE_SERIES_ID,
 )
@@ -53,6 +56,7 @@ from app.models.labor_what_changed import LaborWhatChangedResult
 from app.models.series import Observation
 from app.models.state_duration import HISTORY_TYPE, StateDurationAvailable, StateDurationCurrentInsufficient, StateDurationResult
 from app.repositories.series_repository import SeriesRepository
+from app.services.series_identity import resolve_identity
 
 # Frozen (`docs/product/state-duration-v1.md` §11): the identical 60
 # calendar months as `InflationMonitorService`'s own constant, defined
@@ -72,6 +76,7 @@ class LaborMonitorService:
         repo = SeriesRepository(session)
         payems_observations = self._load(repo, PAYEMS_SERIES_ID)
         unrate_observations = self._load(repo, UNRATE_SERIES_ID)
+        identities = self._identities(repo)
 
         return compute_labor_monitor_result(
             payems_observations=payems_observations,
@@ -79,6 +84,7 @@ class LaborMonitorService:
             condition_deadband_jobs=CONDITION_DEADBAND_JOBS,
             momentum_deadband_jobs=MOMENTUM_DEADBAND_JOBS,
             unemployment_deadband_pp=UNEMPLOYMENT_DEADBAND_PP,
+            identities=identities,
         )
 
     def get_what_changed_result(self, session: Session) -> LaborWhatChangedResult:
@@ -108,6 +114,7 @@ class LaborMonitorService:
         repo = SeriesRepository(session)
         payems_observations = self._load(repo, PAYEMS_SERIES_ID)
         unrate_observations = self._load(repo, UNRATE_SERIES_ID)
+        identities = self._identities(repo)
 
         previous_period, current_period = month_over_month_labor_periods(payems_observations, unrate_observations)
 
@@ -115,6 +122,7 @@ class LaborMonitorService:
             degenerate_result = compute_labor_monitor_result(
                 payems_observations=payems_observations,
                 unrate_observations=unrate_observations,
+                identities=identities,
                 condition_deadband_jobs=CONDITION_DEADBAND_JOBS,
                 momentum_deadband_jobs=MOMENTUM_DEADBAND_JOBS,
                 unemployment_deadband_pp=UNEMPLOYMENT_DEADBAND_PP,
@@ -125,10 +133,12 @@ class LaborMonitorService:
             previous_result = compute_labor_monitor_result_at(
                 payems_observations, unrate_observations, previous_period,
                 CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP,
+                identities=identities,
             )
             current_result = compute_labor_monitor_result_at(
                 payems_observations, unrate_observations, current_period,
                 CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP,
+                identities=identities,
             )
 
         employment_changes = compare_employment_section(
@@ -166,10 +176,12 @@ class LaborMonitorService:
         repo = SeriesRepository(session)
         payems_observations = self._load(repo, PAYEMS_SERIES_ID)
         unrate_observations = self._load(repo, UNRATE_SERIES_ID)
+        identities = self._identities(repo)
 
         current = compute_labor_monitor_result(
             payems_observations=payems_observations,
             unrate_observations=unrate_observations,
+            identities=identities,
             condition_deadband_jobs=CONDITION_DEADBAND_JOBS,
             momentum_deadband_jobs=MOMENTUM_DEADBAND_JOBS,
             unemployment_deadband_pp=UNEMPLOYMENT_DEADBAND_PP,
@@ -197,6 +209,7 @@ class LaborMonitorService:
                 CONDITION_DEADBAND_JOBS,
                 MOMENTUM_DEADBAND_JOBS,
                 UNEMPLOYMENT_DEADBAND_PP,
+                identities=identities,
             )
             sequence.append(StateDurationPoint(period=period, state=result_at.state))
 
@@ -213,6 +226,17 @@ class LaborMonitorService:
             methodology_id=METHODOLOGY_ID,
             data_basis=DATA_BASIS,
             history_type=HISTORY_TYPE,
+        )
+
+    @staticmethod
+    def _identities(repo: SeriesRepository) -> LaborSeriesIdentities:
+        """Who `labor_v1.0`'s two inputs actually are, read from the
+        persisted rows (#38) rather than from module constants -- so the
+        evidence this monitor stamps names the provider that genuinely
+        supplied each observation."""
+        return LaborSeriesIdentities(
+            employment=resolve_identity(repo, EMPLOYMENT_CONCEPT_ID),
+            unemployment=resolve_identity(repo, UNEMPLOYMENT_CONCEPT_ID),
         )
 
     @staticmethod

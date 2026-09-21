@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 
+import { usePageViewed } from "../analytics";
 import { PageContainer } from "../components/PageContainer";
 import { ThemeToggle } from "../components/ThemeToggle";
 
@@ -41,6 +42,12 @@ function navLinkClassName({ isActive }: { isActive: boolean }): string {
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Route-level measurement (Increment #37). Mounted once here rather
+  // than in each page, so the pages stay unaware of analytics and a
+  // future route is instrumented by existing here at all. Emits
+  // nothing unless a provider is configured; never blocks rendering.
+  usePageViewed();
 
   function onHeaderKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Escape" && menuOpen) {

@@ -24,6 +24,7 @@ from app.domain.rates import (
     to_basis_points,
     change_over_sessions,
     historical_session_changes,
+    recent_session_observations,
     inflation_compensation_series,
     latest_observation,
     rank_against,
@@ -99,6 +100,29 @@ class RatesMonitorService:
             curve_spreads=spreads,
             inflation_compensation=compensation,
         )
+
+    def get_recent_observations(
+        self,
+        session: Session,
+        series_id: str,
+        sessions: int,
+        as_of: date,
+    ) -> list[RateObservation]:
+        """The latest `sessions` published observations for one canonical
+        series, at or before `as_of` (#40C visual evidence).
+
+        Database-only and read-only, exactly like `get_result`: this
+        never calls Treasury and never triggers ingestion. It exists so
+        that the bounded series a surface DRAWS comes from the same
+        canonical service, under the same `usable_observations` rule, as
+        the numbers the surface prints -- rather than from a second
+        query a frontend made on its own.
+
+        Returns `[]` for a series with no usable history, which callers
+        report honestly rather than treating as an error.
+        """
+        repo = RatesRepository(session)
+        return recent_session_observations(self._load(repo, series_id), sessions, as_of)
 
     # ------------------------------------------------------------------
     # Loading

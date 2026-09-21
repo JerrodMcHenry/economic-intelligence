@@ -172,6 +172,31 @@ def change_over_sessions(observations: list[RateObservation], sessions: int) -> 
     )
 
 
+def recent_session_observations(
+    observations: list[RateObservation],
+    sessions: int,
+    as_of: date,
+) -> list[RateObservation]:
+    """The latest `sessions` USABLE observations at or before `as_of`,
+    chronologically ascending.
+
+    Selection only -- no arithmetic, no interpolation, no carry-forward.
+    A date the provider published no value for is simply absent from the
+    result, exactly as `usable_observations` leaves it: this is the same
+    rule every `rates_v1.0` window already counts by, so a chart drawn
+    from this list and a change computed by `change_over_sessions` are
+    reading the same population.
+
+    Fewer than `sessions` available is a normal outcome, not an error --
+    the caller reports the real count rather than padding it.
+    """
+    if sessions < 1:
+        raise ValueError("sessions must be at least 1")
+
+    usable = [obs for obs in usable_observations(observations) if obs.observation_date <= as_of]
+    return usable[-sessions:]
+
+
 def historical_session_changes(observations: list[RateObservation], sessions: int) -> list[tuple[date, float]]:
     """Every `sessions`-length change available in the history, as
     `(end_date, change_basis_points)` in ascending date order.

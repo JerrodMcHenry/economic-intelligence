@@ -43,6 +43,16 @@ from app.models.labor import (
     UNEMPLOYMENT_DEADBAND_PP,
 )
 from app.models.series import Observation
+from tests.identities import (
+    CONFIRMATION_IDENTITY,
+    EMPLOYMENT_IDENTITY,
+    HEADLINE_CPI_IDENTITY,
+    INFLATION_IDENTITIES,
+    LABOR_IDENTITIES,
+    PRIMARY_IDENTITY,
+    TARGET_IDENTITY,
+    UNEMPLOYMENT_IDENTITY,
+)
 
 
 def _month(anchor: date, months_back: int) -> date:
@@ -73,7 +83,7 @@ class TestInflationV1GoldenVector:
         assert NEUTRAL_BAND_PP == 0.10
 
     def test_momentum_values_are_exactly_reproduced(self):
-        result = compute_series_momentum_at(self.OBSERVATIONS, PRIMARY_SERIES_ID, self.ANCHOR)
+        result = compute_series_momentum_at(self.OBSERVATIONS, PRIMARY_IDENTITY, self.ANCHOR)
 
         # 1.002^12 - 1, expressed in percent.
         expected_rate = ((1.002**12) - 1) * 100
@@ -85,7 +95,7 @@ class TestInflationV1GoldenVector:
         assert result.r_12m == pytest.approx(2.426576794540325, rel=1e-12)
 
     def test_the_classified_state_is_exactly_reproduced(self):
-        result = compute_series_momentum_at(self.OBSERVATIONS, PRIMARY_SERIES_ID, self.ANCHOR)
+        result = compute_series_momentum_at(self.OBSERVATIONS, PRIMARY_IDENTITY, self.ANCHOR)
 
         assert result.state == "STABLE"
         assert result.calculation_period == self.ANCHOR
@@ -99,11 +109,11 @@ class TestInflationV1GoldenVector:
         # Lift only the latest reading, so 3M/6M exceed the 12M band.
         observations[-1] = Observation(date=self.ANCHOR, value=observations[-1].value * 1.01)
 
-        result = compute_series_momentum_at(observations, PRIMARY_SERIES_ID, self.ANCHOR)
+        result = compute_series_momentum_at(observations, PRIMARY_IDENTITY, self.ANCHOR)
         assert result.state == "HEATING"
 
     def test_insufficient_history_is_exactly_reproduced(self):
-        result = compute_series_momentum_at(self.OBSERVATIONS[:3], PRIMARY_SERIES_ID, self.ANCHOR)
+        result = compute_series_momentum_at(self.OBSERVATIONS[:3], PRIMARY_IDENTITY, self.ANCHOR)
         assert result.state == "INSUFFICIENT_DATA"
 
 
@@ -136,6 +146,7 @@ class TestLaborV1GoldenVector:
             CONDITION_DEADBAND_JOBS,
             MOMENTUM_DEADBAND_JOBS,
             UNEMPLOYMENT_DEADBAND_PP,
+            identities=LABOR_IDENTITIES,
         )
 
         assert result.methodology_id == "labor_v1.0"
@@ -170,6 +181,7 @@ class TestLaborV1GoldenVector:
             CONDITION_DEADBAND_JOBS,
             MOMENTUM_DEADBAND_JOBS,
             UNEMPLOYMENT_DEADBAND_PP,
+            identities=LABOR_IDENTITIES,
         )
 
         assert result.employment.condition == "EXPANDING"
@@ -186,6 +198,7 @@ class TestLaborV1GoldenVector:
             CONDITION_DEADBAND_JOBS,
             MOMENTUM_DEADBAND_JOBS,
             UNEMPLOYMENT_DEADBAND_PP,
+            identities=LABOR_IDENTITIES,
         )
 
         assert result.employment.current_3m_avg_jobs == pytest.approx(-200_000.0, rel=1e-12)
@@ -199,6 +212,7 @@ class TestLaborV1GoldenVector:
             CONDITION_DEADBAND_JOBS,
             MOMENTUM_DEADBAND_JOBS,
             UNEMPLOYMENT_DEADBAND_PP,
+            identities=LABOR_IDENTITIES,
         )
         assert result.state == "INSUFFICIENT_DATA"
 

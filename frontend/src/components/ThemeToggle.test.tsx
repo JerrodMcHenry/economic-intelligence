@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 import App from "../App";
+import { ThemeProvider } from "../theme/ThemeProvider";
 import { THEME_STORAGE_KEY } from "../theme/theme";
 
 /**
@@ -37,8 +38,12 @@ function installSystemPreference(initiallyDark: boolean) {
 
 function renderApp() {
   return render(
+    // `ThemeProvider` lives in `root.tsx` in the real application
+    // (#40). Supplied here so this harness matches production.
     <MemoryRouter initialEntries={["/"]}>
-      <App />
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
     </MemoryRouter>,
   );
 }

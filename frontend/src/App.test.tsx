@@ -4,11 +4,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 import App from "./App";
+import { ThemeProvider } from "./theme/ThemeProvider";
 
 function renderAt(initialRoute: string) {
   return render(
+    // `ThemeProvider` lives in `root.tsx` in the real application
+    // (#40). Supplied here so this harness matches production.
     <MemoryRouter initialEntries={[initialRoute]}>
-      <App />
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
     </MemoryRouter>,
   );
 }

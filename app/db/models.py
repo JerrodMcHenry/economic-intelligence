@@ -26,6 +26,12 @@ class EconomicSeries(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     series_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    #: Which MacroChipz economic concept this series supplies (#38,
+    #: ADR-034). Nullable by design and permanently so: the generic
+    #: series-sync endpoint accepts arbitrary provider series, which are
+    #: not canonical concepts. Canonical methodology paths require it
+    #: and fail loudly without it; nothing infers it from a title.
+    concept_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     units: Mapped[str] = mapped_column(String(64), nullable=False)
     source: Mapped[str] = mapped_column(String(32), nullable=False, server_default="FRED")

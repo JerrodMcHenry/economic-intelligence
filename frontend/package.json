@@ -7,21 +7,25 @@
     "node": "^24.15.0"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "typecheck": "tsc -b --noEmit",
+    "dev": "react-router dev",
+    "build": "react-router typegen && tsc -b && react-router build && node scripts/generate-og-images.mjs && node scripts/generate-sitemap.mjs && node scripts/verify-build-output.mjs",
+    "typecheck": "react-router typegen && tsc -b --noEmit",
     "test": "vitest run",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:spa-mode": "node scripts/verify-spa-mode.mjs"
   },
   "dependencies": {
+    "@react-router/node": "^7.18.4",
     "@tailwindcss/vite": "^4.3.3",
+    "isbot": "^5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.3",
+    "react-router-dom": "^7.18.4",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@react-router/dev": "^7.18.4",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
@@ -31,6 +35,8 @@
     "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^30.0.1",
     "oxlint": "^1.81.0",
+    "satori": "^0.18.3",
+    "sharp": "^0.34.4",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.0"

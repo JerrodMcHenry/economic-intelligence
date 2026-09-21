@@ -37,22 +37,56 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from app.concepts.bindings import active_binding
+from app.models.series import SeriesIdentity
+
 METHODOLOGY_ID = "labor_v1.0"
 DATA_BASIS = "latest_revised_data"
 
-PAYEMS_SERIES_ID = "PAYEMS"
-UNRATE_SERIES_ID = "UNRATE"
+# --- Economic concept identity (Increment #38, ADR-034) -------------
+#
+# `labor_v1.0`'s two components, named by what they measure rather than
+# by who publishes them. The distinction between these two concepts is
+# not cosmetic: the employment concept counts nonfarm payroll JOBS from
+# the CES establishment survey, the unemployment concept counts PEOPLE
+# from the CPS household survey. Different universes, different
+# surveys, and -- as the #35 Radar research found -- incompatible
+# resolutions, which is why neither is ever a substitute for the other.
+EMPLOYMENT_CONCEPT_ID = "us.nonfarm.payroll-employment.sa.monthly"
+UNEMPLOYMENT_CONCEPT_ID = "us.unemployment-rate.sa.monthly"
+
+# --- Stored series identifiers, DERIVED from the active binding ------
+#
+# Byte-identical to the literals they replaced; no longer hardcoded.
+# These name a place to LOOK IN STORAGE, not MacroChipz's identity.
+PAYEMS_SERIES_ID = active_binding(EMPLOYMENT_CONCEPT_ID).storage_series_id
+UNRATE_SERIES_ID = active_binding(UNEMPLOYMENT_CONCEPT_ID).storage_series_id
 
 # PAYEMS is persisted in FRED's native "Thousands of Persons" -- every
 # `labor_v1.0` formula operates on actual persons/jobs instead (see
 # LABOR_V1_FROZEN_METHODOLOGY.md §2). This is the ONE conversion
 # constant; `app.domain.labor.build_jobs_index` is the ONE place it is
 # applied.
-PAYEMS_JOBS_PER_NATIVE_UNIT = 1000
+PAYEMS_JOBS_PER_NATIVE_UNIT = active_binding(EMPLOYMENT_CONCEPT_ID).canonical_unit_factor
 
 CONDITION_DEADBAND_JOBS = 50_000
 MOMENTUM_DEADBAND_JOBS = 50_000
 UNEMPLOYMENT_DEADBAND_PP = 0.2
+
+
+class LaborSeriesIdentities(BaseModel):
+    """Who `labor_v1.0`'s two input series actually are (#38).
+
+    Kept as one object because the two must never be swapped: the
+    employment concept counts nonfarm payroll JOBS from the CES
+    establishment survey and the unemployment concept counts PEOPLE
+    from the CPS household survey. A positional mix-up would attribute
+    one survey's evidence to the other.
+    """
+
+    employment: SeriesIdentity
+    unemployment: SeriesIdentity
+
 
 EmploymentCondition = Literal["EXPANDING", "FLAT", "CONTRACTING", "INSUFFICIENT_DATA"]
 EmploymentMomentum = Literal["IMPROVING", "STEADY", "WORSENING", "INSUFFICIENT_DATA"]
@@ -71,6 +105,12 @@ class LaborObservationEvidence(BaseModel):
     omitted from the list, so a caller can always see exactly which
     month(s) were missing, not just that something was missing."""
 
+    #: Source-neutral identity (#38), plus the provider that actually
+    #: supplied this observation and their own identifier for it. Read
+    #: from the persisted series row rather than stamped from a module
+    #: constant -- the defect ADR-034 exists to fix.
+    concept_id: str
+    provider: str
     series_id: str
     observation_date: date
     value: float | None

@@ -662,7 +662,7 @@ class TestInflationAnalysisImpact:
         from app.models.series import Observation
 
         revised_observations = [Observation(date=d, value=v) for d, v in sorted(revised.items())]
-        expected_after_core = compute_series_momentum_at(revised_observations, "CPILFESL", latest_period)
+        expected_after_core = compute_series_momentum_at(revised_observations, CONFIRMATION_IDENTITY, latest_period)
 
         payload_core = _fred_payload(revised)
         payload_cpi = _fred_payload({date(2026, 1, 1): 300.0})
@@ -702,9 +702,9 @@ class TestInflationAnalysisImpact:
         from app.models.series import Observation
 
         revised_observations = [Observation(date=d, value=v) for d, v in sorted(revised.items())]
-        expected_after = compute_series_momentum_at(revised_observations, "PCEPILFE", latest_period)
+        expected_after = compute_series_momentum_at(revised_observations, PRIMARY_IDENTITY, latest_period)
         expected_before = compute_series_momentum_at(
-            [Observation(date=d, value=v) for d, v in sorted(base.items())], "PCEPILFE", latest_period
+            [Observation(date=d, value=v) for d, v in sorted(base.items())], PRIMARY_IDENTITY, latest_period
         )
         assert expected_before.state != expected_after.state, "test fixture must actually produce a state change"
 
@@ -786,8 +786,8 @@ class TestT12ForwardDependencyRegression:
         # functions, called directly -- never hand-computed economics.
         before_obs = [Observation(date=d, value=v) for d, v in sorted(pcepilfe_base.items())]
         after_obs = [Observation(date=d, value=v) for d, v in sorted(revised_pcepilfe.items())]
-        expected_before = compute_series_momentum_at(before_obs, "PCEPILFE", t_plus_12)
-        expected_after = compute_series_momentum_at(after_obs, "PCEPILFE", t_plus_12)
+        expected_before = compute_series_momentum_at(before_obs, PRIMARY_IDENTITY, t_plus_12)
+        expected_after = compute_series_momentum_at(after_obs, PRIMARY_IDENTITY, t_plus_12)
         assert expected_before.state != expected_after.state, "fixture must actually produce a state change at t+12"
         assert expected_before.r_12m != expected_after.r_12m
 
@@ -886,8 +886,8 @@ class TestT12ForwardDependencyRegression:
         # functions -- never hand-computed.
         before_obs = [Observation(date=d, value=v) for d, v in sorted(pcepi_base.items())]
         after_obs = [Observation(date=d, value=v) for d, v in sorted(revised_pcepi.items())]
-        expected_before_target = compute_target_at(before_obs, t_plus_12)
-        expected_after_target = compute_target_at(after_obs, t_plus_12)
+        expected_before_target = compute_target_at(before_obs, t_plus_12, target_identity=TARGET_IDENTITY)
+        expected_after_target = compute_target_at(after_obs, t_plus_12, target_identity=TARGET_IDENTITY)
         assert expected_before_target.headline_pce_yoy != expected_after_target.headline_pce_yoy
         assert expected_before_target.target_gap_pp != expected_after_target.target_gap_pp
 
@@ -1005,7 +1005,7 @@ def _labor_result(payems: dict[date, float], unrate: dict[date, float], period: 
     unrate_obs = [Observation(date=d, value=v) for d, v in sorted(unrate.items())]
     return compute_labor_monitor_result_at(
         payems_obs, unrate_obs, period, CONDITION_DEADBAND_JOBS, MOMENTUM_DEADBAND_JOBS, UNEMPLOYMENT_DEADBAND_PP
-    )
+    , identities=LABOR_IDENTITIES)
 
 
 class TestLaborMappingIsUsed:
@@ -1512,6 +1512,16 @@ class TestLaborIdempotency:
 # =======================================================================
 
 from app.db.models import RecordedMonitorResult  # noqa: E402
+from tests.identities import (
+    CONFIRMATION_IDENTITY,
+    EMPLOYMENT_IDENTITY,
+    HEADLINE_CPI_IDENTITY,
+    INFLATION_IDENTITIES,
+    LABOR_IDENTITIES,
+    PRIMARY_IDENTITY,
+    TARGET_IDENTITY,
+    UNEMPLOYMENT_IDENTITY,
+)
 
 
 def _recorded_results(session, monitor: str | None = None) -> list[RecordedMonitorResult]:
@@ -1537,10 +1547,10 @@ class TestRecordedMonitorResultInflationChanged:
         revised[latest_period] = base[latest_period] * 1.25  # forces a genuine state change
 
         expected_before = compute_series_momentum_at(
-            [Observation(date=d, value=v) for d, v in sorted(base.items())], "PCEPILFE", latest_period
+            [Observation(date=d, value=v) for d, v in sorted(base.items())], PRIMARY_IDENTITY, latest_period
         )
         expected_after = compute_series_momentum_at(
-            [Observation(date=d, value=v) for d, v in sorted(revised.items())], "PCEPILFE", latest_period
+            [Observation(date=d, value=v) for d, v in sorted(revised.items())], PRIMARY_IDENTITY, latest_period
         )
         assert expected_before.state != expected_after.state, "test fixture must actually produce a state change"
 
@@ -1590,10 +1600,10 @@ class TestRecordedMonitorResultInflationUnchangedState:
         revised[latest_period] = base[latest_period] + 0.001
 
         expected_before = compute_series_momentum_at(
-            [Observation(date=d, value=v) for d, v in sorted(base.items())], "PCEPILFE", latest_period
+            [Observation(date=d, value=v) for d, v in sorted(base.items())], PRIMARY_IDENTITY, latest_period
         )
         expected_after = compute_series_momentum_at(
-            [Observation(date=d, value=v) for d, v in sorted(revised.items())], "PCEPILFE", latest_period
+            [Observation(date=d, value=v) for d, v in sorted(revised.items())], PRIMARY_IDENTITY, latest_period
         )
         assert expected_before.state == expected_after.state == "STABLE", "test fixture must genuinely leave the state unchanged"
 
@@ -1686,9 +1696,8 @@ class TestRecordedMonitorResultInsufficientData:
 
         expected = compute_series_momentum_at(
             [Observation(date=date(2025, 12, 1), value=119.0), Observation(date=date(2026, 1, 1), value=120.0)],
-            "PCEPILFE",
-            date(2026, 1, 1),
-        )
+            PRIMARY_IDENTITY,
+            date(2026, 1, 1))
         assert expected.state == "INSUFFICIENT_DATA", "test fixture must genuinely be insufficient"
 
         payload_pcepilfe = _fred_payload({date(2026, 1, 1): 120.0})

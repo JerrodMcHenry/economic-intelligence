@@ -18,6 +18,10 @@ from app.models.inflation import METHODOLOGY_ID as INFLATION_METHODOLOGY_ID, PRI
 from app.models.labor import METHODOLOGY_ID as LABOR_METHODOLOGY_ID, PAYEMS_SERIES_ID, UNRATE_SERIES_ID
 from app.repositories.observation_versions import ORIGIN_RELEASE_PROCESSING, ObservationVersionWriter
 from app.services.replay import ReplayService
+from tests.identities import (
+    LABOR_IDENTITIES,
+    PRIMARY_IDENTITY,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -106,7 +110,7 @@ class TestReplayReproducesRecordedResults:
         from app.models.series import Observation
 
         expected = compute_series_momentum_at(
-            [Observation(date=d, value=v) for d, v in sorted(history.items())], PRIMARY_SERIES_ID, ANCHOR_PERIOD
+            [Observation(date=d, value=v) for d, v in sorted(history.items())], PRIMARY_IDENTITY, ANCHOR_PERIOD
         ).state
         recorded = _recorded(db_session, "inflation", expected, INFLATION_METHODOLOGY_ID)
 
@@ -136,6 +140,7 @@ class TestReplayReproducesRecordedResults:
             CONDITION_DEADBAND_JOBS,
             MOMENTUM_DEADBAND_JOBS,
             UNEMPLOYMENT_DEADBAND_PP,
+            identities=LABOR_IDENTITIES,
         ).state
         recorded = _recorded(db_session, "labor", expected, LABOR_METHODOLOGY_ID)
 
@@ -157,7 +162,7 @@ class TestReplayIsNotContaminatedByLaterRevisions:
         from app.models.series import Observation
 
         original_state = compute_series_momentum_at(
-            [Observation(date=d, value=v) for d, v in sorted(history.items())], PRIMARY_SERIES_ID, ANCHOR_PERIOD
+            [Observation(date=d, value=v) for d, v in sorted(history.items())], PRIMARY_IDENTITY, ANCHOR_PERIOD
         ).state
         recorded = _recorded(db_session, "inflation", original_state, INFLATION_METHODOLOGY_ID)
 
@@ -187,7 +192,7 @@ class TestReplayIsNotContaminatedByLaterRevisions:
         from app.models.series import Observation
 
         original = compute_series_momentum_at(
-            [Observation(date=d, value=v) for d, v in sorted(history.items())], PRIMARY_SERIES_ID, ANCHOR_PERIOD
+            [Observation(date=d, value=v) for d, v in sorted(history.items())], PRIMARY_IDENTITY, ANCHOR_PERIOD
         )
         ObservationVersionWriter(db_session, recorded_at=AFTER, origin=ORIGIN_RELEASE_PROCESSING).apply(
             series, ANCHOR_PERIOD, history[ANCHOR_PERIOD] * 1.5
@@ -199,9 +204,8 @@ class TestReplayIsNotContaminatedByLaterRevisions:
         current_rows = SeriesRepository(db_session).get_observations_in_range(series.id, None, None)
         current = compute_series_momentum_at(
             [Observation(date=row.observation_date, value=row.value) for row in current_rows],
-            PRIMARY_SERIES_ID,
-            ANCHOR_PERIOD,
-        )
+            PRIMARY_IDENTITY,
+            ANCHOR_PERIOD)
         assert current.r_12m != original.r_12m
 
     def test_the_recorded_result_is_never_mutated_by_replay(self, db_session):

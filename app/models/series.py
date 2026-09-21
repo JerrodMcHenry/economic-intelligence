@@ -14,6 +14,39 @@ class Observation(BaseModel):
     value: float | None  # None represents a missing/unreported observation
 
 
+class SeriesIdentity(BaseModel):
+    """Who a list of observations actually is (Increment #38, ADR-034).
+
+    Before #38 this did not exist, and the consequence was a latent
+    provenance lie: `Observation` carries only a date and a value, so a
+    methodology stamped its evidence from a module-level constant
+    (`series_id=PAYEMS_SERIES_ID`). Had the provider changed, the
+    observations would have flowed through unchanged -- they are only
+    dates and values -- and the evidence would have gone on naming
+    `PAYEMS` for numbers BLS supplied.
+
+    So identity travels WITH the data now, resolved from the persisted
+    series row rather than from whatever constant the calling module
+    happens to know. All three fields are read from storage:
+
+    - `concept_id`     what MacroChipz means (source-neutral, stable)
+    - `provider`       who actually supplied THIS observation
+    - `provider_series_id`  their identifier for it
+
+    Carrying all three is what makes a provider cutover honest: old
+    observations keep naming the provider that produced them while
+    sharing a concept with the new ones (ADR-034, Invariant D).
+
+    One identity describes one list of observations, not one
+    observation -- every value in a canonical series comes from the same
+    persisted series row, so per-observation repetition would be noise.
+    """
+
+    concept_id: str
+    provider: str
+    provider_series_id: str
+
+
 class SeriesSummary(BaseModel):
     """A series' identifying metadata, with no observations attached.
 

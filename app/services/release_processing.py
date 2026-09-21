@@ -59,6 +59,11 @@ from app.domain.release_processing import (
     five_year_observation_start,
 )
 from app.models.inflation import (
+    CONFIRMATION_CONCEPT_ID,
+    HEADLINE_CPI_CONCEPT_ID,
+    InflationSeriesIdentities,
+    PRIMARY_CONCEPT_ID,
+    TARGET_CONCEPT_ID,
     CONFIRMATION_SERIES_ID,
     DATA_BASIS as INFLATION_DATA_BASIS,
     HEADLINE_CPI_SERIES_ID,
@@ -68,6 +73,9 @@ from app.models.inflation import (
 )
 from app.models.inflation_what_changed import ChangeComponent
 from app.models.labor import (
+    EMPLOYMENT_CONCEPT_ID,
+    LaborSeriesIdentities,
+    UNEMPLOYMENT_CONCEPT_ID,
     CONDITION_DEADBAND_JOBS,
     MOMENTUM_DEADBAND_JOBS,
     PAYEMS_SERIES_ID,
@@ -84,6 +92,8 @@ from app.models.release_processing import (
     SeriesCheckOutcome,
 )
 from app.models.series import Observation
+from app.repositories.series_repository import SeriesRepository
+from app.services.series_identity import resolve_identity
 from app.repositories.release_processing_repository import ReleaseProcessingRepository
 from app.repositories.release_repository import ReleaseRepository
 
@@ -361,10 +371,26 @@ class ReleaseProcessingService:
                 )
             return [], []
 
+        # Identity for every evidence stamp below comes from the
+        # persisted series rows (#38), so a release processed after a
+        # future provider cutover still attributes each observation to
+        # the provider that actually supplied it.
+        identity_repo = SeriesRepository(repo._session)  # noqa: SLF001 -- same session, same transaction
+        inflation_identities = InflationSeriesIdentities(
+            primary=resolve_identity(identity_repo, PRIMARY_CONCEPT_ID),
+            confirmation=resolve_identity(identity_repo, CONFIRMATION_CONCEPT_ID),
+            target=resolve_identity(identity_repo, TARGET_CONCEPT_ID),
+            headline_cpi=resolve_identity(identity_repo, HEADLINE_CPI_CONCEPT_ID),
+        )
+        labor_identities = LaborSeriesIdentities(
+            employment=resolve_identity(identity_repo, EMPLOYMENT_CONCEPT_ID),
+            unemployment=resolve_identity(identity_repo, UNEMPLOYMENT_CONCEPT_ID),
+        )
+
         before_observations = _load_canonical_observations(repo) if affected_pairs else {}
-        before_evidence = {pair: _evaluate_component_at(before_observations, pair[0], pair[1]) for pair in affected_pairs}
+        before_evidence = {pair: _evaluate_component_at(before_observations, pair[0], pair[1], inflation_identities) for pair in affected_pairs}
         before_labor_observations = _load_canonical_labor_observations(repo) if labor_periods else {}
-        before_labor_results = {period: _evaluate_labor_at(before_labor_observations, period) for period in labor_periods}
+        before_labor_results = {period: _evaluate_labor_at(before_labor_observations, period, labor_identities) for period in labor_periods}
 
         for record in observation_changes:
             economic_series = repo.get_series_by_series_id(record.series_id)
@@ -373,9 +399,9 @@ class ReleaseProcessingService:
             )
 
         after_observations = _load_canonical_observations(repo) if affected_pairs else {}
-        after_evidence = {pair: _evaluate_component_at(after_observations, pair[0], pair[1]) for pair in affected_pairs}
+        after_evidence = {pair: _evaluate_component_at(after_observations, pair[0], pair[1], inflation_identities) for pair in affected_pairs}
         after_labor_observations = _load_canonical_labor_observations(repo) if labor_periods else {}
-        after_labor_results = {period: _evaluate_labor_at(after_labor_observations, period) for period in labor_periods}
+        after_labor_results = {period: _evaluate_labor_at(after_labor_observations, period, labor_identities) for period in labor_periods}
 
         analysis_changes: list[AnalysisChangeRecord] = []
         for component, period in sorted(affected_pairs, key=lambda pair: (pair[0], pair[1])):
@@ -464,20 +490,30 @@ def _load_canonical_observations(repo: ReleaseProcessingRepository) -> dict[str,
     return result
 
 
-def _evaluate_component_at(observations_by_series: dict[str, list[Observation]], component: ChangeComponent, period: date):
+def _evaluate_component_at(
+    observations_by_series: dict[str, list[Observation]],
+    component: ChangeComponent,
+    period: date,
+    identities: InflationSeriesIdentities,
+):
     """Dispatches to the EXISTING, unmodified `app.domain.inflation`
     exact-period primitives -- never a release-processing-owned
     reimplementation of any classification/annualization formula."""
     if component == "PRIMARY_MOMENTUM":
-        return compute_series_momentum_at(observations_by_series[PRIMARY_SERIES_ID], PRIMARY_SERIES_ID, period)
+        return compute_series_momentum_at(observations_by_series[PRIMARY_SERIES_ID], identities.primary, period)
     if component == "HEADLINE_PCE":
-        return compute_series_momentum_at(observations_by_series[TARGET_SERIES_ID], TARGET_SERIES_ID, period)
+        return compute_series_momentum_at(observations_by_series[TARGET_SERIES_ID], identities.target, period)
     if component == "HEADLINE_CPI":
-        return compute_series_momentum_at(observations_by_series[HEADLINE_CPI_SERIES_ID], HEADLINE_CPI_SERIES_ID, period)
+        return compute_series_momentum_at(observations_by_series[HEADLINE_CPI_SERIES_ID], identities.headline_cpi, period)
     if component == "TARGET":
-        return compute_target_at(observations_by_series[TARGET_SERIES_ID], period)
+        return compute_target_at(observations_by_series[TARGET_SERIES_ID], period, target_identity=identities.target)
     if component == "CONFIRMATION":
-        return compute_confirmation_at(observations_by_series[PRIMARY_SERIES_ID], observations_by_series[CONFIRMATION_SERIES_ID], period)
+        return compute_confirmation_at(
+            observations_by_series[PRIMARY_SERIES_ID],
+            observations_by_series[CONFIRMATION_SERIES_ID],
+            period,
+            identities=identities,
+        )
     raise AssertionError(f"unhandled ChangeComponent: {component}")  # pragma: no cover
 
 
@@ -601,7 +637,9 @@ def _load_canonical_labor_observations(repo: ReleaseProcessingRepository) -> dic
     return result
 
 
-def _evaluate_labor_at(observations_by_series: dict[str, list[Observation]], period: date) -> LaborMonitorResult:
+def _evaluate_labor_at(
+    observations_by_series: dict[str, list[Observation]], period: date, identities: LaborSeriesIdentities
+) -> LaborMonitorResult:
     """Dispatches to the EXISTING, unmodified
     `app.domain.labor.compute_labor_monitor_result_at` -- never a
     release-processing-owned reimplementation of any PAYEMS/UNRATE
@@ -618,6 +656,7 @@ def _evaluate_labor_at(observations_by_series: dict[str, list[Observation]], per
         CONDITION_DEADBAND_JOBS,
         MOMENTUM_DEADBAND_JOBS,
         UNEMPLOYMENT_DEADBAND_PP,
+        identities=identities,
     )
 
 

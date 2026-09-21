@@ -15,17 +15,20 @@ import {
   type ThemePreference,
 } from "./theme";
 
-const INDEX_HTML = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "index.html"), "utf8");
+//: The document moved from `index.html` into `src/root.tsx` when
+//: React Router framework mode landed (#40). This test still checks
+//: the script AS SHIPPED -- only its location changed.
+const ROOT_TSX = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "root.tsx"), "utf8");
 
-/** The inline pre-paint script from index.html, verbatim. */
+/** The inline pre-paint script from root.tsx, verbatim. */
 function prePaintScript(): string {
-  const match = INDEX_HTML.match(/<script>([\s\S]*?)<\/script>/);
-  if (!match?.[1]) throw new Error("index.html has no inline theme script");
+  const match = ROOT_TSX.match(/const THEME_BOOTSTRAP = `([\s\S]*?)`;/);
+  if (!match?.[1]) throw new Error("root.tsx has no inline theme script");
   return match[1];
 }
 
 /**
- * Executes the real index.html script against a fake window/document,
+ * Executes the real root.tsx script against a fake window/document,
  * returning the `data-theme` it applied -- so the pre-paint logic is
  * tested as shipped, not re-described.
  */

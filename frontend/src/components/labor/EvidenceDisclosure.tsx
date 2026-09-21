@@ -1,3 +1,4 @@
+import { track } from "../../analytics";
 import type { LaborObservationEvidence } from "../../api/labor.types";
 import { Disclosure } from "../../components/Disclosure";
 import { formatPeriod } from "../../lib/format";
@@ -36,7 +37,12 @@ export function EvidenceDisclosure({
   }
 
   return (
-    <Disclosure summary={`View evidence: ${label}`}>
+    <Disclosure
+      summary={`View evidence: ${label}`}
+      // See the inflation counterpart: same question, different object
+      // kind. Only the kind is recorded.
+      onOpen={() => track("evidence_expanded", { object_type: "labor_observation" })}
+    >
       <table className="w-full text-left text-sm text-fg-secondary">
         <thead>
           <tr className="text-xs text-fg-muted">

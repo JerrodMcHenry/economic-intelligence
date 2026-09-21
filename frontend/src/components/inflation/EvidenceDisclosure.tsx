@@ -1,3 +1,4 @@
+import { track } from "../../analytics";
 import { Disclosure } from "../../components/Disclosure";
 import type { InflationMetricEvidence } from "../../api/inflation.types";
 import { formatPercent, formatPeriod } from "../../lib/format";
@@ -15,7 +16,13 @@ export function EvidenceDisclosure({ label, evidence }: { label: string; evidenc
   }
 
   return (
-    <Disclosure summary={`View evidence: ${label}`}>
+    <Disclosure
+      summary={`View evidence: ${label}`}
+      // Increment #37's headline measurement: does anyone actually
+      // verify? Only the object kind is recorded -- never which metric,
+      // never the values on screen.
+      onOpen={() => track("evidence_expanded", { object_type: "inflation_metric" })}
+    >
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
         <dt className="text-fg-muted">Series</dt>
         <dd>{evidence.series_id}</dd>

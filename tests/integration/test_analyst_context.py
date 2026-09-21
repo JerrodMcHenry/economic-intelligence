@@ -30,6 +30,9 @@ from app.models.inflation import METHODOLOGY_ID as INFLATION_METHODOLOGY_ID, PRI
 from app.models.labor import METHODOLOGY_ID as LABOR_METHODOLOGY_ID, PAYEMS_SERIES_ID, UNRATE_SERIES_ID
 from app.repositories.observation_versions import ORIGIN_RELEASE_PROCESSING, ObservationVersionWriter
 from app.services.analyst_context import AnalystContextBuilder, AnalystContextUnavailableError
+from tests.identities import (
+    PRIMARY_IDENTITY,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -363,7 +366,7 @@ class TestMonitorHistoryContext:
 
         history = _core_pce(PERIOD)
         genuine = compute_series_momentum_at(
-            [Observation(date=d, value=v) for d, v in sorted(history.items())], PRIMARY_SERIES_ID, PERIOD
+            [Observation(date=d, value=v) for d, v in sorted(history.items())], PRIMARY_IDENTITY, PERIOD
         ).state
         wrong = "HEATING" if genuine != "HEATING" else "COOLING"
         recorded = _recorded(db_session, "inflation", wrong, INFLATION_METHODOLOGY_ID)
