@@ -12826,3 +12826,187 @@ publishes the same quantity two ways, the resemblance between them is the
 danger.** 1,394,000 ÷ 12 and 117,400 are 1% apart. A conflation that
 produced an obviously wrong number would have been caught in review; this
 one would have shipped.
+
+## Increment #45A — Product Cohesion & Data Opportunity Audit
+
+Audit and planning. No production code, no API integrated, no world
+created, nothing committed. Baseline: HEAD `8b09b62` (#45).
+
+Artifact: `docs/product/macrochipz-product-cohesion-data-opportunity-audit-v1.md`.
+
+### Walking it instead of reading it
+
+The instruction was to audit the running product rather than the source,
+and the difference mattered immediately. From the code, MacroChipz has
+four worlds, revision intelligence, twelve explainers, permanent objects
+and an analyst. From the homepage, MacroChipz is a Treasury yield
+tracker.
+
+I extracted the internal link graph from rendered DOM across all seven
+surfaces rather than reasoning about it from components, which is how
+three things surfaced that I would not have trusted myself to find by
+reading:
+
+- **`/calendar` has zero outbound internal links.** A hard dead end, and
+  it is one of six primary nav items.
+- **`/revisions` has exactly two inbound links** — from `/inflation` and
+  `/jobs`. Not from Rates, not from Housing, not from the homepage, not
+  from nav.
+- **Every explainer inbound link originates on a world page.** Zero
+  orphans, which is good, but a reader who lands on `/` and does not
+  open a world will never encounter educational content at all.
+
+### The number that explains the homepage
+
+1,899 intelligence objects exist. **Six are eligible for the homepage,
+and all six are Treasury yields.**
+
+That is not a bug in `homepage_presentation_v1.0`. The policy correctly
+excludes 1,532 `ANALYSIS_CHANGE` objects that are mostly coverage
+records and 358 `OBSERVATION_CHANGE` objects that are all first
+observations rather than changes. It is doing exactly what #42 designed
+it to do.
+
+The consequence is structural rather than editorial: **the homepage can
+only ever be a bond page until a second kind of object becomes
+eligible.** That reframed the whole roadmap question. The homepage is
+not badly designed; it is accurately rendering a database whose only
+"changes" are in one world.
+
+### The finding I nearly got wrong
+
+"How They Relate" renders *"Inflation is Mixed as of July 2026. Jobs is
+Mixed as of August 2026."* — two facts already on screen 200px above it.
+My first note called it a dead section.
+
+It is not. `relate-composition-v1.md` (#23C) freezes it to exactly one
+composition sentence with no interpretation, and prohibits "confirms",
+"diverges", "Goldilocks", "soft landing" and "the economy is [anything]"
+absolutely. The component is doing the most it is permitted to do.
+
+**The constraint is right and the heading oversells it.** That is a
+copy fix, not an architecture fix, and writing it down the wrong way
+round would have invited someone to "improve" a frozen boundary later.
+
+### Every expensive thing is the hardest to find
+
+Sorting the feature inventory by discoverability produced an
+uncomfortable pattern: revision intelligence (#43), point-in-time replay
+(#31), the Analyst (#33) and sharing (#40) are four of the most
+engineering-intensive capabilities in the repository, and they occupy
+the bottom four rows.
+
+Point-in-time replay has **no consumer surface at all**. Sharing exists
+only on permanent object pages, which are themselves homepage-only, and
+is **absent from the explainers** — the most shareable things in the
+product.
+
+### Why #46 Follow should not be next
+
+Follow addresses RETURN, which the loop analysis confirms is the stage
+that is completely missing. That argues for building it.
+
+Building it now would ask readers to subscribe to **Treasury yield
+movements**, because that is the only thing the homepage can surface.
+And a weak signup rate would be uninterpretable — indistinguishable
+between "nobody wants to return" and "nobody was shown anything worth
+returning for". **A measurement you cannot read is worse than no
+measurement**, because it feels like evidence.
+
+So the recommendation is #45B Product Cohesion first: no new data, no
+new world, and every fix unlocks engineering already paid for.
+
+### Polymarket: the technical answer is yes and the legal answer is no
+
+The Gamma API answers unauthenticated with HTTP 200 and rich per-market
+fields — bids, asks, condition ids, resolution dates. There is no
+technical obstacle of any kind.
+
+Then the disqualifying fact: **ICE has acquired exclusive rights to
+distribute Polymarket's event-driven data globally**, as part of a
+$1.6–2.0bn investment completed in March 2026, and now ships those
+probabilities through the ICE Consolidated Feed and a "Signals and
+Sentiment" product for institutional customers.
+
+A public read API is an access mechanism, not a redistribution licence —
+and where an *exclusive* distribution right has been sold, unlicensed
+commercial redistribution is more hazardous rather than less. There is
+now a counterparty with a two-billion-dollar interest in enforcing it.
+
+Two repository precedents settle it. #28 already rejected ICE BofA
+spreads and ICE DXY on exactly these grounds, and rejected CME FedWatch
+because *"derived data is separately licensable, so recomputing and
+republishing is also barred"* — which is precisely the shape of
+displaying a probability.
+
+Neither terms page was readable (one geo-gated, one client-rendered), so
+the specific clauses are **UNRESOLVED — in the direction of caution**.
+This is not a "defer pending further research" item. Further reading
+will not change the exclusivity; only a written licence would, and that
+is a commercial negotiation rather than an engineering task.
+
+**The better answer was already in the repository.** #28 §11.1 lists the
+FOMC Summary of Economic Projections as **MVP-eligible, public domain,
+"labelled as participants' projections"**. If Expectations is ever
+built, the Fed's own published projections are a better source than a
+prediction market on every axis that matters — licensing, authority, and
+epistemics. The dot plot does not need a disclaimer explaining that it
+is not a fact; its publisher already says so.
+
+### The Census adapter is worth more than one world
+
+I checked whether the other Census economic programs share `resconst`'s
+shape, expecting "similar". They are **identical**: `marts` (retail
+sales), `bfs` (business formation), `m3` (durable goods) and `ressales`
+(new home sales) all expose the same thirteen variables the #45 adapter
+already parses and validates.
+
+So retail sales — *"are Americans spending more?"*, the strongest
+unbuilt consumer question in the product — is an allow-list entry and a
+set of bindings. **No new adapter, no new credential, no second
+architecture.** That single measurement did more to shape the roadmap
+recommendation than anything in the product walk.
+
+The caution stands and is written into the artifact: identical *schema*
+is not identical *semantics*. Each program still needs its own §11A
+entry, its own revision behaviour and its own missing-data review.
+
+### The most interesting unbuilt thing
+
+BEA's GDP would be the first series whose revisions arrive as a
+**named, scheduled sequence** — advance, second, third. #43's
+`PROSPECTIVE_REVISION` currently means "we watched it change", full
+stop. A GDP revision is not merely *a* change; it is a *known stage*.
+
+MacroChipz's revision moat is most valuable precisely on the series that
+revise most predictably, and the product does not yet have one of those.
+Recorded as an opportunity rather than a design.
+
+### What I could not verify
+
+The Chrome extension could not produce a true mobile viewport —
+`resize_window` reported success while media queries went on matching
+desktop. I ran a harsher substitute (desktop layout forced into 390px)
+and it is dominated by grid classes that collapse at phone width, so it
+is an upper bound rather than a finding.
+
+Mobile is therefore marked **PARTIALLY AUDITED**, with re-verification
+listed as an explicit task in #45B. `/housing` was measured properly at
+390px during #45 and is fine; the other six surfaces are assumed, and
+the artifact says so rather than implying a pass.
+
+`Ask MacroChipz` reports `NOT_CONFIGURED` here, so its populated
+experience could not be audited at all. Also stated rather than
+smoothed over.
+
+### Lesson
+
+**A product audit that reads source code will describe the product the
+team believes it shipped.** The link graph disagreed with the component
+tree in three places, and every disagreement was a capability that
+exists in the codebase and cannot be reached from the front door.
+
+The narrower version, which I expect to keep applying: **the homepage is
+not a design surface, it is a projection of what the database contains.**
+Nobody made a decision to lead with bond yields. It is what 0.3%
+eligibility produces, and no amount of copywriting would have fixed it.
