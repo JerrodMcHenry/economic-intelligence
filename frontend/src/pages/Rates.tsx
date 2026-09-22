@@ -8,6 +8,7 @@ import { ErrorMessage } from "../components/ErrorMessage";
 import { ExplanationTrigger } from "../components/explanations/ExplanationTrigger";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { PageHeader } from "../components/PageHeader";
+import { UnderstandWorld } from "../components/explainers/UnderstandLinks";
 import { CurveSpreadCard, InflationCompensationCard } from "../components/rates/DerivedMetricCard";
 import { RateChangeRow } from "../components/rates/RateChangeList";
 import { RateLevelCard } from "../components/rates/RateLevelCard";
@@ -311,6 +312,9 @@ export function RatesPage() {
           available={analyst.status === "success" && analyst.data.available}
           headingId="rates-analyst-heading"
         />
+      </div>
+      <div className="mt-10 border-t border-line pt-8">
+        <UnderstandWorld world="RATES" />
       </div>
     </div>
   );

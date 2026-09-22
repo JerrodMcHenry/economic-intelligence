@@ -15,6 +15,7 @@ import { MomentumMetrics } from "../components/inflation/MomentumMetrics";
 import { TargetPanel } from "../components/inflation/TargetPanel";
 import { WhatChangedSection } from "../components/inflation/WhatChangedSection";
 import { PageHeader } from "../components/PageHeader";
+import { UnderstandWorld } from "../components/explainers/UnderstandLinks";
 import { inflationStateLabelOrRaw, inflationStateToneOrNeutral } from "../lib/inflationLabels";
 
 const MONITOR_ERROR_MESSAGE = "Inflation data could not be loaded.";
@@ -107,6 +108,10 @@ export function InflationPage() {
             whatChanged={whatChanged.status === "success" ? whatChanged.data : null}
           />
         )}
+      </div>
+
+      <div className="mt-10 border-t border-line pt-8">
+        <UnderstandWorld world="INFLATION" />
       </div>
 
       {/* #43. A plain anchor rather than a router Link: this is a

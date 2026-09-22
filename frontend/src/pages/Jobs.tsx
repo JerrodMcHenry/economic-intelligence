@@ -16,6 +16,7 @@ import { RelevantRelease } from "../components/labor/RelevantRelease";
 import { UnemploymentSection } from "../components/labor/UnemploymentSection";
 import { WhatChangedSection } from "../components/labor/WhatChangedSection";
 import { PageHeader } from "../components/PageHeader";
+import { UnderstandWorld } from "../components/explainers/UnderstandLinks";
 import { laborStateLabelOrRaw, laborStateToneOrNeutral } from "../lib/laborLabels";
 
 const MONITOR_ERROR_MESSAGE = "Jobs data could not be loaded.";
@@ -146,6 +147,10 @@ export function JobsPage() {
             whatChanged={whatChanged.status === "success" ? whatChanged.data : null}
           />
         )}
+      </div>
+
+      <div className="mt-10 border-t border-line pt-8">
+        <UnderstandWorld world="JOBS" />
       </div>
 
       {/* #43. A plain anchor rather than a router Link: this is a

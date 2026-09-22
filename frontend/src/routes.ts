@@ -38,6 +38,11 @@ const intelligenceModule = (await willPrerenderIntelligence())
   : "routes/intelligenceObject.tsx";
 
 export default [
+  // Explainers (#44) are finite and code-defined, so every one is
+  // prerendered -- see `src/build/prerenderPaths.ts`. No loader: the
+  // content is in the bundle, so there is nothing to fetch and none of
+  // #40A's `ssr: false` export constraints apply.
+  route("explain/:slug", "routes/explainer.tsx"),
   route("intelligence/:intelligenceId", intelligenceModule),
   route("*?", "routes/catchall.tsx"),
 ] satisfies RouteConfig;

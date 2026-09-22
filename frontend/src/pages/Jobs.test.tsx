@@ -117,7 +117,7 @@ describe("loading", () => {
 });
 
 describe("frozen 7-section hierarchy", () => {
-  it("renders the exact seven sections, in the exact order frozen by docs/architecture/labor-ui-v1.md §7", async () => {
+  it("renders the frozen seven monitor sections in order, plus #44's page-level footer", async () => {
     resolveAll({
       upcoming: buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ provider_release_id: "50" })] }),
     });
@@ -135,6 +135,11 @@ describe("frozen 7-section hierarchy", () => {
       "Intelligence history",
       "Ask MacroChipz",
       "Evidence & methodology",
+      // #44 appended a page-level footer offering explainers. The
+      // SEVEN MONITOR SECTIONS frozen by docs/architecture/labor-ui-v1.md
+      // §7 are unchanged above it -- this sits outside that hierarchy,
+      // after the evidence, and is recorded in that document.
+      "Understand this",
     ]);
   });
 
@@ -387,6 +392,11 @@ describe("Relate V1 composition, inside the existing WhyLaborState disclosure (I
       "Intelligence history",
       "Ask MacroChipz",
       "Evidence & methodology",
+      // #44 appended a page-level footer offering explainers. The
+      // SEVEN MONITOR SECTIONS frozen by docs/architecture/labor-ui-v1.md
+      // §7 are unchanged above it -- this sits outside that hierarchy,
+      // after the evidence, and is recorded in that document.
+      "Understand this",
     ]);
 
     const section = await findSection("Current state");

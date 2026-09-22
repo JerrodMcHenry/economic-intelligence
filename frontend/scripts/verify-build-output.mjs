@@ -95,10 +95,37 @@ for (const path of pages) {
   }
 }
 
+// #44: explainers are finite and static, so unlike the world pages
+// their SUBSTANCE must be in the prerendered HTML -- that is the whole
+// point of a page meant to be found by search or opened from a video.
+const EXPLAIN_DIR = join(CLIENT_DIR, "explain");
+if (existsSync(EXPLAIN_DIR)) {
+  const explainers = readdirSync(EXPLAIN_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(EXPLAIN_DIR, entry.name, "index.html"))
+    .filter((path) => existsSync(path));
+
+  check(explainers.length > 0, "build/client/explain exists but contains no prerendered explainer.");
+
+  for (const path of explainers) {
+    const where = path.replace(`${process.cwd()}/`, "");
+    const html = readFileSync(path, "utf8");
+    const scriptless = html.replace(/<script[\s\S]*?<\/script>/g, "");
+    const text = scriptless.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+
+    check(/<h1[^>]*>[^<]/.test(scriptless), `${where}: no prerendered <h1>.`);
+    check(text.length > 1200, `${where}: only ${text.length} chars of text without JavaScript — the explanation is not really there.`);
+    check(/What it actually is/.test(text), `${where}: missing the explanation body.`);
+    check(/Explore next/.test(text), `${where}: missing the onward rabbit hole.`);
+    check(/How we know/.test(text), `${where}: missing the basis section.`);
+    check(/<title>[^<]+—\s*MacroChipz<\/title>/.test(html), `${where}: no baked <title>.`);
+  }
+}
+
 if (failures.length > 0) {
   console.error(`[verify] ${failures.length} problem(s) in the build output:`);
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
 
-console.log(`[verify] ${pages.length} prerendered page(s): metadata present, charts drawn, no secrets.`);
+console.log(`[verify] ${pages.length} prerendered intelligence page(s) + explainers: metadata present, charts drawn, content present, no secrets.`);

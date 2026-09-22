@@ -12408,3 +12408,96 @@ link at all, because Treasury publishes one observation per business
 day and MacroChipz has never recorded a second version of one.
 Manufacturing symmetry there would have been the same mistake in a
 different costume.
+
+## Increment #44 — Economic explainability and rabbit holes
+
+The brief said to inventory the existing explanation content before
+writing any. Earlier notes put it at "approximately 34". It is 71.
+
+More useful than the count was what they are: field-level annotations
+bound to specific UI — what `r_3m_annualized` means on the card it sits
+on. They are good at that, and they cannot do the new job at all.
+Someone arriving from a thirty-second video has no surrounding page for
+a tooltip to annotate.
+
+That framing settled the architecture without much argument. An
+`Explanation` is an annotation; an `Explainer` is a destination. So #44
+added a second model beside the 71 rather than rewriting them.
+
+### The statistic I did not use
+
+#35 found the strongest consumer misconception in its whole research
+set: 66% of prospective homebuyers believe the Federal Reserve sets
+mortgage rates. It is documented in the repository with attribution —
+and the attribution is grade B, n=400, a lender-marketing survey
+reported through a trade publication.
+
+The increment said to verify before using it publicly and noted the
+explainer does not need it. Both true. So the page says the belief is
+common and does not quantify it, and a test asserts no percentage
+appears anywhere in the flagship.
+
+### Three claims I flagged instead of quietly shipping
+
+The mortgage explainer needs to say what *does* reach a mortgage rate,
+and the increment's own §9 supplied the framing: the market for bundled
+mortgage loans, prepayment risk, credit and liquidity conditions,
+lender economics. Those are uncontroversial in fixed-income practice
+and they are not sourced anywhere in this repository.
+
+§16 says to stop and report claims needing external verification rather
+than passing model knowledge off as production copy. So they are
+written generically, attributed to no institution, and listed
+explicitly in the architecture document as needing verification before
+public launch. The parts that ARE sourced in-repo — the Fed's objective
+being defined on PCE, the 10-year being a reference point that sets
+nothing, the CES/CPS universe split — are marked as such.
+
+### A test that had to learn a distinction
+
+The guard against "never says the Fed sets mortgage rates" failed on
+the explainer's own misconception field, which reads "the common belief
+is that the Fed sets mortgage rates outright".
+
+That is the sentence being corrected, not a claim. An explainer that
+cannot state a false belief cannot correct one. So the claim-checks now
+run against the fields that assert things and the misconception field
+is tested separately for being framed as a belief with a correction
+attached. The first version of the test would have forbidden the
+product from doing its job.
+
+### The shape of the diagram is the argument
+
+A single top-to-bottom arrow — Fed, then rates, then you — would have
+drawn exactly the belief the page exists to correct. So four influences
+converge instead, with Fed policy as one of them rather than the source
+of the chain, and a line underneath saying these interact rather than
+forming a single chain. No diagram library, no colour dependency, and
+every influence carries its own sentence so the whole thing works as
+text.
+
+### The live number I deliberately left out
+
+The obvious next move was a "Right now in MacroChipz: 10-year 5.01%"
+block. I did not add it, and the reason is the whole point of these
+pages.
+
+An explainer that fetches is an explainer whose prerendered HTML is an
+empty shell. These ten routes are currently the only MacroChipz
+surfaces whose *substance* a non-JavaScript crawler can read — 3,235
+characters of real text on the flagship with every script stripped. A
+live number the reader is one click from was not worth trading that
+for. It also means the page has nothing that can fail.
+
+### Respecting a freeze for the second time
+
+Adding "Understand this" to the Jobs page broke the seven-section
+hierarchy frozen in `labor-ui-v1.md` §7, exactly as the same mistake
+did in #41. The difference this time is that the addition is genuinely
+outside that hierarchy — a page-level footer after the evidence, not a
+monitor section — so rather than avoiding an `h2` I extended the frozen
+list deliberately and wrote an addendum into the frozen document
+explaining what was appended and why.
+
+Updating a freeze on purpose and recording it is fine. Editing one
+quietly because a test is in the way is not.

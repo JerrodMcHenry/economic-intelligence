@@ -33,6 +33,7 @@ import type { IntelligenceObject } from "../api/intelligence.types";
 import { isApiError } from "../api/errors";
 import { IntelligenceSee } from "../components/intelligence/IntelligenceSee";
 import { IntelligenceShell } from "../components/intelligence/IntelligenceShell";
+import { UnderstandConcept } from "../components/explainers/UnderstandLinks";
 import { IntelligenceVerify } from "../components/intelligence/IntelligenceVerify";
 import { ShareButton } from "../components/ShareButton";
 import { headline } from "../lib/intelligenceLanguage";
@@ -88,6 +89,9 @@ export default function IntelligenceObjectRoute() {
     <IntelligenceShell worldLabel={home?.label} worldRoute={home?.route}>
       <article className="py-8">
         <IntelligenceSee object={object} />
+
+        {/* #44: education AFTER the fact, never before it. */}
+        <UnderstandConcept conceptId={object.concepts[0]} />
 
         <IntelligenceVerify object={object} />
 

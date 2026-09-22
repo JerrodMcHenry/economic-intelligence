@@ -870,3 +870,18 @@ up). A payroll-benchmark-revision-specific disclosure sentence (§26 —
 none exists in the frozen methodology to transcribe; inventing one now
 would not be sourced). Any `/labor/employment` or `/labor/unemployment`
 sub-route. Any Growth/Housing/JOLTS/CIVPART nav placeholder.
+
+
+---
+
+## Addendum (#44): a page-level footer beneath the frozen hierarchy
+
+The **seven monitor sections frozen in §7 are unchanged** — same sections, same order, same components.
+
+Increment #44 appended one page-level section *after* "Evidence & methodology":
+
+**"Understand this"** — a short list of curated explainer questions linking to `/explain/:slug`.
+
+It sits outside the monitor hierarchy deliberately: it is not an economic reading, it renders no canonical value, and it comes after the evidence rather than before it. The Jobs page remains an intelligence product; the explainers are an offer at the end of it, not a syllabus in the middle.
+
+Recorded here rather than silently changing the frozen list.
