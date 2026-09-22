@@ -197,6 +197,123 @@ REAL_5Y = _treasury_par_yield("UST_REAL_5Y", "5-year Treasury par real yield (TI
 REAL_10Y = _treasury_par_yield("UST_REAL_10Y", "10-year Treasury par real yield (TIPS)", "TREASURY_REAL_PAR_YIELD")
 
 
+# --------------------------------------------------------------------
+# Housing (Increment #45)
+#
+# THERE IS NO `housing_v1.0`. These concepts exist so MacroChipz can
+# report source facts about the construction pipeline; no methodology
+# consumes them, no state is derived from them, and the `world` field
+# below is the only thing that makes them a world.
+#
+# TWO ADJUSTMENTS, SIX CONCEPTS, AND WHY THAT IS NOT PADDING
+# ----------------------------------------------------------
+# Census publishes each of permits/starts/completions two ways, and the
+# two answer different questions:
+#
+#   - SEASONALLY ADJUSTED, as an ANNUAL RATE (SAAR). The only form in
+#     which one month is comparable with another, because construction
+#     is heavily seasonal. Census publishes no seasonally adjusted
+#     MONTHLY level -- the adjusted series exists only as an annual
+#     rate -- so month-over-month comparison requires SAAR.
+#   - NOT SEASONALLY ADJUSTED, as the month's ACTUAL count. The only
+#     form that answers "how many homes actually started last month".
+#
+# `seasonal_adjustment` is a required field on this dataclass precisely
+# so the two can never be silently substituted for each other, and the
+# pair is what lets the product explain SAAR by showing the real
+# monthly number beside it instead of asserting the distinction.
+#
+# UNITS. Census publishes thousands of units (`1394` for 1,394,000).
+# The canonical unit here is HOUSING UNITS, and the 1000x conversion
+# lives on the binding -- exactly the pattern `labor_v1.0` already uses
+# for FRED's "Thousands of Persons".
+#
+# SOURCE PROGRAMS DIFFER, AND THAT MATTERS. Permits come from the
+# Building Permits Survey; starts and completions from the Survey of
+# Construction. Census's own release states the consequence: permits
+# "are based on a non-probability sample and not subject to sampling
+# error", while starts and completions "are estimated from sample
+# surveys and are subject to sampling variability". Two programs, two
+# reliability regimes, so two `source_program` values -- the same
+# reasoning that keeps CES and CPS apart above.
+# --------------------------------------------------------------------
+
+
+def _new_residential_construction(
+    concept_id: str,
+    name: str,
+    universe: str,
+    source_program: str,
+    *,
+    seasonally_adjusted: bool,
+) -> EconomicConcept:
+    return EconomicConcept(
+        concept_id=concept_id,
+        name=name,
+        world="housing",
+        frequency="MONTHLY",
+        # A seasonally adjusted value is published at an ANNUAL RATE and
+        # an unadjusted one as the month's own count. Those are not the
+        # same unit, and calling both "HOUSING_UNITS" would invite
+        # exactly the arithmetic (dividing an annual rate by twelve)
+        # that the product must never present as monthly production.
+        canonical_unit="HOUSING_UNITS_ANNUAL_RATE" if seasonally_adjusted else "HOUSING_UNITS",
+        seasonal_adjustment="SEASONALLY_ADJUSTED" if seasonally_adjusted else "NOT_SEASONALLY_ADJUSTED",
+        geography="US",
+        universe=universe,
+        source_program=source_program,
+    )
+
+
+HOUSING_UNITS_AUTHORIZED_SAAR = _new_residential_construction(
+    "us.housing.units-authorized.saar.monthly",
+    "Privately-owned housing units authorized by building permits (seasonally adjusted annual rate)",
+    "PRIVATELY_OWNED_HOUSING_UNITS_AUTHORIZED",
+    "BPS",
+    seasonally_adjusted=True,
+)
+
+HOUSING_UNITS_STARTED_SAAR = _new_residential_construction(
+    "us.housing.units-started.saar.monthly",
+    "Privately-owned housing units started (seasonally adjusted annual rate)",
+    "PRIVATELY_OWNED_HOUSING_UNITS_STARTED",
+    "SOC",
+    seasonally_adjusted=True,
+)
+
+HOUSING_UNITS_COMPLETED_SAAR = _new_residential_construction(
+    "us.housing.units-completed.saar.monthly",
+    "Privately-owned housing units completed (seasonally adjusted annual rate)",
+    "PRIVATELY_OWNED_HOUSING_UNITS_COMPLETED",
+    "SOC",
+    seasonally_adjusted=True,
+)
+
+HOUSING_UNITS_AUTHORIZED_NSA = _new_residential_construction(
+    "us.housing.units-authorized.nsa.monthly",
+    "Privately-owned housing units authorized by building permits (not seasonally adjusted)",
+    "PRIVATELY_OWNED_HOUSING_UNITS_AUTHORIZED",
+    "BPS",
+    seasonally_adjusted=False,
+)
+
+HOUSING_UNITS_STARTED_NSA = _new_residential_construction(
+    "us.housing.units-started.nsa.monthly",
+    "Privately-owned housing units started (not seasonally adjusted)",
+    "PRIVATELY_OWNED_HOUSING_UNITS_STARTED",
+    "SOC",
+    seasonally_adjusted=False,
+)
+
+HOUSING_UNITS_COMPLETED_NSA = _new_residential_construction(
+    "us.housing.units-completed.nsa.monthly",
+    "Privately-owned housing units completed (not seasonally adjusted)",
+    "PRIVATELY_OWNED_HOUSING_UNITS_COMPLETED",
+    "SOC",
+    seasonally_adjusted=False,
+)
+
+
 #: Every concept MacroChipz currently has a canonical opinion about.
 #: Deliberately not "every concept we might one day want" -- an
 #: unregistered concept is an error, and a registry full of aspirational
@@ -216,6 +333,12 @@ CONCEPTS: dict[str, EconomicConcept] = {
         NOMINAL_30Y,
         REAL_5Y,
         REAL_10Y,
+        HOUSING_UNITS_AUTHORIZED_SAAR,
+        HOUSING_UNITS_STARTED_SAAR,
+        HOUSING_UNITS_COMPLETED_SAAR,
+        HOUSING_UNITS_AUTHORIZED_NSA,
+        HOUSING_UNITS_STARTED_NSA,
+        HOUSING_UNITS_COMPLETED_NSA,
     )
 }
 

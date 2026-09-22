@@ -8,7 +8,7 @@
  * enforces that.
  */
 
-export type IntelligenceWorld = "inflation" | "jobs" | "rates";
+export type IntelligenceWorld = "inflation" | "jobs" | "rates" | "housing";
 
 export type IntelligenceType =
   | "RELEASE_PROCESSED"

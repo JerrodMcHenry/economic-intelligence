@@ -32,16 +32,29 @@
  *
  * ADDING A WORLD LATER
  * --------------------
- * Housing arrives in #45. It is deliberately absent rather than
- * present-and-empty: an inactive world with no data is a promise the
- * product cannot keep, and #27A §11 already froze the rule that a
- * navigation slot follows content rather than preceding it. Adding it
- * later means adding one entry here -- no shell redesign -- which is
- * the extensibility this registry exists to provide.
+ * Housing arrived in #45, and it cost exactly one entry below -- no
+ * shell redesign, no navigation rework, no per-surface edit. That was
+ * the extensibility this registry existed to provide, and it held:
+ * navigation, route metadata, world links, analytics vocabulary and the
+ * homepage's world ordering all derive from this array, so Housing
+ * appeared in every one of them without any of them being touched.
+ *
+ * It was deliberately absent until then rather than present-and-empty:
+ * an inactive world with no data is a promise the product cannot keep,
+ * and #27A §11 already froze the rule that a navigation slot follows
+ * content rather than preceding it.
+ *
+ * A WORLD IN THIS ARRAY IS A SUBJECT, NOT A VERDICT. Housing is the
+ * first entry with no methodology behind it: `inflation_v1.0`,
+ * `labor_v1.0` and `rates_v1.0` decide what is true about the other
+ * three, and nothing decides anything about Housing. `/housing` shows
+ * figures Census published and the arithmetic between them, and no
+ * state. That is why `EconomicWorld` has no "has a state" field --
+ * a world does not promise one.
  */
 
 /** Stable identity for a part of the economy MacroChipz covers. */
-export type WorldId = "INFLATION" | "JOBS" | "RATES";
+export type WorldId = "INFLATION" | "JOBS" | "RATES" | "HOUSING";
 
 export interface EconomicWorld {
   /** Stable, internal. Never a provider id, never a route. */
@@ -60,7 +73,7 @@ export interface EconomicWorld {
    * Held here so the measurement vocabulary and the product vocabulary
    * cannot drift apart.
    */
-  readonly analyticsWorld: "inflation" | "jobs" | "rates";
+  readonly analyticsWorld: "inflation" | "jobs" | "rates" | "housing";
   /**
    * The engineering domain that serves this world, where it differs
    * from the consumer name. `undefined` means they are the same word.
@@ -73,8 +86,11 @@ export interface EconomicWorld {
  * The worlds that exist today, in navigation order.
  *
  * Ordered deliberately: Inflation and Jobs are the two questions a
- * general reader already has, and Rates is the one they arrive at
- * through them.
+ * general reader already has, Rates is the one they arrive at through
+ * them, and Housing is where several of those questions end up --
+ * placed last because it is the newest and the only one without a
+ * state, not because it matters least. This array is a navigation
+ * order, never a ranking of importance.
  */
 export const ECONOMIC_WORLDS: ReadonlyArray<EconomicWorld> = [
   {
@@ -98,6 +114,13 @@ export const ECONOMIC_WORLDS: ReadonlyArray<EconomicWorld> = [
     route: "/rates",
     description: "What it costs the U.S. government to borrow, and what that says about longer-term borrowing.",
     analyticsWorld: "rates",
+  },
+  {
+    id: "HOUSING",
+    label: "Housing",
+    route: "/housing",
+    description: "How many homes are being authorised, started and finished across the country.",
+    analyticsWorld: "housing",
   },
 ];
 

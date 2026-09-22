@@ -224,8 +224,12 @@ describe("a populated revision, when one finally exists", () => {
 
 describe("Revision Intelligence is not a world", () => {
   it("is absent from the world registry", () => {
+    // The assertion is that Revisions is not a WORLD -- deliberately
+    // not a count of worlds, which changes whenever a real world
+    // acquires data (Housing did, in #45) and which would make this
+    // test fail for a reason that has nothing to do with revisions.
     const text = JSON.stringify(ECONOMIC_WORLDS).toLowerCase();
     expect(text).not.toContain("revision");
-    expect(ECONOMIC_WORLDS).toHaveLength(3);
+    expect(ECONOMIC_WORLDS.some((entry) => entry.route === "/revisions")).toBe(false);
   });
 });

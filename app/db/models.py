@@ -470,6 +470,63 @@ class RatesIngestionRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class HousingIngestionRun(Base):
+    """Increment #45: one operator-invoked Census ingestion attempt, for
+    diagnosability.
+
+    Mirrors `RatesIngestionRun`'s role exactly, and the two tables are
+    structurally identical because ingesting one provider is structurally
+    the same operation as ingesting another. They are kept separate
+    rather than unified here for one reason: unifying them means
+    migrating #29's existing rows into a renamed table, which is a
+    refactor this increment has no reason to perform and every reason not
+    to risk. A future provider-neutral `provider_ingestion_runs` is the
+    right home for both -- recorded as deferred work, not done
+    opportunistically.
+
+    ONE COLUMN THAT MATTERS MORE THAN THE REST. `error_class` holds an
+    exception CLASS NAME at most -- `CensusAuthError`, never a message,
+    never a URL, never a response body. Census is the first provider here
+    that requires a credential, and a request URL for it contains that
+    credential, so "what went wrong" has to be diagnosable without
+    recording anything that could carry one. A class name is enough to
+    tell an expired key from a timeout from a schema change, which is
+    every distinction an operator actually acts on.
+
+    `rows_rejected` and `error_measure_rows_ignored` are recorded
+    separately and deliberately. The first counts rows that failed
+    validation -- a provider contract change, worth noticing. The second
+    counts Census's own reliability statistics, which are expected on
+    every run and are not a problem. Summing them into one number would
+    make a normal run look degraded.
+    """
+
+    __tablename__ = "housing_ingestion_runs"
+    __table_args__ = (Index("ix_housing_ingestion_runs_started_at", "started_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    dataset: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    #: BASELINE_BACKFILL when this run performed the initial import of at
+    #: least one series, INCREMENTAL otherwise. The persisted record of
+    #: the #43 distinction, so "was that history imported or observed?"
+    #: is answerable from the audit trail and not only from the version
+    #: rows.
+    import_mode: Mapped[str] = mapped_column(String(24), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    rows_received: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    rows_rejected: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    error_measure_rows_ignored: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    observations_inserted: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    observations_revised: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    observations_skipped_missing_value: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    error_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class ObservationVersion(Base):
     """Increment #31: the append-only SYSTEM-TIME history of every value
     MacroChipz has held for one canonical observation.
@@ -499,18 +556,29 @@ class ObservationVersion(Base):
     (series, observation_date) sharing a `recorded_from`; and every
     closed interval strictly forward-going (`recorded_to > recorded_from`).
 
-    `is_backfilled` marks the one class of row this table cannot vouch
-    for: versions synthesized at migration time from observations that
-    predate #31. Their `recorded_from` is the observation row's own
-    `created_at`, which honestly means "this value existed in
-    MacroChipz by this time" -- never "this was the value the source
-    first published", and never evidence that no earlier revision
-    occurred. Observed (non-backfilled) rows carry the real instant the
-    write happened.
+    `is_backfilled` marks the class of row this table cannot vouch for:
+    a version whose value MacroChipz IMPORTED rather than watched
+    arrive. It honestly means "this value existed in MacroChipz by this
+    time" -- never "this was the value the source first published", and
+    never evidence that no earlier revision occurred. Observed
+    (non-backfilled) rows carry the real instant the write happened.
+
+    Two write paths set it, and the meaning above covers both:
+
+    - #31's migration, synthesizing versions from observations that
+      predate point-in-time tracking. Their `recorded_from` is the
+      observation row's own `created_at`.
+    - #45's initial import of a NEW SOURCE's published history. A
+      provider's 1959-2026 back history arriving in one request is
+      structurally the same claim: MacroChipz knows those values as of
+      the import, and knows nothing about earlier vintages of them.
+      `ObservationVersionWriter(baseline=True)` writes these, and only
+      for `NEW` versions -- a revision is always genuinely observed.
 
     `origin` records WHICH write path produced the version
     (`SERIES_SYNC`, `RELEASE_PROCESSING`, `RATES_INGESTION`,
-    `BACKFILL`). A `release_check_run_id` FK is deliberately absent:
+    `HOUSING_INGESTION`, `BACKFILL`). A `release_check_run_id` FK is
+    deliberately absent:
     release processing creates its check-run row only after the
     observation writes have already happened, so the id genuinely does
     not exist at write time, and restructuring that ordering purely to

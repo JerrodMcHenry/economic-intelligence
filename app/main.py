@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app.api.ai import router as ai_router
 from app.api.analysis import router as analysis_router
 from app.api.analyst import router as analyst_router
+from app.api.housing import router as housing_router
 from app.api.inflation import router as inflation_router
 from app.api.intelligence import router as intelligence_router
 from app.api.labor import router as labor_router
@@ -73,6 +74,9 @@ app.include_router(inflation_router, prefix="/api/v1")
 app.include_router(labor_router, prefix="/api/v1")
 app.include_router(rates_monitors_router, prefix="/api/v1")
 app.include_router(rates_router, prefix="/api/v1")
+# Housing (#45). Deliberately not under /monitors: Housing has no
+# methodology and no state, so it is not a monitor.
+app.include_router(housing_router, prefix="/api/v1")
 app.include_router(monitor_history_router, prefix="/api/v1")
 app.include_router(intelligence_router, prefix="/api/v1")
 app.include_router(releases_router, prefix="/api/v1")

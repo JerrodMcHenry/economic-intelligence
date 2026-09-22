@@ -26,7 +26,16 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.db.models import EconomicSeries, ReleaseAnalysisUpdate, ReleaseCheckRun, ReleaseObservationUpdate
+from app.concepts.bindings import active_binding
+from app.concepts.registry import concept as economic_concept
+from app.db.models import (
+    EconomicSeries,
+    ObservationVersion,
+    ReleaseAnalysisUpdate,
+    ReleaseCheckRun,
+    ReleaseObservationUpdate,
+)
+from app.models.housing import HOUSING_CONCEPT_IDS, SAAR_EXPLANATION
 from app.models.inflation import (
     CONFIRMATION_CONCEPT_ID,
     HEADLINE_CPI_CONCEPT_ID,
@@ -60,6 +69,7 @@ from app.models.labor import (
     UNEMPLOYMENT_CONCEPT_ID,
 )
 from app.models.rates import METHODOLOGY_ID as RATES_METHODOLOGY_ID
+from app.repositories.housing_repository import HousingRepository
 from app.repositories.observation_versions import ObservationVersionRepository
 from app.repositories.release_processing_read_repository import ReleaseProcessingReadRepository
 from app.services.intelligence.identity import (
@@ -77,6 +87,14 @@ _WORLD_BY_METHODOLOGY: dict[str, World] = {
     INFLATION_METHODOLOGY_ID: "inflation",
     LABOR_METHODOLOGY_ID: "jobs",
     RATES_METHODOLOGY_ID: "rates",
+}
+
+#: Housing concept -> its canonical unit. Read from #38's registry
+#: rather than restated, so a unit correction cannot leave this map
+#: behind. Used only to decide whether an object needs the
+#: seasonally-adjusted-annual-rate explanation attached.
+HOUSING_CONCEPT_UNITS: dict[str, str] = {
+    concept_id: economic_concept(concept_id).canonical_unit for concept_id in HOUSING_CONCEPT_IDS
 }
 
 #: Methodology component -> the concepts it is about.
@@ -142,6 +160,7 @@ class IntelligenceBuilder:
         objects: list[IntelligenceObject] = []
         objects.extend(self._release_intelligence(session))
         objects.extend(self._rates_intelligence(session))
+        objects.extend(self._housing_intelligence(session))
         return sort_intelligence(objects)
 
     # -- release-derived ---------------------------------------------
@@ -533,6 +552,200 @@ class IntelligenceBuilder:
             available_sessions=len(points),
             points=points,
         )
+
+    # -- housing-derived ---------------------------------------------
+
+    #: Hard cap on Housing objects from one read. Bounded at the query
+    #: (see `list_observed_versions`), so the payload cannot grow with
+    #: sixty-seven years of stored history.
+    HOUSING_OBJECT_LIMIT = 50
+
+    def _housing_intelligence(self, session: Session) -> list[IntelligenceObject]:
+        """`OBSERVATION_CHANGE` objects for the Housing world (#45).
+
+        WHY THIS PATH EXISTS AT ALL, AND WHY IT IS NOT A NEW TYPE
+        --------------------------------------------------------
+        Every other `OBSERVATION_CHANGE` here is projected from
+        `release_observation_updates` -- rows written by release
+        processing. Housing has no release-calendar entry (Census
+        publishes no machine-readable schedule, so #45 deliberately did
+        not integrate one), so no release-processing row will ever exist
+        for it. The honest record of what MacroChipz learned about
+        Housing and when is `observation_versions`, which is exactly what
+        that table is for.
+
+        So this reads a different SOURCE and produces the SAME TYPE. A
+        `HOUSING_OBSERVATION` variant was considered and rejected: every
+        field of `ObservationChangePayload` is populated here from real
+        data, the semantics match exactly ("MacroChipz saw this
+        observation arrive or change"), and adding a type that differs
+        only by which table it came from would make the taxonomy describe
+        MacroChipz's plumbing instead of the economy.
+
+        `basis` is `SOURCE_FACT` with `methodology=None`, which is not a
+        gap to fill later -- there IS no housing methodology, so there is
+        no conclusion to attribute. Housing is the first world where that
+        is true of every object it produces.
+
+        THE BACKFILL IS INVISIBLE HERE, BY CONSTRUCTION. Only versions
+        with `is_backfilled = false` are read, so Housing's initial
+        import -- 4,644 observations of history MacroChipz never watched
+        arrive -- contributes nothing. That is #43's rule applied at the
+        one place it could otherwise be broken at scale.
+        """
+        series_ids = [active_binding(concept_id).storage_series_id for concept_id in HOUSING_CONCEPT_IDS]
+        repo = ObservationVersionRepository(session)
+        candidates = repo.list_observed_versions(series_ids, self.HOUSING_OBJECT_LIMIT)
+        if not candidates:
+            return []
+
+        objects: list[IntelligenceObject] = []
+        for series, version in candidates:
+            if series.concept_id is None:
+                # A Housing series with no concept cannot happen through
+                # `HousingRepository.ensure_series`, which always sets
+                # one. Omitted rather than guessed if it somehow does.
+                continue
+
+            obj = self._housing_observation_change(session, series, version)
+            if obj is not None:
+                objects.append(obj)
+        return objects
+
+    def _housing_observation_change(
+        self, session: Session, series: EconomicSeries, version: ObservationVersion
+    ) -> ObservationChangeIntelligence | None:
+        concept_id = series.concept_id
+        if concept_id is None:  # pragma: no cover - guarded by the caller
+            return None
+
+        recorded_at = _utc(version.recorded_from)
+        change_type = "REVISED" if version.change_type == "REVISED" else "NEW"
+
+        knowledge = self._version_revision_knowledge(session, series.series_id, version)
+        previous_value = (
+            self._previous_version_value(session, series.series_id, version)
+            if change_type == "REVISED"
+            else None
+        )
+        delta = (
+            version.value - previous_value
+            if version.value is not None and previous_value is not None
+            else None
+        )
+
+        provenance = HousingRepository(session).get_provenance(series.series_id, version.observation_date)
+        # Census's own identifier for the series, from the stored
+        # provenance row. `series.series_id` here is MacroChipz's concept
+        # id (#38), so using it as a provider series id would name
+        # MacroChipz as the provider's own vocabulary.
+        provider_series_id = provenance.source_series_field if provenance is not None else series.series_id
+
+        limitations = [
+            "Records that MacroChipz detected this observation, not that Census published it at this "
+            "instant. Census publishes New Residential Construction at a scheduled time; this dataset "
+            "carries no per-observation publication timestamp, so none is claimed.",
+            "MacroChipz applies no housing state, score or rating. This reports a figure Census published "
+            "and, where one exists, the difference from the value MacroChipz previously held.",
+        ]
+        if change_type == "NEW":
+            limitations.append("A first observation, not a revision: there was no previous value to compare.")
+        if knowledge == "BACKFILLED_BASELINE":
+            # The machine-readable `revision_knowledge` field already says
+            # this, but a surface renders prose. An object whose typed
+            # field is honest and whose words are silent is half honest --
+            # the same sentence the release-processing path attaches.
+            limitations.append(
+                "MacroChipz imported this value when it began tracking this series, so it cannot establish "
+                "what Census had published for this period before then."
+            )
+        if HOUSING_CONCEPT_UNITS.get(concept_id) == "HOUSING_UNITS_ANNUAL_RATE":
+            limitations.append(SAAR_EXPLANATION)
+        if provenance is None:
+            limitations.append("No retrieval provenance is recorded for this observation.")
+
+        return ObservationChangeIntelligence(
+            id=observation_change_id(concept_id, version.observation_date, recorded_at),
+            world="housing",
+            concepts=[concept_id],
+            effective_period=version.observation_date,
+            recorded_at=recorded_at,
+            # Not substituted from anything. See the first limitation.
+            published_at=None,
+            # Every version read here is `is_backfilled = false`, so
+            # OBSERVED is a fact about the row rather than an assumption.
+            knowledge_basis="OBSERVED",
+            basis="SOURCE_FACT",
+            methodology=None,
+            evidence=[
+                EvidenceRef(
+                    concept_id=concept_id,
+                    provider=series.source,
+                    provider_series_id=provider_series_id,
+                    observation_date=version.observation_date,
+                    value=version.value,
+                )
+            ],
+            relations=[
+                Relation(kind="CONCERNS_CONCEPT", target=concept_id),
+                Relation(kind="AFFECTS_WORLD", target="housing"),
+            ],
+            limitations=limitations,
+            payload=ObservationChangePayload(
+                change_type=change_type,
+                revision_knowledge=knowledge,
+                original_value_known=knowledge == "PROSPECTIVE_REVISION" and previous_value is not None,
+                previous_value=previous_value,
+                new_value=version.value,
+                delta=delta,
+                observation_date=version.observation_date,
+                provider=series.source,
+                provider_series_id=provider_series_id,
+                series_title=series.title,
+                units=series.units,
+            ),
+        )
+
+    @staticmethod
+    def _version_revision_knowledge(
+        session: Session, series_id: str, version: ObservationVersion
+    ) -> RevisionKnowledge:
+        """What MacroChipz can honestly claim about this value's history.
+
+        The same rule `_revision_knowledge` applies to release-processing
+        rows, evaluated against version rows directly: a REVISED version
+        is a revision MacroChipz watched only if the FIRST version it ever
+        held for that observation was itself observed. If the first
+        version was an imported baseline, MacroChipz never saw the
+        original publication and "originally reported" is not a sentence
+        it may write.
+        """
+        if version.change_type != "REVISED":
+            return "FIRST_OBSERVATION"
+
+        versions = ObservationVersionRepository(session).list_versions(series_id, version.observation_date)
+        if not versions:  # pragma: no cover - the version itself is one of these
+            return "BACKFILLED_BASELINE"
+
+        earliest = min(versions, key=lambda row: row.recorded_from)
+        return "BACKFILLED_BASELINE" if earliest.is_backfilled else "PROSPECTIVE_REVISION"
+
+    @staticmethod
+    def _previous_version_value(
+        session: Session, series_id: str, version: ObservationVersion
+    ) -> float | None:
+        """The value MacroChipz held immediately before this version.
+
+        Read from the version timeline rather than reconstructed: the
+        version whose `recorded_from` is the greatest one earlier than
+        this version's. `None` when there is none, which is never
+        presented as zero.
+        """
+        versions = ObservationVersionRepository(session).list_versions(series_id, version.observation_date)
+        earlier = [row for row in versions if row.recorded_from < version.recorded_from]
+        if not earlier:
+            return None
+        return max(earlier, key=lambda row: row.recorded_from).value
 
     @staticmethod
     def _revision_knowledge(

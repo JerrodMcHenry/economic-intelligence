@@ -280,3 +280,33 @@ A series of N published sessions is **not** the same span as `rates_v1.0`'s N-se
 ### No provider call on read
 
 Generate-on-read never reaches the network. Guarded **statically**, by parsing imports (`TestNoProviderDependency`): every module on the RATES_MOVEMENT read path — domain, service, builder, repository, contracts — is asserted to import no `httpx`, `requests`, `aiohttp`, `app.clients.*` or model SDK. A module that cannot import a client cannot call one, on any path, including ones no test exercises.
+
+
+---
+
+## Addendum — Increment #45: Housing, and the type that was not added
+
+Housing joined the `World` union. **No object type was added**, and the reasoning is worth recording because the pressure to add one was real.
+
+### Why a new type was rejected
+
+Every other `OBSERVATION_CHANGE` object is projected from `release_observation_updates` — rows written by release processing. Housing has no release-calendar entry and will not have one until a Census schedule mechanism exists (Census publishes HTML and PDF only; see `housing-world.md` §12), so no release-processing row will ever exist for it.
+
+The honest record of what MacroChipz learned about Housing and when is `observation_versions`. So the Housing path reads a **different source** and produces the **same type**.
+
+A `HOUSING_OBSERVATION` variant was considered and rejected: every field of `ObservationChangePayload` is populated here from real data, and the semantics match exactly ("MacroChipz saw this observation arrive or change"). A type differing only by *which table it came from* would make this taxonomy describe MacroChipz's plumbing instead of the economy — and §10's argument against a significance score is the same argument: the taxonomy names what a thing IS.
+
+### The first world where `methodology` is always `None`
+
+Housing objects are `SOURCE_FACT` with `methodology = None`. That is not a gap to be filled later. There is no `housing_v1.0`, so there is no conclusion to attribute, and stamping a methodology id there would claim one was reached.
+
+This is worth naming because it establishes something about the contract: **`basis` was already able to express a world with no methodology.** Nothing in this layer needed changing to admit one. `_WORLD_BY_METHODOLOGY` deliberately has no Housing entry, and a test asserts it.
+
+### Bounding, and the backfill that is invisible
+
+Housing arrived with 4,644 observations of history MacroChipz never watched. Two rules keep that out of the projection:
+
+1. **Only `is_backfilled = false` versions are read.** The baseline import contributes nothing. Measured after the real import: 1,899 objects exist, **none of them housing**.
+2. **The limit is applied at the query** (`HOUSING_OBJECT_LIMIT = 50`), not after generation. A projection over an append-only table must be bounded where the rows are read, or the payload grows with the database.
+
+Housing objects also carry no `PART_OF_RELEASE` relation — there is no release to point at, and inventing one would be a fabricated provenance.

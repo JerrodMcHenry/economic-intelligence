@@ -135,7 +135,18 @@ export function AppShell() {
             <p>
               <span className="font-semibold text-fg-secondary">MacroChipz</span> · Economic Intelligence
             </p>
-            <p>Source data: FRED®, Federal Reserve Bank of St. Louis; U.S. Department of the Treasury.</p>
+            {/* Required attributions. The Census sentence is VERBATIM
+                and mandatory: its Data API terms require the
+                non-endorsement notice to be displayed, and #45 found it
+                rendered only inside a collapsed disclosure on
+                `/housing`, which is not a display. It lives here, on
+                every page, for the same reason the FRED and Treasury
+                lines do. */}
+            <p className="sm:max-w-xl sm:text-right">
+              Source data: FRED®, Federal Reserve Bank of St. Louis; U.S. Department of the Treasury; U.S. Census
+              Bureau and U.S. Department of Housing and Urban Development. This product uses the Census Bureau Data
+              API but is not endorsed or certified by the Census Bureau.
+            </p>
           </div>
         </PageContainer>
       </footer>

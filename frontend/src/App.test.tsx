@@ -61,17 +61,23 @@ describe("App", () => {
     expect(within(nav).getByRole("link", { name: "Inflation" })).toHaveAttribute("href", "/inflation");
     expect(within(nav).getByRole("link", { name: "Jobs" })).toHaveAttribute("href", "/jobs");
     expect(within(nav).getByRole("link", { name: "Rates" })).toHaveAttribute("href", "/rates");
+    expect(within(nav).getByRole("link", { name: "Housing" })).toHaveAttribute("href", "/housing");
     expect(within(nav).getByRole("link", { name: "Calendar" })).toHaveAttribute("href", "/calendar");
 
-    // The consumer IA (#41): the economy, plus the two product surfaces
-    // that are not worlds. "Overview" named our architecture rather
-    // than a part of the economy and its content is now simply what `/`
-    // is; "Labor" and "Releases" were the engineering domain's words.
-    // Still no placeholders -- Housing arrives with #45, not before.
+    // The consumer IA (#41, extended in #45): the economy, plus the two
+    // product surfaces that are not worlds. "Overview" named our
+    // architecture rather than a part of the economy and its content is
+    // now simply what `/` is; "Labor" and "Releases" were the
+    // engineering domain's words.
+    //
+    // Housing appears here because it has data, not because a slot was
+    // reserved for it -- #45 added one registry entry and the nav
+    // followed, which is what the registry existed to make true. Still
+    // no placeholders: a world with nothing to show does not get a tab.
     const navOrder = within(nav).getAllByRole("link").map((link) => link.textContent);
-    expect(navOrder).toEqual(["Home", "Inflation", "Jobs", "Rates", "Calendar"]);
+    expect(navOrder).toEqual(["Home", "Inflation", "Jobs", "Rates", "Housing", "Calendar"]);
 
-    for (const gone of ["Overview", "Labor", "Releases", "Housing"]) {
+    for (const gone of ["Overview", "Labor", "Releases", "Consumer", "Growth"]) {
       expect(within(nav).queryByRole("link", { name: gone }), gone).not.toBeInTheDocument();
     }
 

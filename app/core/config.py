@@ -73,6 +73,32 @@ class Settings:
     # against the live feed during #29's own verification.
     treasury_timeout_seconds: float = 30.0
 
+    # The U.S. Census Bureau Data API (Increment #45) requires a key:
+    # an unkeyed request to the New Residential Construction dataset is
+    # redirected to Census's own "Missing Key" page rather than served.
+    # Read here and passed to `CensusClient`; never logged, never
+    # rendered into an error message, never reported as a value by
+    # `production_configuration_errors()` below.
+    census_api_key: str | None = os.environ.get("CENSUS_API_KEY")
+
+    # 60s, the longest provider timeout here, and measured rather than
+    # guessed: the whole `resconst` history is a single ~1.5 MB response
+    # (26,773 rows, 1959-01 onward), which is the request the initial
+    # Housing baseline import makes. Routine syncs fetch a small recent
+    # window and return in well under a second.
+    census_timeout_seconds: float = 60.0
+
+    @property
+    def census_configured(self) -> bool:
+        """Whether Housing ingestion is available on this deployment.
+
+        A BOOLEAN, deliberately -- it is the only thing any caller
+        outside `CensusClient` needs to know about the credential, and
+        it is safe to log, return in a response, and put in a startup
+        line.
+        """
+        return bool(self.census_api_key)
+
     database_url: str | None = os.environ.get("DATABASE_URL")
 
     # No hardcoded default: the model is not baked into architecture, so an

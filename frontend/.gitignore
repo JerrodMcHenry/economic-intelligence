@@ -25,4 +25,21 @@ dist-ssr
 
 # React Router framework mode typegen output (Increment #40)
 .react-router/
-build/
+
+# The PRODUCTION BUILD OUTPUT, anchored to the frontend root with a
+# leading slash (corrected in #45).
+#
+# A bare `build/` matches a directory named `build` at ANY depth, and
+# this project has a second one: `src/build/`, which holds
+# `prerenderPaths.ts` -- a load-bearing module that BOTH
+# `react-router.config.ts` and `src/routes.ts` import at config time.
+# It was therefore never committed, and a fresh clone of this repository
+# could not build the frontend at all:
+#
+#   Error loading react-router.config.ts:
+#   Cannot find module './src/build/prerenderPaths'
+#
+# Found in #45 while building HEAD in a clean worktree to measure a
+# bundle delta. The leading slash anchors the pattern to this directory,
+# so it still ignores the build output and no longer hides source.
+/build/

@@ -81,6 +81,20 @@ Every mapping, and why it is justified. This is the table the backfill used.
 | TREASURY | `BC_30YEAR` | `UST_NOMINAL_30Y` | `UST_NOMINAL_30Y` | ditto |
 | TREASURY | `TC_5YEAR` | `UST_REAL_5Y` | `UST_REAL_5Y` | `rates_v1.0` real curve, `REAL_FIELD_MAP` (#29) |
 | TREASURY | `TC_10YEAR` | `UST_REAL_10Y` | `UST_REAL_10Y` | ditto |
+| CENSUS | `APERMITS/TOTAL` | `us.housing.units-authorized.saar.monthly` | same | Census BPS definition; verified against the published release (#45) |
+| CENSUS | `ASTARTS/TOTAL` | `us.housing.units-started.saar.monthly` | same | Census SOC definition; verified against the published release (#45) |
+| CENSUS | `ACOMPLETIONS/TOTAL` | `us.housing.units-completed.saar.monthly` | same | Census SOC definition; verified against the published release (#45) |
+| CENSUS | `PERMITS/TOTAL` | `us.housing.units-authorized.nsa.monthly` | same | Same universe, unadjusted; a distinct concept (#45) |
+| CENSUS | `STARTS/TOTAL` | `us.housing.units-started.nsa.monthly` | same | ditto |
+| CENSUS | `COMPLETIONS/TOTAL` | `us.housing.units-completed.nsa.monthly` | same | ditto |
+
+**The Census rows added in #45 differ from every row above them in three ways**, each deliberate:
+
+1. **`storage_series_id` equals the concept id.** A provider added AFTER #38 has no legacy rows to preserve, so it stores MacroChipz's own identity from the first write. The FRED/Treasury asymmetry in §6 is contained rather than extended to a third shape.
+2. **The equivalence basis is not a methodology citation.** Every binding above cites the frozen methodology that already uses that series for that role — the strongest possible basis, because the equivalence is *recorded* rather than asserted. No methodology uses the Housing series (there is no `housing_v1.0`), so that basis was unavailable. Each Census binding instead quotes Census's own published definition and names the release figure it was verified against, which is the next strongest thing.
+3. **A unit conversion is carried.** `canonical_unit_factor = 1000.0`, from Census's "Thousands of Units" — the same shape the `PAYEMS` binding already uses, and for the same reason: the scaling is a property of the provider, not of the concept.
+
+**Two concepts per measurement, not one.** Census publishes each housing measure both seasonally adjusted (as an annual rate) and unadjusted (as the month's count). They share a `universe` and differ in `seasonal_adjustment` and `canonical_unit`, which is exactly the distinction this registry exists to make un-substitutable — see `housing-world.md` §4 for why conflating them is the most likely way to publish a false housing number.
 
 **No speculative BLS or BEA bindings exist.** Their identifiers and unit semantics have not been verified against the agencies' own documentation, and inventing them would be exactly the fabricated equivalence this design prevents. #M2/#M3 add them, with evidence.
 

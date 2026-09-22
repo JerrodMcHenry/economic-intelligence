@@ -83,15 +83,30 @@ export interface Explainer {
 }
 
 /**
- * THE LAUNCH SET.
+ * THE SET.
  *
- * Eight, chosen against what MacroChipz can actually show and explain
+ * Chosen against what MacroChipz can actually show and explain
  * accurately today — not a survey of economics. Each one either
  * corrects something people measurably get wrong, or unlocks a
  * question the product already raises on a page someone is looking at.
  *
- * Housing-specific explainers are deliberately absent: #45 owns
- * Housing, and MacroChipz tracks no housing series yet.
+ * #45 added the two Housing entries at the end, and only two. Both meet
+ * the bar this file sets: each corrects a specific, checkable
+ * misreading of a number now on `/housing`, and every claim in them is
+ * supportable from Census's own published definitions or from
+ * MacroChipz's own behaviour. A general "what is the housing market"
+ * explainer was not written, because MacroChipz tracks three
+ * construction measures and nothing about prices, sales or
+ * affordability — it would have had to describe things this product
+ * cannot show.
+ *
+ * DISCOVERY. Both are reachable from `/housing` through
+ * `UnderstandWorld`, which lists every explainer naming a world, and
+ * the annual-rate one is additionally linked inline from the section
+ * that renders the figure it explains. They also link to each other,
+ * and the annual-rate one links onward to the Fed/mortgage explainer
+ * that a housing reader is likely to want next. The site-level
+ * explainer-library problem that #44 deferred stays deferred.
  */
 export const EXPLAINERS: ReadonlyArray<Explainer> = [
   {
@@ -306,6 +321,71 @@ export const EXPLAINERS: ReadonlyArray<Explainer> = [
     worlds: ["JOBS"],
     related: ["explain.jobs-two-surveys"],
     basis: "GENERAL_ECONOMICS",
+  },
+  {
+    id: "explain.permits-starts-completions",
+    slug: "permits-starts-completions",
+    question: "What do permits, starts and completions actually mean?",
+    shortTitle: "Permits, starts, completions",
+    answer:
+      "They are three separate counts of homes at three different moments: approved to be built, begun, and finished. They are not the same homes followed through time.",
+    whatItIs:
+      "Each month the Census Bureau and the Department of Housing and Urban Development jointly publish how many privately-owned homes were authorised by a building permit, how many had construction started, and how many were completed. MacroChipz records all three.",
+    howItWorks: [
+      "A permit is an approval from a local authority to go ahead with a build. Nothing has been dug.",
+      "A start is counted when excavation begins for the footings or foundation.",
+      "A completion is counted when the home is finished — Census's test is that all finished flooring has been installed. In a building with several units, the units count as completed when at least half are occupied or ready to be.",
+      "The three are counted independently, so the permits counted this month are not the homes started this month.",
+    ],
+    whatThisMeansForYou:
+      "If you want the earliest read on whether more homes are coming, permits is the one that moves first. But a permit is permission, not a house: not every authorised home gets built, and the time from approval to finished varies a great deal.",
+    misconception:
+      "The three numbers are often read as one batch of homes moving along a conveyor, so that permits today become completions on a predictable schedule. They are three separate measurements of three different groups of homes.",
+    conceptIds: [
+      "us.housing.units-authorized.saar.monthly",
+      "us.housing.units-started.saar.monthly",
+      "us.housing.units-completed.saar.monthly",
+    ],
+    worlds: ["HOUSING"],
+    related: ["explain.saar-housing", "explain.fed-and-mortgage-rates"],
+    basis: "INSTITUTIONAL_ROLE",
+    limitations: [
+      "MacroChipz publishes no expected lag between the three stages and no share of permits that becomes a start.",
+      "These counts cover privately-owned homes only. Publicly-owned units are excluded by Census.",
+      "MacroChipz applies no housing state, score or rating, so this explains what the numbers are — not whether they are good news.",
+    ],
+  },
+  {
+    id: "explain.saar-housing",
+    slug: "saar-housing",
+    question: "Wait, 1.5 million homes weren't built this month?",
+    shortTitle: "Annual rates in housing",
+    answer:
+      "No. That figure is an annual rate: it describes the month's pace of building expressed as a yearly total. The number of homes actually started in a given month is closer to a tenth of it.",
+    whatItIs:
+      "Housing figures are usually quoted as a seasonally adjusted annual rate. Census calculates it by adjusting the month's figure for normal seasonal patterns and then multiplying by twelve, so one month can be compared with another and with a yearly total.",
+    howItWorks: [
+      "Construction is strongly seasonal — more homes are started in summer than in winter — so raw monthly figures move for reasons that have nothing to do with the housing market.",
+      "Seasonal adjustment removes that expected pattern, and multiplying by twelve puts the result on a yearly scale.",
+      "Census is explicit that the annual rate is neither a forecast nor a projection: it describes the pace in the particular month it was calculated for.",
+      "You cannot get back to the real monthly count by dividing by twelve. The seasonal adjustment is exactly what that division throws away, which is why MacroChipz shows the actual unadjusted count separately.",
+    ],
+    whatThisMeansForYou:
+      "When a headline says housing starts were 1.3 million, that is a pace, not a month's construction. It is the right number for comparing this month with last month, and the wrong number for picturing how many homes went up.",
+    misconception:
+      "An annual-rate figure is routinely read as a count of homes in that month. It is a yearly pace, and the month's actual count is published separately and is much smaller.",
+    conceptIds: [
+      "us.housing.units-started.saar.monthly",
+      "us.housing.units-started.nsa.monthly",
+    ],
+    worlds: ["HOUSING"],
+    related: ["explain.permits-starts-completions", "explain.inflation-vs-prices", "explain.fed-and-mortgage-rates"],
+    basis: "INSTITUTIONAL_ROLE",
+    limitations: [
+      "Seasonal adjustment estimates an average seasonal pattern. Census notes it does not account for abnormal weather or year-to-year changes in it.",
+      "Census's own guidance is that month-to-month movements in these figures are often irregular, and that establishing an underlying trend can take three to six months.",
+      "MacroChipz does not test whether a monthly change is statistically significant.",
+    ],
   },
 ];
 

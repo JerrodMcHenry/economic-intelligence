@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./layouts/AppShell";
 import { CalendarPage } from "./pages/Calendar";
 import { HomePage } from "./pages/Home";
+import { HousingPage } from "./pages/Housing";
 import { InflationPage } from "./pages/Inflation";
 import { JobsPage } from "./pages/Jobs";
 import { NotFoundPage } from "./pages/NotFound";
@@ -13,9 +14,11 @@ import { RevisionsPage } from "./pages/Revisions";
  * The routes that have not yet graduated into React Router framework
  * mode (Increment #40). Rendered by `routes/catchall.tsx`.
  *
- * CONSUMER INFORMATION ARCHITECTURE (#41)
- * ---------------------------------------
- * Primary surfaces: Home, Inflation, Jobs, Rates, Calendar. The route
+ * CONSUMER INFORMATION ARCHITECTURE (#41, extended in #45)
+ * --------------------------------------------------------
+ * Primary surfaces: Home, Inflation, Jobs, Rates, Housing, Calendar.
+ * Housing is the fourth economic world and the first with no
+ * methodology behind it -- see `pages/Housing.tsx`. The route
  * names are the product's names -- `/jobs`, not `/labor`; `/calendar`,
  * not `/releases` -- because a URL is the most public piece of language
  * a product has.
@@ -41,6 +44,7 @@ export function App() {
         <Route path="inflation" element={<InflationPage />} />
         <Route path="jobs" element={<JobsPage />} />
         <Route path="rates" element={<RatesPage />} />
+        <Route path="housing" element={<HousingPage />} />
         <Route path="calendar" element={<CalendarPage />} />
 
         {/* Revision Intelligence (#43) is a CROSS-WORLD capability, not

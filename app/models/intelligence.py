@@ -42,9 +42,15 @@ from pydantic import BaseModel, Field
 #: than implied by deployment date.
 INTELLIGENCE_CONTRACT_VERSION = "intelligence_v1"
 
-#: The MacroChipz economic worlds that exist today. Housing, consumer and
-#: growth join when they have data -- deliberately not pre-declared.
-World = Literal["inflation", "jobs", "rates"]
+#: The MacroChipz economic worlds that exist today. Consumer and growth
+#: join when they have data -- deliberately not pre-declared.
+#:
+#: `housing` joined in #45, when it acquired data. Note what did NOT
+#: change with it: Housing objects are `SOURCE_FACT` with
+#: `methodology=None`, because no housing methodology exists. A world in
+#: this union is a subject MacroChipz has data about, never a promise
+#: that a methodology classifies it.
+World = Literal["inflation", "jobs", "rates", "housing"]
 
 IntelligenceType = Literal[
     "RELEASE_PROCESSED",

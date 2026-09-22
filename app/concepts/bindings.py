@@ -95,8 +95,44 @@ def _treasury(concept_obj: EconomicConcept, field: str, basis: str) -> ProviderB
     )
 
 
-#: Every binding MacroChipz currently has. Twelve, matching the twelve
-#: series actually persisted -- six FRED, six Treasury.
+def _census_resconst(
+    concept_obj: EconomicConcept,
+    category_code: str,
+    basis: str,
+) -> ProviderBinding:
+    """One New Residential Construction series (Increment #45).
+
+    `provider_series_id` is Census's OWN vocabulary for the series --
+    `category_code` plus `data_type_code`, e.g. `APERMITS/TOTAL` -- and
+    it is the only place those codes belong. Nothing in methodology or
+    presentation code may read them.
+
+    `storage_series_id` is MacroChipz's concept id. Unlike the FRED
+    bindings above (where the two are equal because #38 did not rewrite
+    history), a provider added AFTER #38 has no legacy rows to preserve,
+    so it stores MacroChipz's own identity from the first write and the
+    ambiguity documented in economic-concept-identity.md section 6 is
+    not extended to a third shape.
+
+    `canonical_unit_factor` is 1000: Census publishes thousands of
+    units, MacroChipz reasons in units. Exactly the conversion the
+    `PAYEMS` binding above already performs, and for the same reason --
+    the scaling is a property of the provider, not of the concept.
+    """
+    return ProviderBinding(
+        concept_id=concept_obj.concept_id,
+        provider="CENSUS",
+        provider_series_id=f"{category_code}/TOTAL",
+        storage_series_id=concept_obj.concept_id,
+        provider_native_unit="Thousands of Units",
+        canonical_unit_factor=1000.0,
+        equivalence_basis=basis,
+    )
+
+
+#: Every binding MacroChipz currently has. Eighteen, matching the
+#: eighteen series actually persisted -- six FRED, six Treasury, six
+#: Census.
 #:
 #: No speculative BLS or BEA bindings appear here. Their identifiers and
 #: unit semantics have not been verified against the agencies' own
@@ -186,6 +222,65 @@ BINDINGS: tuple[ProviderBinding, ...] = (
         CONCEPTS["UST_REAL_10Y"],
         "TC_10YEAR",
         "rates_v1.0 real curve; REAL_FIELD_MAP (Increment #29). TIPS par real yield.",
+    ),
+    # ----------------------------------------------------------------
+    # Census New Residential Construction (Increment #45).
+    #
+    # No frozen methodology cites these series, because none exists --
+    # so unlike every binding above, the equivalence cannot be recorded
+    # from an earlier methodology decision. It is asserted here instead
+    # from CENSUS'S OWN PUBLISHED DEFINITIONS, verified against the
+    # dataset's live metadata and the monthly release's explanatory
+    # notes rather than from the code names, which is what
+    # `equivalence_basis` exists to carry.
+    # ----------------------------------------------------------------
+    _census_resconst(
+        CONCEPTS["us.housing.units-authorized.saar.monthly"],
+        "APERMITS",
+        "Census `resconst` category APERMITS, data type TOTAL, seasonally_adj=yes. A building permit is "
+        "\"the approval given by a local jurisdiction to proceed on a construction project\" (Building Permits "
+        "Survey definitions); the series counts privately-owned housing units so authorized. Verified against "
+        "the New Residential Construction release for August 2026, which reports permits at a seasonally "
+        "adjusted annual rate of 1,394,000 and a revised July rate of 1,433,000 -- the exact values this "
+        "series carries as 1394 and 1433 thousands of units.",
+    ),
+    _census_resconst(
+        CONCEPTS["us.housing.units-started.saar.monthly"],
+        "ASTARTS",
+        "Census `resconst` category ASTARTS, data type TOTAL, seasonally_adj=yes. \"Start of construction "
+        "occurs when excavation begins for the footings or foundation of a building\" (Survey of Construction "
+        "definitions), privately-owned units only. Verified against the August 2026 release: starts at a "
+        "seasonally adjusted annual rate of 1,275,000 and a revised July estimate of 1,309,000, matching this "
+        "series' 1275 and 1309 thousands of units.",
+    ),
+    _census_resconst(
+        CONCEPTS["us.housing.units-completed.saar.monthly"],
+        "ACOMPLETIONS",
+        "Census `resconst` category ACOMPLETIONS, data type TOTAL, seasonally_adj=yes. \"A house is defined as "
+        "completed when all finished flooring has been installed\"; in buildings with two or more units, all "
+        "units count as completed \"when 50 percent or more of the units are occupied or available for "
+        "occupancy\" (Survey of Construction definitions). Verified against the August 2026 release: "
+        "completions at 1,128,000 and a revised July estimate of 1,280,000, matching 1128 and 1280.",
+    ),
+    _census_resconst(
+        CONCEPTS["us.housing.units-authorized.nsa.monthly"],
+        "PERMITS",
+        "Census `resconst` category PERMITS, data type TOTAL, seasonally_adj=no. The SAME economic universe as "
+        "the APERMITS binding above -- privately-owned housing units authorized -- published as the month's "
+        "actual count rather than as a seasonally adjusted annual rate. A DISTINCT concept for that reason: "
+        "the two are not interchangeable and must never be compared with each other.",
+    ),
+    _census_resconst(
+        CONCEPTS["us.housing.units-started.nsa.monthly"],
+        "STARTS",
+        "Census `resconst` category STARTS, data type TOTAL, seasonally_adj=no. The same universe as the "
+        "ASTARTS binding, published as the month's actual count. Distinct concept, same reasoning.",
+    ),
+    _census_resconst(
+        CONCEPTS["us.housing.units-completed.nsa.monthly"],
+        "COMPLETIONS",
+        "Census `resconst` category COMPLETIONS, data type TOTAL, seasonally_adj=no. The same universe as the "
+        "ACOMPLETIONS binding, published as the month's actual count. Distinct concept, same reasoning.",
     ),
 )
 

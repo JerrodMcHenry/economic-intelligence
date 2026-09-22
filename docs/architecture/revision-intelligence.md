@@ -128,3 +128,25 @@ Share behaviour and `revision_opened` analytics are reused, not reinvented; no n
 2. Replay comparison is **not yet surfaced on a revision card** — there is no revision to attach it to. The contract and service support it.
 3. The historical boundary has **no displayable date**, by choice.
 4. Rates revisions are not represented, and should not be until source semantics justify it.
+
+
+---
+
+## Addendum — Increment #45: a new source's first import
+
+#43 was written when every versioned row in the database came from one of two places: a live write, or #31's migration. #45 added a third — **a new provider's entire published history, imported in a single request** — and it is the case most likely to break this document's central rule.
+
+**The rule is unchanged.** A revision is something MacroChipz *watched happen*. Sixty-seven years of Census housing figures arriving at once is not that: MacroChipz knows those values as of the import and cannot say what Census had published for those months before it.
+
+**What changed is where the flag is set.** `is_backfilled` was introduced by #31 for versions its migration synthesized. #45 widens it to a new source's initial import, and the widening is deliberate because the *meaning* is identical — the sentence #31 wrote for it ("this value existed in MacroChipz by this time", never "this was the value the source first published") describes both cases exactly. `ObservationVersionWriter` gained a `baseline` flag, applied **only to `NEW` versions**: a revision is always genuinely observed, because reaching the revised branch at all means MacroChipz held an earlier value and saw it change.
+
+**Which write is a baseline is decided per observation**, by a pure function (`app.domain.housing.is_baseline_import`), not by a flag someone remembers to pass:
+
+- series empty → baseline;
+- incoming month older than the newest stored → baseline (filling history backwards is not watching);
+- incoming month newer than the newest stored → **observed** first observation (a release arriving; MacroChipz *is* watching);
+- incoming month equal to a stored month → not this function's business; if the value differs it is an observed revision.
+
+**The consequence, stated so it is not surprising:** Housing's 4,644-observation import produced **zero** Structured Intelligence objects and appears nowhere on `/revisions`. `IntelligenceBuilder` reads only `is_backfilled = false` versions for Housing. A backfill that surfaced as 4,644 "new data point" entries would be MacroChipz reporting its own migration as economic news — the precise failure this document exists to prevent, at three times the scale of the 1,488-row precedent #39 already records.
+
+**The revision path is proven, without a manufactured revision.** MacroChipz has still never captured a genuine revision in real data. `tests/integration/test_housing_intelligence.py` drives one through the full pipeline against a real database — baseline import, observed arrival, then an observed change — and asserts that `selectRevisions`' existing two conditions select it with **no Housing-specific frontend logic**. It also asserts the harder case: a revision to a value that was itself an imported baseline is reported as `BACKFILLED_BASELINE`, not `PROSPECTIVE_REVISION`, because MacroChipz cannot claim the earlier value was what Census originally published.

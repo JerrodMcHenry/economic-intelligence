@@ -10,6 +10,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
 import type { IntelligenceObject } from "../../api/intelligence.types";
+import { ECONOMIC_WORLDS } from "../../worlds/registry";
 import { TheLede } from "./TheLede";
 
 const RATES = {
@@ -192,10 +193,20 @@ describe("QUIET lede", () => {
     }
   });
 
-  it("names exactly the three active worlds and no Housing", () => {
+  it("names every active world, and only worlds that have data", () => {
+    // Derived from the registry rather than hardcoded, which is the
+    // property #45 relied on: Housing appeared here through one registry
+    // entry, with no change to `homepage_presentation_v1.0` and no
+    // Housing-specific code on the homepage.
     const { container } = renderLede(null);
     const items = within(container).getAllByRole("listitem");
-    expect(items).toHaveLength(3);
-    expect(container.textContent).not.toMatch(/Housing/i);
+    expect(items).toHaveLength(ECONOMIC_WORLDS.length);
+    for (const world of ECONOMIC_WORLDS) {
+      expect(container.textContent, world.label).toContain(world.label);
+    }
+    // A world with no data still gets no slot.
+    for (const absent of ["Consumer", "Growth"]) {
+      expect(container.textContent, absent).not.toMatch(new RegExp(absent, "i"));
+    }
   });
 });

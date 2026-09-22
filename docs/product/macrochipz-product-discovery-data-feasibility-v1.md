@@ -355,6 +355,57 @@ All entries verified against official documentation on **2026-09-19**. "Commerci
 
 ---
 
+## 11A. Sources admitted after this increment
+
+**This section is an APPEND-ONLY LOG, not a revision of §11.** §11's tables record what was established on 2026-09-19 and are left exactly as they were. A source added here was reviewed later, on its own evidence, and the entry says when and why. Nothing below implies a source was approved earlier than it was.
+
+**A source's presence here is not a general permission for its provider.** Approval attaches to the reviewed *program*, not to the organisation: it authorises the named dataset for the named use. Another dataset from the same provider requires its own semantic and licensing review, recorded as its own entry.
+
+### 11A.1 U.S. Census Bureau — New Residential Construction (`timeseries/eits/resconst`)
+
+| Field | Finding |
+|---|---|
+| **Reviewed** | 2026-09-21, during Increment #45 (Housing World Foundation). |
+| **Status** | **ADMITTED**, for this program only. |
+| **Domain / metrics** | Housing — building permits, housing starts, housing completions; national, monthly, both seasonally adjusted (annual rate) and unadjusted. |
+| **API** | `api.census.gov/data/timeseries/eits/resconst` |
+| **Cost** | $0. Free API key, required — an unkeyed request is redirected to Census's own "Missing Key" page rather than served. |
+| **Commercial** | **Permitted.** Public-domain federal work. §6.4 of `macrochipz-audience-content-data-opportunity-research-v1.md` records the explicit negative check: the words "commercial", "redistribute", "cache" and "store" do not appear anywhere in the terms. |
+| **Attribution** | **MANDATORY AND VERBATIM** — see §11A.2. |
+| **Depth** | Permits and starts from 1959-01; completions from 1968-01. Verified against the live dataset, not assumed. |
+| **Frequency** | Monthly. |
+| **Rate limit** | The commonly-cited "500 queries per IP per day without a key" could not be confirmed from any first-party page and remains **UNKNOWN**. Not load-bearing: the full history is a single request, and routine syncs are one request each. |
+| **Revisions** | Current vintage only. Prior months are revised in each monthly release; the API serves the revised value with no vintage history. |
+| **Release calendar** | **No machine-readable schedule.** HTML and PDF only. See §11A.3. |
+
+**Why this was not in §11.** §11 surveyed the domains #28 scoped — Economy, Rates, FX, equities, crypto and expectations. Housing was not among them, so Census was never assessed for or against; it appears in neither §11.1 nor §11.2. That absence is what stopped Increment #45 at its source gate: the increment correctly refused to ingest a provider that had not passed this allow-list, and it stopped **before writing any production Housing code**. The source question was then reviewed deliberately, and approved on the evidence above. **#45 resumed only after that approval, not before it.**
+
+**Authentication note, recorded because it cost real time.** A correctly-formatted Census key (40 lowercase hex characters) is rejected with an "Invalid Key" page until it is activated from the confirmation email. The failure is indistinguishable from a wrong key, and it is account-level rather than dataset-level — an unrelated dataset rejects the same key identically. `app/clients/census.py` detects both key redirects and reports activation explicitly.
+
+### 11A.2 The Census attribution requirement, verbatim
+
+Census's Data API terms of service require this notice, word for word:
+
+> **This product uses the Census Bureau Data API but is not endorsed or certified by the Census Bureau.**
+
+Three obligations follow, and all three are implemented:
+
+1. **The notice is displayed.** It renders in the MacroChipz footer on every page (`frontend/src/layouts/AppShell.tsx`) and travels on the `/api/v1/housing` response as `attribution` (`app/models/housing.py`). It is never paraphrased, shortened, or reworded. A guard test asserts the string is byte-exact.
+2. **Endorsement is never implied.** The Census Bureau name identifies the source of the data and nothing else. MacroChipz claims no partnership, certification or endorsement, and uses no Census emblem or logo.
+3. **Content is not misrepresented as Census's.** Census publishes thousands of units; MacroChipz stores and displays units, a conversion declared on the provider binding. Every derived figure — a month-over-month change, a year-over-year change — is presented as MacroChipz's arithmetic over published values, never as a Census-published figure.
+
+**A fourth term, recorded for the internal policy even though it does not bite here.** Users must not *"use these data, alone or in combination with any other Census or non-Census data, to identify any individual person, household, business or other entity."* MacroChipz ingests national monthly aggregates only, so this is not reachable — but it constrains any future Census dataset, and sub-national geography in particular.
+
+**The joint publisher.** Census's own release states that the Census Bureau **and the U.S. Department of Housing and Urban Development jointly** announce these statistics. MacroChipz names both; crediting Census alone would be incomplete.
+
+### 11A.3 What admission did NOT resolve
+
+- **No release calendar.** Census publishes its schedule as HTML and PDF only. ADR-020 chose a single FRED-sourced calendar with no provider abstraction, so integrating a Census release would mean either sourcing a Census program's schedule *from FRED* — reintroducing exactly the dependency #45 rejected on licensing grounds — or building the scraper or hand-kept table that the 2.0 sequence assigns to #M4. **Deferred, deliberately**, and Housing therefore has no calendar entry.
+- **The rate limit remains UNKNOWN**, as above.
+- **No other Census dataset is admitted.** Retail sales (`marts`), durable goods and the rest each need their own entry here.
+
+---
+
 ## 12. Requirements Traceability
 
 Each major proposed capability traced end to end. A capability that cannot complete this chain is not in MVP.

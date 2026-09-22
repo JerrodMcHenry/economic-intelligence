@@ -12501,3 +12501,328 @@ explaining what was appended and why.
 
 Updating a freeze on purpose and recording it is fine. Editing one
 quietly because a test is in the way is not.
+
+## Increment #45 — Housing World Foundation
+
+MacroChipz's fourth economic world, and the first one that renders no
+conclusion. Baseline: HEAD `208ab7d` (#44), clean tree. 2,494 backend
+tests and 1,789 frontend tests pass; nothing committed, nothing pushed.
+
+### The increment stopped at a gate, and stopping was correct
+
+#45 began earlier and halted before writing any production code, because
+Census was not on #28's source allow-list. It is worth being precise
+about why that was right rather than pedantic: #28's tables are not a
+list of sources someone liked, they are the record of which providers
+were verified as usable in a commercial product at $0, and Housing was
+never in the domains #28 surveyed. Census appears in neither the
+MVP-eligible table nor the rejected one. "Not assessed" is a different
+state from "approved", and building on it would have been the exact
+failure #28 existed to prevent — two days of reading that changed the
+domain scope and reversed a build decision.
+
+The source was then reviewed deliberately and admitted. §11A of the #28
+artifact is an **append-only log** rather than an edit to §11: the
+original tables still say what was true on 2026-09-19, and the new entry
+says when Census was reviewed and on what evidence. Rewriting §11 to
+include Census would have made the repository claim it had always been
+approved, which is a small lie about a licensing decision — the class of
+thing this project cannot afford to be casual about.
+
+Approval attaches to the reviewed *program*. `resconst` is admitted;
+retail sales, durable goods and every other Census dataset are not.
+
+### Ninety minutes lost to an unactivated key
+
+The first connectivity check failed. The key was present in `.env`, 40
+lowercase hex characters, parsed identically by `load_dotenv`,
+`dotenv_values` and a hand-parse — and rejected. The decisive test was
+pointing the same key at an unrelated dataset (ACS): also rejected. That
+made it account-level rather than `resconst`-specific, which is the
+difference between "our request is wrong" and "the credential is not
+live".
+
+Census issues a correctly-formatted key that is rejected until the
+confirmation email is used, and the rejection is indistinguishable from
+a wrong key. The client now detects both of Census's key redirects and
+names activation in the error, because an operator hitting this should
+lose a minute rather than an afternoon.
+
+**Census does not use 401.** A bad key is `302 → /data/invalid_key.html`
+and an absent one `302 → /data/missing_key.html`, both of which render
+as a `200` HTML page if redirects are followed — which is how a careless
+client reports "malformed response" for what is really a configuration
+problem. The client refuses to follow redirects at all, which converts
+that into a typed `CensusAuthError` and has the side benefit that
+nothing is ever fetched from a URL the client did not build.
+
+### The first provider here that holds a secret
+
+FRED's key predates all of this and is handled adequately. Census is the
+first one added since the project started taking provenance seriously,
+and the leak paths are all boring: a `repr` in a log line, an exception
+message, a chained traceback.
+
+The one worth recording is that **`str(httpx.HTTPError)` contains the
+request URL**, and this client's request URL contains the key. So the
+obvious code —
+
+```python
+raise CensusUpstreamError(f"Failed to reach Census: {exc}") from exc
+```
+
+— leaks the credential twice: once in the message, once in the chained
+traceback. Both halves are wrong, and `from None` is load-bearing rather
+than stylistic. The tests assert against the *full formatted traceback*,
+not just `str(exc)`, because that is what actually reaches a log.
+
+`source_url` in provenance is the program's landing page and never an
+API URL, for the same reason: an API URL for this provider would write a
+secret into the database.
+
+### Two units, because one of them is a trap
+
+Census publishes each measure twice, and the second one is not a
+refinement of the first.
+
+`1,394,000` is a **seasonally adjusted annual rate** — Census's own
+definition is "the seasonally adjusted monthly value multiplied by 12",
+and it is "neither a forecast nor a projection". The actual number of
+homes authorised in August 2026 was `117,400`.
+
+The tempting error is not presenting the annual rate as homes built that
+month — that one is obvious once stated. It is **dividing by twelve**.
+1,394,000 ÷ 12 = 116,167, against a real figure of 117,400: close enough
+to look like a rounding difference, and wrong on principle, because the
+seasonal adjustment that produced the annual rate is exactly what the
+division throws away. A reader checking the arithmetic would find it
+plausible. So would a reviewer.
+
+There is no seasonally adjusted *monthly* level to fall back on; Census
+does not publish one. Month-over-month comparison therefore requires the
+annual rate, and honesty requires the unadjusted count beside it.
+
+Hence six concepts rather than three. That is not padding: the pair is
+what lets the product **show** the distinction — 117,400 sits directly
+beneath 1,394,000 on the page — instead of asserting it in a footnote.
+And `seasonal_adjustment` being a required field on `EconomicConcept`
+stopped being a formality the moment two concepts appeared with the same
+universe and different adjustments.
+
+Both errors are now AST-guarded: no Housing module may divide or
+multiply by twelve.
+
+### The world with no state, and what that cost
+
+Every other world renders a conclusion. Housing renders none, because
+there is no `housing_v1.0` and the 2.0 sequence names five things one
+would require — none of which #45 met.
+
+Writing that page is harder than writing a graded one, and the pressure
+is specific: **"Permits −2.7%" wants a word next to it.** Every instinct
+says put "cooling" there. The page answers a narrower question instead —
+how many homes are entering the pipeline — and leaves the conclusion to
+the reader.
+
+The guard that matters is not the one forbidding "cooling". It is the
+one asserting that `HousingResult` has **no `state`-shaped field at
+all**, so no surface can render a state from canonical data even if
+someone wants to. Adding one would have to be a deliberate contract
+change, which is the point.
+
+### Census would not let us claim significance even if we wanted to
+
+Census's release states that starts fell 2.6 percent (±12.0 percent),
+and that a range containing zero means "it is uncertain whether there was
+an increase or decrease". So the headline monthly move in the flagship
+series is **not statistically significant**, by the publisher's own test.
+
+MacroChipz cannot reproduce that test: the intervals come from sampling
+variances the API does not expose. Reconstructing them would be inventing
+statistics. Asserting significance without them would be worse.
+
+So the page reports the change and **quotes Census's own guidance** — it
+may take three months to establish a trend for permits and six for
+starts and completions. Borrowing the provider's caution is a better
+answer than either inventing a threshold or saying nothing.
+
+### The backfill that must not become news
+
+This is the part #43 made me get right, and the scale is what makes it
+matter. The initial import is 4,644 observations spanning 1959 to 2026.
+Every one of them is a value MacroChipz *learned at one instant*, not one
+it watched arrive.
+
+If those had been recorded as observed, `/revisions` and the homepage
+feed would have filled with 4,644 "new data point" entries — MacroChipz
+reporting its own migration as economic news, at three times the scale of
+the 1,488-row coverage-noise precedent #39 already documents.
+
+`is_backfilled` existed for #31's migration. #45 widens it to a new
+source's first import, and the widening is honest because the *meaning*
+is identical: #31's own sentence — "this value existed in MacroChipz by
+this time", never "this was the value the source first published" —
+describes both cases exactly. What I did not do is add a second flag
+meaning almost the same thing.
+
+The decision is per observation, by a pure function, and the interesting
+case is the third one:
+
+- series empty → baseline;
+- month older than the newest stored → baseline (filling backwards is
+  not watching);
+- **month newer than the newest stored → observed.** A release arriving
+  is real news, and marking it baseline because it happened to arrive in
+  the same run as a backfill would throw away the only genuine first
+  observations this pipeline will ever produce.
+
+The writer enforces the other half independently: `baseline` applies only
+to `NEW` versions, because reaching the revised branch at all means
+MacroChipz held an earlier value and saw it change. That is the one case
+where "originally reported" is provable, and a caller must not be able to
+discard it by passing a flag.
+
+Measured after the real import: 4,644 version rows, **every one
+`is_backfilled = true`**; 1,899 intelligence objects, **none of them
+housing**. Re-running the sync wrote nothing and created no version rows.
+
+### The type I did not add
+
+Housing has no release-calendar entry — Census publishes its schedule as
+HTML and PDF only — so no release-processing row will ever exist for it,
+and the existing `OBSERVATION_CHANGE` path had nothing to read.
+
+The obvious move is a `HOUSING_OBSERVATION` type. I did not add one,
+because every field of `ObservationChangePayload` is populated here from
+real data and the semantics match exactly. A type that differs only by
+*which table the data came from* would make #39's taxonomy describe our
+plumbing instead of the economy — which is the same argument §10 of that
+document already makes against a significance score.
+
+So the Housing path reads a different source and produces the same type.
+It is also the first world where `methodology` is `None` on every object,
+and that revealed something quietly good about the contract: **`basis`
+could already express a world with no methodology.** Nothing in #39
+needed changing to admit one.
+
+### A test that caught a half-honest object
+
+`test_a_revision_of_a_backfilled_baseline_is_not_a_prospective_revision`
+failed on its last assertion. The object's `revision_knowledge` was
+correctly `BACKFILLED_BASELINE` — but its `limitations` said nothing
+about it.
+
+Machine-readably honest, and silent in the words a person reads. The
+release-processing path had attached that sentence since #43 and the new
+path had not. A typed field that is right while the prose is absent is
+half honest, and on a page the prose is the half that gets read.
+
+### Refusing to put a number in the rate section
+
+Every reader of a housing page is thinking about mortgage rates, and the
+2.0 architecture planned to show `UST_NOMINAL_10Y` there as an
+"explicitly labelled proxy". I did not ship it, and the reason is not
+that the label would be inaccurate.
+
+**Two numbers side by side on one page read as connected**, whatever the
+caption says. MacroChipz publishes no housing-to-rates relationship, no
+elasticity and no lag — so a yield rendered beside permits and starts
+would be the page asserting something its own data has measured nothing
+about. "Labelled proxy" does not undo what the layout communicates.
+
+The section is a signpost instead: what MacroChipz tracks, what it does
+not, and two links. It contains no digit, and a test asserts that.
+
+### Three guards that had to learn distinctions
+
+#44 recorded that its assertion guards initially flagged the
+`misconception` field — prose that states a belief in order to correct
+it. #45 hit the same class three more times, all on my own new copy:
+
+- Census's "neither a forecast nor a projection" tripped *makes no
+  forecast*;
+- "a predictable schedule", the misconception being corrected, tripped
+  the same guard on `predict`;
+- "MacroChipz applies no ... score", a disclaimer, tripped *implements no
+  ranking, scoring*.
+
+Each fix made the guard **more precise, not weaker**: whole-word matching
+instead of substring, negated forms stripped before the forecast scan,
+and the scoring guard scoped to code outside the content array — the
+inverse of the scoping an adjacent test already used. A bare "forecast"
+still fails.
+
+The general lesson is now firm enough to state: **a guard that forbids a
+word forbids the correction too, and the correction is usually the thing
+the page exists to deliver.**
+
+### A repository that could not be cloned and built
+
+Measuring the bundle delta meant building HEAD, so I created a git
+worktree at `208ab7d` and ran the build. It failed:
+
+```
+Error loading react-router.config.ts:
+Cannot find module './src/build/prerenderPaths'
+```
+
+`frontend/.gitignore` line 28 is a bare `build/`, which matches a
+directory named `build` at **any depth** — including `frontend/src/build/`,
+which holds `prerenderPaths.ts`, a module both `react-router.config.ts`
+and `src/routes.ts` import at config time. It has never been committed.
+**A fresh clone of this repository cannot build the frontend**, and has
+not been able to since #40A created that directory.
+
+Fixed by anchoring the pattern (`/build/`). The file is now untracked
+rather than ignored and needs adding. Found only because a measurement
+required a clean checkout, which is an argument for measuring against one
+more often.
+
+### Measured
+
+| | Before | After |
+|---|---|---|
+| Client JS | 555,536 B | 577,246 B (**+21,710**) |
+| Client JS, gzipped | 161,273 B | 166,611 B (**+5,338**) |
+| `entry.client` chunk | 214,868 B | 214,868 B (**+0**) |
+| Prerendered pages | 15 | 18 |
+| Backend tests | 2,195 | 2,494 |
+| Frontend tests | 1,668 | 1,789 |
+
+No new npm dependency, and no charting library for a three-series chart.
+`GET /api/v1/housing` is 27,050 bytes in 66–81 ms; the three chart series
+are 10,541 bytes of that, and the rest of the response is 6,151.
+
+The one thing I optimised, I optimised on evidence: the read path issued
+24 queries for six measures because it resolved each series row twice.
+Threading the row through removed twelve. It is 18 now, and I stopped
+there — 68 ms is not a problem, and the next step would be batching that
+buys nothing measurable.
+
+### Verified in a browser, not only in jsdom
+
+Real Chrome, through the DevTools protocol. Chart aspect ratios match
+their viewBoxes to three decimals at 390 px (1.286/1.286) and 1440 px
+(2.533/2.533) — ADR-041's distortion defect does not exist on this chart.
+One `h1`, no skipped heading levels, every `aria-labelledby` resolving, no
+horizontal overflow, both tables captioned.
+
+Two things only the browser found. The SAAR explanation rendered `--`
+literally, because I wrote consumer copy in the repository's Python
+docstring style. And **the site footer named FRED and Treasury but not
+Census** — the required non-endorsement notice was rendering only inside
+a collapsed `<details>` on one page, which is not a display. It is in the
+footer now, on every page.
+
+### Lesson
+
+**A source-gate is only worth having if it can stop you.** #45 halted at
+one, and the halt was the increment working correctly rather than a
+process obstacle — the gate existed precisely so a licensing question
+would be answered before code depended on the answer.
+
+The second lesson is narrower and more practical: **when a provider
+publishes the same quantity two ways, the resemblance between them is the
+danger.** 1,394,000 ÷ 12 and 117,400 are 1% apart. A conflation that
+produced an obviously wrong number would have been caught in review; this
+one would have shipped.

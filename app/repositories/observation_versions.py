@@ -49,10 +49,17 @@ WriteOutcome = Literal["INSERTED", "REVISED", "UNCHANGED"]
 ORIGIN_SERIES_SYNC = "SERIES_SYNC"
 ORIGIN_RELEASE_PROCESSING = "RELEASE_PROCESSING"
 ORIGIN_RATES_INGESTION = "RATES_INGESTION"
+ORIGIN_HOUSING_INGESTION = "HOUSING_INGESTION"
 ORIGIN_BACKFILL = "BACKFILL"
 
 VALID_ORIGINS: frozenset[str] = frozenset(
-    {ORIGIN_SERIES_SYNC, ORIGIN_RELEASE_PROCESSING, ORIGIN_RATES_INGESTION, ORIGIN_BACKFILL}
+    {
+        ORIGIN_SERIES_SYNC,
+        ORIGIN_RELEASE_PROCESSING,
+        ORIGIN_RATES_INGESTION,
+        ORIGIN_HOUSING_INGESTION,
+        ORIGIN_BACKFILL,
+    }
 )
 
 
@@ -80,11 +87,43 @@ class ObservationVersionWriter:
     both and the two can never disagree.
     """
 
-    def __init__(self, session: Session, recorded_at: datetime | None = None, origin: str = ORIGIN_SERIES_SYNC):
+    def __init__(
+        self,
+        session: Session,
+        recorded_at: datetime | None = None,
+        origin: str = ORIGIN_SERIES_SYNC,
+        baseline: bool = False,
+    ):
+        """`baseline` marks FIRST observations written by this operation
+        as an imported baseline rather than something MacroChipz watched
+        arrive (Increment #45).
+
+        WHY THIS FLAG EXISTS, AND WHAT IT IS NOT. `is_backfilled` was
+        introduced by #31 for versions the MIGRATION synthesized from
+        observations predating point-in-time tracking. #45 widens it, on
+        purpose, to the structurally identical case: a provider's whole
+        published history imported in one request. The flag's MEANING is
+        unchanged and is exactly the meaning #31 documented -- "this
+        value existed in MacroChipz by this time", never "this was the
+        value the source first published, and no earlier revision
+        occurred". A new source's 1959-2026 history is that case, and
+        recording it as observed would claim MacroChipz watched sixty
+        years of publication it did not see. #43's `BACKFILLED_BASELINE`
+        is the revision-knowledge state that reads this flag.
+
+        IT APPLIES ONLY TO `NEW` VERSIONS, and `_open_version` enforces
+        that. A REVISION is always genuinely observed: reaching the
+        revised branch at all means MacroChipz was holding an earlier
+        value and saw the provider publish a different one, which is the
+        one case where "originally reported" is provable. Marking a
+        revision as baseline would throw away the only real revision
+        evidence this system can ever collect.
+        """
         if origin not in VALID_ORIGINS:
             raise ValueError(f"unknown observation-version origin: {origin!r}")
         self._session = session
         self._origin = origin
+        self._baseline = baseline
         self._recorded_at = recorded_at or datetime.now(timezone.utc)
 
     @property
@@ -180,7 +219,11 @@ class ObservationVersionWriter:
                 recorded_to=None,
                 change_type=change_type,
                 origin=self._origin,
-                is_backfilled=False,
+                # `and change_type == "NEW"` is the whole guarantee, not
+                # a defensive extra: a revision MacroChipz observed is
+                # never a baseline, whatever the caller asked for. See
+                # the constructor's docstring.
+                is_backfilled=self._baseline and change_type == "NEW",
             )
         )
 
@@ -233,6 +276,49 @@ class ObservationVersionRepository:
             )
             for row in rows
         ]
+
+    def list_observed_versions(
+        self, series_ids: list[str], limit: int
+    ) -> list[tuple[EconomicSeries, ObservationVersion]]:
+        """The most recently recorded versions across `series_ids` that
+        MacroChipz genuinely OBSERVED, newest first (Increment #45).
+
+        "Observed" means `is_backfilled = false`: a value MacroChipz
+        watched arrive or watched change, as opposed to one it imported.
+        That filter is the whole reason this method exists. A new source's
+        initial import writes its entire published history as baseline
+        versions -- 4,644 rows for Housing's six series -- and projecting
+        those into intelligence objects would report MacroChipz's own
+        migration as economic news, which is precisely the manufactured
+        activity `IntelligenceBuilder` is written to avoid.
+
+        `limit` is required, not optional. A projection over an
+        append-only table must be bounded at the query, because the
+        alternative is a payload that grows with the database.
+
+        Returns the series row alongside each version so the caller needs
+        no second lookup for identity or display metadata.
+        """
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        if not series_ids:
+            return []
+
+        rows = self._session.execute(
+            select(EconomicSeries, ObservationVersion)
+            .join(ObservationVersion, ObservationVersion.economic_series_id == EconomicSeries.id)
+            .where(
+                EconomicSeries.series_id.in_(series_ids),
+                ObservationVersion.is_backfilled.is_(False),
+            )
+            .order_by(
+                ObservationVersion.recorded_from.desc(),
+                ObservationVersion.observation_date.desc(),
+                ObservationVersion.id.desc(),
+            )
+            .limit(limit)
+        ).all()
+        return [(series, version) for series, version in rows]
 
     def list_versions(self, series_id: str, observation_date: date) -> list[ObservationVersion]:
         """The full recorded timeline for one observation, oldest first

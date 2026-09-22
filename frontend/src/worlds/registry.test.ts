@@ -1,10 +1,17 @@
 /**
- * The Economic World registry (Increment #41).
+ * The Economic World registry (Increment #41, extended in #45).
  *
  * The registry exists so world identity is defined once. These tests
- * hold it to that, and to the boundaries #41 set around it: three
- * active worlds, Calendar is not one of them, and Housing is not
- * pretended into existence.
+ * hold it to that, and to the boundaries #41 set around it.
+ *
+ * #45 CHANGED ONE OF THOSE BOUNDARIES DELIBERATELY. #41 asserted that
+ * Housing was NOT pretended into existence, because it had no data and
+ * "an inactive world with no data is a promise the product cannot
+ * keep". Housing now has data — 4,644 observations from the Census
+ * Bureau — so that assertion has done its job and is replaced rather
+ * than deleted: the tests below now require Housing to be present AND
+ * to carry no state, which is the real invariant. The worlds that still
+ * have no data (growth, markets, consumer) are still held absent.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -17,16 +24,27 @@ import { ECONOMIC_WORLDS, NON_WORLD_SURFACES, world, worldForRoute } from "./reg
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("which worlds exist", () => {
-  it("has exactly Inflation, Jobs and Rates active", () => {
-    expect(ECONOMIC_WORLDS.map((entry) => entry.id)).toEqual(["INFLATION", "JOBS", "RATES"]);
+  it("has exactly Inflation, Jobs, Rates and Housing active", () => {
+    expect(ECONOMIC_WORLDS.map((entry) => entry.id)).toEqual(["INFLATION", "JOBS", "RATES", "HOUSING"]);
   });
 
-  it("does not pretend Housing exists", () => {
-    // #45 owns Housing. An inactive world with no data is a promise the
-    // product cannot keep.
+  it("does not pretend a world without data exists", () => {
+    // The #41 rule, unchanged: a navigation slot follows content rather
+    // than preceding it. Housing left this list in #45 by acquiring
+    // data, not by being promoted.
     const text = JSON.stringify(ECONOMIC_WORLDS).toLowerCase();
-    for (const absent of ["housing", "growth", "markets", "consumer"]) {
+    for (const absent of ["growth", "markets", "consumer"]) {
       expect(text, absent).not.toContain(absent);
+    }
+  });
+
+  it("promises no state for a world that has none", () => {
+    // Housing is the first world with no methodology behind it. The
+    // registry must not acquire a field that implies one, or every
+    // future world will be asked to fill it in.
+    const text = JSON.stringify(ECONOMIC_WORLDS).toLowerCase();
+    for (const forbidden of ["state", "score", "rating", "methodology", "cooling", "heating"]) {
+      expect(text, forbidden).not.toContain(forbidden);
     }
   });
 
@@ -61,13 +79,13 @@ describe("identity is unambiguous", () => {
 
   it("throws rather than silently returning a blank world", () => {
     // @ts-expect-error -- deliberately outside the union.
-    expect(() => world("HOUSING")).toThrow(/Unknown economic world/);
+    expect(() => world("CONSUMER")).toThrow(/Unknown economic world/);
   });
 });
 
 describe("consumer names and engineering names", () => {
   it("routes are the product's words, not the engineering domain's", () => {
-    expect(ECONOMIC_WORLDS.map((entry) => entry.route)).toEqual(["/inflation", "/jobs", "/rates"]);
+    expect(ECONOMIC_WORLDS.map((entry) => entry.route)).toEqual(["/inflation", "/jobs", "/rates", "/housing"]);
   });
 
   it("records that Jobs is served by the labor domain, rather than hiding it", () => {
@@ -86,12 +104,22 @@ describe("consumer names and engineering names", () => {
 
 describe("the measurement vocabulary cannot drift from the product", () => {
   it("gives every world an analytics value matching its own name", () => {
-    expect(ECONOMIC_WORLDS.map((entry) => entry.analyticsWorld)).toEqual(["inflation", "jobs", "rates"]);
+    expect(ECONOMIC_WORLDS.map((entry) => entry.analyticsWorld)).toEqual([
+      "inflation",
+      "jobs",
+      "rates",
+      "housing",
+    ]);
   });
 
   it("derives WORLD_BY_ROUTE from the registry rather than repeating it", async () => {
     const { WORLD_BY_ROUTE } = await import("../analytics/events");
-    expect(WORLD_BY_ROUTE).toEqual({ "/inflation": "inflation", "/jobs": "jobs", "/rates": "rates" });
+    expect(WORLD_BY_ROUTE).toEqual({
+      "/inflation": "inflation",
+      "/jobs": "jobs",
+      "/rates": "rates",
+      "/housing": "housing",
+    });
   });
 
   it("emits no world for Calendar", async () => {

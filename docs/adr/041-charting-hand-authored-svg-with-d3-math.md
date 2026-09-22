@@ -144,3 +144,23 @@ Verified in real Chrome through the DevTools protocol, not in jsdom: viewBox asp
 No charting library was added, and `d3-scale` was again not required — the curve needs the same two linear interpolations #40C's note describes.
 
 **Nothing else in the repo was rebuilt.** #41 §9 scoped this to the one documented defect.
+
+
+### The Housing pipeline chart (Increment #45)
+
+Third chart under this ADR, and the first **multi-series** one — which is the case the ADR's "a chart primitive set must be designed, not accreted" consequence was written about.
+
+**Still no charting library, and still no `d3-scale`.** Three series sharing one linear y-axis and one time axis need the same two linear interpolations #40C's note describes. The ADR's 15.7 KB remains unspent, and the adoption trigger it names (ordinal bands, stacking, nice-number ticks, time-axis formatting) is still not met. **Measured client JS delta for the whole increment, including the page, the chart and two explainers: +21.7 KB raw / +5.3 KB gzipped, with `entry.client` unchanged at 0 bytes** — no new dependency entered the framework bundle.
+
+**One chart, not three, and the reason is comprehension rather than economy.** Permits, starts and completions share a unit and a date axis, and the reader's question is answered by their relationship. Three charts would present three independent y-axes and invite comparison across scales that are not the same scale.
+
+**Both recorded defects were treated as constraints from the start**, not retrofitted: viewBox per breakpoint (`MOBILE 360×280`, `DESKTOP 760×300`) with `xMidYMid meet`, no `ResizeObserver`. Verified in real Chrome through the DevTools protocol: viewBox aspect and rendered aspect match to three decimals at **390 px (1.286 / 1.286)** and at **1440 px (2.533 / 2.533)**.
+
+**Two things this chart needed that the previous two did not:**
+
+1. **Series identity without colour.** Three lines cannot be told apart by one neutral stroke. They are distinguished by **dash pattern** as well as tone, and **labelled at their own line ends** rather than through a legend — so the chart survives monochrome rendering and needs no mapping step from the reader. Semantic state colours were rejected outright: they mean something specific in this design system, and none of these lines is good or bad news.
+2. **A multi-series accessible alternative.** The value table is one row per month with one column per series, and a month a series did not publish renders as an em dash rather than a zero. The `aria-label` names each series' two endpoints and its direction, and nothing more.
+
+**Still nothing depends on hover**, so the visx trigger ("touch tooltips required on more than one chart") remains unfired after three charts.
+
+**`preserveAspectRatio` and the mixed ARIA pattern are now correct on every chart in the repository** — this one, `VisualEvidenceChart` (#40C) and `YieldCurveChart` (#41). The ADR's two acceptance criteria are fully discharged.

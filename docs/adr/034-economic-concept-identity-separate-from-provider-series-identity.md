@@ -142,3 +142,21 @@ The reason is that changing the value would have broken the very invariant this 
 **6. No `concept_bindings` table, exactly as predicted.** One additive nullable column on `economic_series`, and `observation_provenance` continues to record which retrieval produced each value. The ADR's reasoning held.
 
 **One thing the implementation found that the ADR did not anticipate:** the unit conversion. `PAYEMS_JOBS_PER_NATIVE_UNIT = 1000` was documented in `app/models/labor.py` as converting from *"FRED's native Thousands of Persons"* — so it was always a property of the provider, never of the concept. It now lives on the binding as `canonical_unit_factor`, and whether BLS publishes CES in the same units is explicitly a **verification task for #M2, not an assumption inherited from FRED**.
+
+
+---
+
+## Implementation notes (Increment #45)
+
+First provider added **after** this ADR, and therefore the first real test of whether the concept/binding split survives contact with a new source rather than merely describing the two it was extracted from.
+
+**It held, and the addition cost one entry per concept in two files.** Six Census concepts, six bindings, and no change to the registry's shape, to `ProviderBinding`, or to any consumer of either.
+
+Four things the new provider exercised that FRED and Treasury had not:
+
+1. **`storage_series_id == concept_id`.** A provider with no legacy rows stores MacroChipz's own identity from the first write. The FRED/Treasury asymmetry §6 of `economic-concept-identity.md` documents is now explicitly *contained* rather than being the house pattern — new providers do not inherit it.
+2. **`equivalence_basis` had to do real work.** Every prior binding cites the frozen methodology that already uses that series for that role, which is the strongest basis available because the equivalence is recorded rather than asserted. **Housing has no methodology**, so that basis did not exist. The Census bindings instead quote the provider's own published definition and name the release figure each was verified against. That is the weaker case this field was designed for, and it is the first time it has been used as designed.
+3. **`canonical_unit_factor` earned its place a second time.** Census publishes thousands of units; MacroChipz reasons in units. Exactly the `PAYEMS` case, confirming the conversion belongs to the binding rather than to the concept.
+4. **`seasonal_adjustment` stopped being a formality.** Census publishes each housing measure twice — seasonally adjusted as an annual rate, and unadjusted as the month's count — with the *same universe*. Two concepts differing only in `seasonal_adjustment` and `canonical_unit` is precisely the substitution this ADR's Invariant on required fields exists to make impossible, and here the substitution would have been easy to make and hard to notice.
+
+**Invariant checks added:** every Housing concept resolves to exactly one active binding; no Census category code appears as a non-docstring string literal in any `app/domain/` module; every Housing binding's basis is substantive and cites the dataset.

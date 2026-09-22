@@ -420,8 +420,10 @@ Six worlds. Each is a first-class destination with its own URL, own state, own r
 | **Inflation** | `/inflation` | **Core — exists** | BLS (CPI), BEA (PCE) |
 | **Jobs** | `/jobs` | **Core — exists as "Labor"** | BLS (CES, CPS) |
 | **Rates** | `/rates` | **Core — exists** | U.S. Treasury |
-| **Housing** | `/housing` | **Limited — new** | Census (starts, permits); Treasury 10Y as a **labelled proxy** for mortgage rates |
+| **Housing** | `/housing` | **SHIPPED (#45)** | Census (permits, starts, completions). **No Treasury proxy** — see note below |
 | **Consumer** | `/consumer` | Post-launch | Census (retail sales), BEA (personal income/outlays) |
+
+> **#45 did not ship the Treasury proxy this table planned.** A 10-year yield rendered beside permits and starts asserts a housing-to-rates relationship MacroChipz has measured nothing about, and labelling it a proxy does not undo what two figures side by side communicate. `/housing` names what MacroChipz tracks, names what it does not, and links to `/rates` — with no figure. See `docs/architecture/housing-world.md` §10.
 | **Growth** | `/growth` | Post-launch | BEA (GDP) |
 
 **On Housing and the mortgage-rate problem.** The weekly mortgage-rate survey most people know is not redistributable — its terms prohibit commercial republication, derived products and automated collection simultaneously. MacroChipz therefore shows the **10-year Treasury**, which is what mortgage rates actually track, and says plainly why. **The limitation is the lesson.** "We show you the 10-year Treasury because that's what actually moves your mortgage rate — and because the survey number itself isn't ours to republish" is both legally correct and exactly the thing the wedge audience needs to learn.
@@ -696,7 +698,7 @@ Important MacroChipz objects get **permanent URLs** because they are permanent k
 | **Wait, Seriously?** | **DAY 1 CORE** | Carries the ~two-thirds of days with no release; the acquisition wedge; cheapest thing to build. Five explainers. |
 | **Sharing** | **DAY 1 CORE** | Architectural, not additive. Retrofitting permanent URLs and server-visible metadata later is far more expensive. |
 | **Analytics** | **DAY 1 CORE** | Without it we learn nothing from launch. Currently zero exists. |
-| **Housing world** | **DAY 1 LIMITED** | Census starts/permits + 10Y as a labelled proxy. Serves the wedge. No mortgage survey data — not licensable. |
+| **Housing world** | **SHIPPED (#45)** | Census permits, starts and completions, national, monthly — seasonally adjusted annual rate and unadjusted count. **No 10Y proxy shipped** (see the domain table above). No mortgage survey data — not licensable. **No state**, and none planned. |
 | **Calendar** | **DAY 1 LIMITED** | Schedule + "what it measures" + "why care" + Follow. **Not** "what happened last time" (needs accumulated history). |
 | **Ask MacroChipz** | **DAY 1 LIMITED** | Shipped and evaluated. Contextual placement only. Not in the hero. |
 | **Today in the Economy** | **DAY 1 LIMITED** | Delivered as THE LEDE plus a designed quiet-day state. **Not** a live activity timeline. |
@@ -817,7 +819,7 @@ Proposed increments. **This is sequencing, not a commitment to an order that can
 | **#46** | **Revision Intelligence** | **The signature capability.** Resurfaces `components/history/*` as a first-class product, adds `revision_significance_v1.0`, Time Machine Stage 1. |
 | **#47** | **Wait, Seriously? + explainer↔data binding** | Carries the ~two-thirds of days with no release. `content/explanations/*` already holds 34 curated explanations — the infrastructure substantially exists. |
 | **#48** | **Sharing: permanent objects, share cards, OG image generation** | Depends on #42 (objects) and #43 (rendering). |
-| **#49** | **Housing world (Census)** | First genuinely new data source. Serves the acquisition wedge. Ships with data and no state. |
+| **#49** | **Housing world (Census)** | **DELIVERED EARLY, as #45.** First genuinely new data source. Shipped with data and no state, as planned. |
 | **#50** | **Follow + email** | The only owned return channel. Deliberately minimal. |
 
 **→ LAUNCH.** Then measure, for a real period, before building more.

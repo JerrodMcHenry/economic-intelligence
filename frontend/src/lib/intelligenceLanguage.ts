@@ -29,6 +29,7 @@ const WORLD_LABELS: Record<IntelligenceWorld, string> = {
   inflation: "Inflation",
   jobs: "Jobs",
   rates: "Rates",
+  housing: "Housing",
 };
 
 const TYPE_LABELS: Record<IntelligenceType, string> = {

@@ -84,8 +84,18 @@ describe("the rabbit hole is curated, not computed", () => {
   });
 
   it("implements no ranking, scoring, recommendation or personalisation", () => {
+    // Scoped to the code OUTSIDE the content array -- the inverse of the
+    // scoping the "interpolates no runtime value" test above uses, and
+    // for the same reason. A ranking would have to be IMPLEMENTED, and
+    // implementation lives outside `EXPLAINERS`. Inside it, an explainer
+    // may legitimately say "MacroChipz applies no score", which is a
+    // disclaimer of the thing this test forbids rather than the thing
+    // itself. What the content may claim is guarded separately by
+    // "claims no significance ranking" below.
+    const implementation =
+      CODE.slice(0, CODE.indexOf("export const EXPLAINERS")) + CODE.slice(CODE.indexOf("const BY_SLUG"));
     for (const token of ["score", "rank", "popular", "trending", "recommend", "similar", "personal", "Math.random", "sort("]) {
-      expect(CODE.toLowerCase(), token).not.toContain(token.toLowerCase());
+      expect(implementation.toLowerCase(), token).not.toContain(token.toLowerCase());
     }
   });
 });
@@ -126,10 +136,39 @@ describe("what the content may and may not say", () => {
     EXPLAINERS.map(({ limitations: _limitations, ...rest }) => rest),
   ).toLowerCase();
 
+  /**
+   * The same distinction the `limitations` exclusion above rests on,
+   * applied where a disclaimer legitimately appears in ordinary prose
+   * (#45).
+   *
+   * The annual-rate explainer has to say that Census calls the figure
+   * "neither a forecast nor a projection" -- that sentence is the
+   * correction the explainer exists to deliver, and a guard that
+   * flagged it would forbid the page from doing its job. It is also
+   * exactly the failure mode #44 recorded when its own misconception
+   * field first tripped an assertion guard.
+   *
+   * So negated forms are stripped before the scan. A bare "forecast"
+   * still fails; "not a forecast" does not.
+   */
+  const withoutDisclaimers = all.replace(
+    /(?:is |are )?(?:not|never|neither|no)(?: a| an)? (?:forecast|projection|prediction)[a-z]*(?: nor(?: a| an)? [a-z]+)?/g,
+    "",
+  );
+
   it("makes no forecast", () => {
-    for (const word of ["will rise", "will fall", "we expect", "forecast", "predict", "is likely to"]) {
-      expect(all, word).not.toContain(word);
+    // WHOLE WORDS, not substrings. "a predictable schedule" -- the
+    // misconception the permits explainer exists to correct -- contains
+    // "predict" and is the opposite of a prediction. A substring scan
+    // would forbid the correction along with the claim, which is the
+    // same defect #44 recorded when its own misconception field first
+    // tripped an assertion guard.
+    for (const word of ["will rise", "will fall", "we expect", "predict", "is likely to"]) {
+      expect(all, word).not.toMatch(new RegExp(`\\b${word}\\b`));
     }
+    // Scanned against the disclaimer-stripped text, so a correction
+    // saying a figure is NOT a forecast is not read as one.
+    expect(withoutDisclaimers, "forecast").not.toMatch(/\bforecast\b/);
   });
 
   it("claims no significance ranking", () => {
@@ -245,7 +284,54 @@ describe("integration surfaces", () => {
     for (const path of EXPLAINER_PATHS) expect(path).toMatch(/^\/explain\/[a-z0-9-]+$/);
   });
 
-  it("does not introduce Housing", () => {
-    expect(JSON.stringify(EXPLAINERS)).not.toMatch(/housing/i);
+  /**
+   * #44 asserted that Housing was NOT introduced here, because
+   * MacroChipz tracked no housing series. It does now, so that
+   * assertion has done its job and is replaced rather than deleted --
+   * by the invariants that actually matter for the two Housing
+   * explainers #45 added.
+   */
+  it("gives every Housing explainer a world, so `/housing` can discover it", () => {
+    // `UnderstandWorld` lists explainers by world. An explainer with no
+    // world is unreachable from any page, which is the deferred
+    // discovery problem #44 flagged -- and #45 must not add to it.
+    const housing = EXPLAINERS.filter((explainer) => explainer.worlds?.includes("HOUSING"));
+    expect(housing.length).toBeGreaterThan(0);
+    for (const explainer of housing) {
+      expect(explainer.worlds, explainer.id).toContain("HOUSING");
+    }
+  });
+
+  it("binds every Housing explainer to real registered concepts", () => {
+    const housing = EXPLAINERS.filter((explainer) => explainer.worlds?.includes("HOUSING"));
+    for (const explainer of housing) {
+      expect(explainer.conceptIds, explainer.id).toBeDefined();
+      for (const conceptId of explainer.conceptIds ?? []) {
+        // Source-neutral (#38). Never a Census category code.
+        expect(conceptId, explainer.id).toMatch(/^us\.housing\./);
+      }
+    }
+  });
+
+  it("claims no housing state, score or rating anywhere in Housing content", () => {
+    const housing = JSON.stringify(
+      EXPLAINERS.filter((explainer) => explainer.worlds?.includes("HOUSING")).map(
+        ({ limitations: _limitations, ...rest }) => rest,
+      ),
+    ).toLowerCase();
+    // Whole words again: "construction is strongly seasonal" is a fact
+    // about weather patterns, not a claim that housing is strong.
+    for (const forbidden of ["cooling", "heating", "strong", "weak", "healthy", "housing score", "housing state"]) {
+      expect(housing, forbidden).not.toMatch(new RegExp(`\\b${forbidden}\\b`));
+    }
+  });
+
+  it("never presents a Treasury yield as a mortgage rate", () => {
+    const housing = JSON.stringify(
+      EXPLAINERS.filter((explainer) => explainer.worlds?.includes("HOUSING")),
+    ).toLowerCase();
+    for (const forbidden of ["mortgage rate of", "estimated mortgage", "mortgage spread", "treasury mortgage"]) {
+      expect(housing, forbidden).not.toContain(forbidden);
+    }
   });
 });

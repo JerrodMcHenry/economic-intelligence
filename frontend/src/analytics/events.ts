@@ -30,16 +30,22 @@ import { ECONOMIC_WORLDS } from "../worlds/registry";
 
 
 /**
- * The MacroChipz economic worlds. Only three exist today.
+ * The MacroChipz economic worlds. Four exist today.
  *
  * `jobs`, not `labor`, since #41: the measurement vocabulary follows
- * the PRODUCT vocabulary, and it now matches #39's backend `World`
+ * the PRODUCT vocabulary, and it matches #39's backend `World`
  * exactly, so the same word means the same thing on both sides. Safe
  * to change because no analytics provider has ever been configured --
  * the default is a no-op, so there is no historical series to break.
  * The engineering domain remains `labor`; see `src/worlds/registry.ts`.
+ *
+ * `housing` joined in #45. It is a world in the measurement vocabulary
+ * for the same reason it is one in the product: a reader opens it as a
+ * part of the economy. It carries no state, so no event here reports a
+ * housing state -- and none could, because the property shapes below
+ * have no state field for any world.
  */
-export type World = "inflation" | "jobs" | "rates";
+export type World = "inflation" | "jobs" | "rates" | "housing";
 
 /**
  * The kind of thing an interaction was about. Deliberately coarse:
@@ -85,6 +91,8 @@ export type RouteTemplate =
   | "/inflation"
   | "/jobs"
   | "/rates"
+  // The Housing world (#45).
+  | "/housing"
   | "/calendar"
   // Revision Intelligence (#43). A cross-world capability, so it has a
   // route template but deliberately no entry in `WORLD_BY_ROUTE`.
@@ -223,6 +231,7 @@ export const ROUTE_TEMPLATES: ReadonlyArray<Exclude<RouteTemplate, "unknown_rout
   "/inflation",
   "/jobs",
   "/rates",
+  "/housing",
   "/calendar",
   "/revisions",
   "/intelligence/:id",

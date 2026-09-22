@@ -374,8 +374,10 @@ A **world** is a first-class aggregate: a set of canonical series, zero or one s
 | Inflation | Exists | 4 (BLS/BEA origin) | `inflation_v1.0` |
 | Jobs | Exists as "Labor" | 2 (BLS origin) | `labor_v1.0` |
 | Rates | Exists | 6 (Treasury) | `rates_v1.0` |
-| Housing | **New, Day-1 limited** | Census starts/permits + `UST_NOMINAL_10Y` | **None at launch** — data only |
+| Housing | **SHIPPED (#45)** | Census permits/starts/completions, national, SA annual rate + NSA monthly. **No `UST_NOMINAL_10Y` proxy** — see below | **None, and none planned** — data only |
 | Consumer | Post-launch | Census retail, BEA income | None yet |
+
+**#45 departed from the Housing row above in one respect, deliberately.** This table planned `UST_NOMINAL_10Y` as an "explicitly labelled proxy" for mortgage rates on the Housing page. #45 did not ship a proxy of any kind: a Treasury yield rendered beside permits and starts asserts a relationship MacroChipz has measured nothing about, and "labelled proxy" does not undo what two numbers side by side on one page communicate. The Housing page names what MacroChipz tracks, names what it does not, and links to `/rates` — with no figure. See `housing-world.md` §10.
 | Growth | Post-launch | BEA GDP | None yet |
 
 **Rules:**

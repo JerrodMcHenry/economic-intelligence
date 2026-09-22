@@ -314,6 +314,16 @@ Once economic concepts are separated from provider series identity (ADR-034), **
 - **No Freddie Mac PMMS data** is fetched, stored or displayed, by any path.
 - Census attribution renders verbatim from provenance.
 
+### DELIVERED as Increment #45 — with two deliberate departures
+
+**Met:** Housing ships with data and no state, asserted by tests on both sides. No Freddie Mac PMMS data is fetched, stored or displayed by any path. Census attribution renders verbatim, in the site footer on every page and on the `/housing` response.
+
+**Departure 1 — completions were added.** Scope above says "starts and permits". #45 ingested **completions** as well, because the pipeline question the page answers (*are more homes entering construction?*) is incoherent with only two of its three stages: permits and starts alone show what is beginning and nothing about what is finishing. Three stages from one dataset, one release and one licensing review is not scope creep; it is the smallest coherent version of the question.
+
+**Departure 2 — the 10Y proxy was NOT shipped, and the acceptance criterion about labelling it is therefore moot.** The reasoning is recorded in `housing-world.md` §10, and it is not that the label would be inaccurate. **Two numbers side by side on one page read as connected**, whatever the caption says. MacroChipz publishes no housing-to-rates relationship, no elasticity and no lag, so a Treasury yield rendered beside permits and starts would be the page asserting something its own data has measured nothing about. The rate-context section contains no figure at all: it names what MacroChipz tracks, names what it does not, and links to `/rates` and to the Fed/mortgage explainer.
+
+**Also added, beyond scope:** the unadjusted monthly counts alongside the seasonally adjusted annual rates. Not richness — the pair is what makes the annual rate explicable rather than mysterious, and it is what the `saar-housing` explainer rests on.
+
 **What `housing_v1.0` would require before it could legitimately exist:** a defensible state vocabulary grounded in housing economics rather than chosen for visual symmetry; sufficient history for any historical-position claim (Census starts go back to 1959, so depth is available once ingested); a published methodology document; golden vectors; and a defensible answer to what "housing is cooling" means when starts, permits, prices and rates can move in opposite directions simultaneously. **Until all five exist, Housing has no state.**
 
 ---
