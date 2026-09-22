@@ -84,7 +84,18 @@ export function IntelligenceShell({
             <p>
               <span className="font-semibold text-fg-secondary">MacroChipz</span> · Economic Intelligence
             </p>
-            <p>Source data: U.S. Department of the Treasury; FRED®, Federal Reserve Bank of St. Louis.</p>
+            {/* #45B: this shell had its own attribution line, and #45
+                updated only `AppShell`'s -- so permanent object pages
+                and explainers carried no Census notice. Census's Data
+                API terms require the non-endorsement sentence to be
+                DISPLAYED, and these are the pages most likely to be
+                someone's first and only view of MacroChipz. Kept
+                verbatim and identical to the one in `AppShell`. */}
+            <p className="sm:max-w-xl sm:text-right">
+              Source data: U.S. Department of the Treasury; FRED®, Federal Reserve Bank of St. Louis; U.S. Census
+              Bureau and U.S. Department of Housing and Urban Development. This product uses the Census Bureau Data
+              API but is not endorsed or certified by the Census Bureau.
+            </p>
           </div>
         </PageContainer>
       </footer>

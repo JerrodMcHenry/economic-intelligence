@@ -121,6 +121,12 @@ describe("Economic Overview is read-only", () => {
       // wrapped by api/useSinceLastVisit.ts) -- read-only, exactly like
       // every other name in this list.
       "useSinceLastVisit",
+      // #45B: the world-orientation section's Housing line. A GET like
+      // every other name here -- this guard is about the page never
+      // MUTATING, and `getHousing` reads `/api/v1/housing`, which is
+      // structurally incapable of reaching a provider (the read service
+      // holds no Census client; see app/services/housing.py).
+      "getHousing",
     ]);
     const violations = importedNames.filter((name) => name.length > 0 && !allowed.has(name));
     expect(violations, `pages/Home.tsx imports an undocumented api function: ${violations.join(", ")}`).toEqual([]);

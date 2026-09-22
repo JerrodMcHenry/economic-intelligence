@@ -67,9 +67,11 @@ export const STATIC_PATHS = [
   "/rates",
   "/housing",
   "/calendar",
-  // Every explainer (#44). Finite, code-defined and static, so unlike
-  // the world pages these prerender with their ACTUAL CONTENT rather
-  // than an application shell -- which is what makes them findable.
+  // The explainer index (#45B) and every explainer (#44). Finite,
+  // code-defined and static, so unlike the world pages these prerender
+  // with their ACTUAL CONTENT rather than an application shell --
+  // which is what makes them findable.
+  "/explain",
   ...EXPLAINER_PATHS,
 ];
 

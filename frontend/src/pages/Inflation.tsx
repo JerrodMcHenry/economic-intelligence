@@ -110,6 +110,33 @@ export function InflationPage() {
         )}
       </div>
 
+      {/* Cross-world navigation (#45B). NAVIGATION ONLY.
+          Market-implied inflation compensation is a RATES-page metric
+          ABOUT inflation, computed from two Treasury series -- #28
+          classifies "market vs data" as same-concept (Class A)
+          confirmation rather than cross-domain inference, which is why
+          a link here is legitimate where "equities confirm labor" is
+          not. It still asserts nothing: the frozen prohibition in
+          relate-compare-audit-v1.md sections 15/16 on "confirms",
+          "diverges" and the rest is untouched, and no sentence here
+          claims the two agree, disagree, or move together. */}
+      <div className="mt-10 border-t border-line pt-8">
+        <h2 className="text-sm font-medium text-fg-muted">Elsewhere in MacroChipz</h2>
+        <p className="mt-2 max-w-prose text-sm text-fg-secondary">
+          MacroChipz also publishes market-implied inflation compensation — the difference between nominal and
+          inflation-protected Treasury yields at the same maturity. It is measured a completely different way from the
+          price indexes above, and MacroChipz draws no conclusion from comparing them.
+        </p>
+        <p className="mt-3">
+          <a
+            href="/rates"
+            className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
+          >
+            Explore Rates →
+          </a>
+        </p>
+      </div>
+
       <div className="mt-10 border-t border-line pt-8">
         <UnderstandWorld world="INFLATION" />
       </div>

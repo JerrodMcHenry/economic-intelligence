@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import { getHousing } from "../api/housing";
 import { getInflationMonitor } from "../api/inflation";
 import { getLaborMonitor } from "../api/labor";
 import { listHomepageIntelligence } from "../api/intelligence";
@@ -12,8 +13,11 @@ import { HowTheyRelate } from "../components/overview/HowTheyRelate";
 import { RecentReleasePreview } from "../components/overview/RecentReleasePreview";
 import { UpcomingReleasesPreview } from "../components/overview/UpcomingReleasesPreview";
 import { PageHeader } from "../components/PageHeader";
+import { HomeQuestions } from "../components/homepage/HomeQuestions";
 import { RecentIntelligence } from "../components/homepage/RecentIntelligence";
 import { TheLede } from "../components/homepage/TheLede";
+import { WorldOrientation } from "../components/homepage/WorldOrientation";
+import { RevisionsLink } from "../components/revisions/RevisionsLink";
 import { selectHomepage } from "../homepage/presentationPolicy";
 import { ReleaseScheduleDisclosure } from "../components/releases/ReleaseScheduleDisclosure";
 
@@ -113,6 +117,11 @@ export function HomePage() {
   // endpoint is bounded and paged; the page does not walk the
   // intelligence history to show a handful of things.
   const intelligence = useApiResource(listHomepageIntelligence);
+  // #45B: one additional INDEPENDENT resource, for the world
+  // orientation section's Housing line only. Failure-isolated like
+  // every other resource on this page -- a Housing outage removes one
+  // line of metadata and touches nothing else.
+  const housing = useApiResource(getHousing);
 
   // THE LEDE is chosen by `homepage_presentation_v1.0` -- a
   // deterministic PRESENTATION policy, never a claim about economic
@@ -128,6 +137,25 @@ export function HomePage() {
         <TheLede object={selection.lede} status={intelligence.status === "success" ? "resolved" : "unknown"} />
 
         <RecentIntelligence objects={selection.whatChanged} />
+
+        {/* ORIENTATION (#45B). A DIFFERENT CLAIM from THE LEDE's: the
+            lede says "this changed" under `homepage_presentation_v1.0`;
+            this says "these exist, and here is the latest data on
+            file". #45A found the homepage could only ever show Treasury
+            yields, because 6 of 1,899 objects are eligible and all six
+            are rates. The eligibility policy is correct and untouched;
+            what was missing was a second, clearly separated layer. */}
+        <WorldOrientation
+          inflation={monitor}
+          labor={laborMonitor}
+          housing={housing}
+          intelligence={intelligence.status === "success" ? intelligence.data.items : []}
+        />
+
+        {/* Curated educational entry points (#45B). Fixes the weakest
+            stage of the loop -- #45A found the surprising questions
+            MacroChipz has written were unreachable from the entrance. */}
+        <HomeQuestions />
 
         {/* Current State -- Inflation and Labor as independent peers */}
         <CurrentStateSection inflation={monitor} labor={laborMonitor} />
@@ -159,6 +187,11 @@ export function HomePage() {
             View release calendar →
           </Link>
         </section>
+
+        {/* Revision Intelligence (#45B). #45A measured exactly two
+            inbound links to `/revisions`, neither from here. The copy
+            is forward-looking by design -- see RevisionsLink. */}
+        <RevisionsLink />
       </div>
     </div>
   );

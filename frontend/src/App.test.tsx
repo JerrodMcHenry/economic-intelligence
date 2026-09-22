@@ -202,7 +202,7 @@ describe("App", () => {
     // page's own data loading and rendering behavior in full.
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/rates");
-    expect(screen.getByRole("heading", { level: 1, name: "Rates Intelligence" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Rates" })).toBeInTheDocument();
   });
 
   it("renders a deterministic not-found page for an unknown route", () => {

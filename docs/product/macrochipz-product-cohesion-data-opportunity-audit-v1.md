@@ -536,6 +536,30 @@ Now meaningful: there is a reason to return, and more than one world to return f
 
 ---
 
+## Addendum — what #45B resolved
+
+Implemented in Increment #45B; see `macrochipz-product-cohesion-v45b-spec.md` for the mapping and the measured before/after.
+
+| Finding | Status |
+|---|---|
+| §A.12 homepage does not represent the product | **Resolved** — world orientation section; all four worlds linked from `/` (was 3) |
+| §A.5 Revision Intelligence undiscoverable | **Resolved** — linked from `/` and all four worlds (was 2 of 4) |
+| §A.6 `/calendar` is a hard dead end | **Resolved** — 0 → 2 outbound internal links |
+| §A.10.1 `FRED` badge is provider jargon | **Resolved** — removed from rows; provenance stated in the schedule note |
+| §A.10.2 Calendar advertises data the product lacks | **Resolved** — untracked releases say so explicitly |
+| §A.11 "How They Relate" oversells a frozen contract | **Resolved** — heading corrected; frozen composition untouched |
+| §A.9 terminology inconsistency | **Partly resolved** — `Rates Intelligence` → `Rates`; evidence-disclosure wording aligned |
+| §C WOW / SHARE stages weak | **Improved** — curated questions on `/`; share on explainers |
+| §D explainers unreachable from the entrance | **Resolved** — `/explain` index (prerendered, not in nav) + homepage questions |
+| §F cross-world paths one-directional | **Improved** — `/rates` ↔ `/housing`, `/inflation` → `/rates` |
+| §A.13 mobile partially audited | **STILL OPEN** — no real phone viewport obtainable; structural assertions added |
+| §C RETURN missing | **Not addressed** — this is Follow's job, and remains the next product gap |
+| §A.5 point-in-time replay orphaned | **Not addressed** — a consumer replay surface was deliberately not built |
+
+**One finding was corrected during implementation:** #45 had added the required Census attribution to `AppShell` only, so permanent object and explainer pages — served by `IntelligenceShell` — carried none. Fixed in #45B.
+
+---
+
 ## Confirmations
 
 - **No production code changed.** This increment created one document and one journal entry.

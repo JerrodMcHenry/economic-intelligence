@@ -24,6 +24,7 @@
 import { Link, useParams } from "react-router";
 
 import { Card } from "../components/Card";
+import { ShareButton } from "../components/ShareButton";
 import { Disclosure } from "../components/Disclosure";
 import { InfluenceDiagram } from "../components/explainers/InfluenceDiagram";
 import { IntelligenceShell } from "../components/intelligence/IntelligenceShell";
@@ -170,6 +171,30 @@ export default function ExplainerRoute() {
 
         <ExploreNext explainer={explainer} />
 
+        {/* ALL QUESTIONS (#45B). The one intentional path from an
+            explainer to the collection -- #44 shipped these pages with
+            no route to each other beyond the curated `related` list, so
+            a reader who exhausted a rabbit hole had nowhere left to go
+            inside the educational layer. */}
+        <p className="mt-6">
+          <Link
+            to="/explain"
+            className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
+          >
+            All questions →
+          </Link>
+        </p>
+
+        {/* SHARE (#45B). Explainers are the most shareable pages in the
+            product -- a question is a message someone sends a friend --
+            and until now they were the only permanent pages without the
+            affordance. Reuses #40's component unchanged: platform share
+            sheet, clipboard fallback, no tracking parameters, and a
+            `share_initiated` event carrying the TYPE only. */}
+        <div className="mt-8">
+          <ShareButton objectType="explainer" title={explainer.question} url={shareUrl(explainer)} />
+        </div>
+
         <section aria-labelledby="basis-heading" className="mt-10 border-t border-line pt-6">
           <h2 id="basis-heading" className="type-section-heading">
             How we know
@@ -191,6 +216,19 @@ export default function ExplainerRoute() {
       </article>
     </IntelligenceShell>
   );
+}
+
+/**
+ * The URL to share.
+ *
+ * Absolute when the deployment origin is configured, and the
+ * ROOT-RELATIVE path otherwise -- never a guessed host and never a
+ * build-time one baked into prerendered HTML (#40's rule). The
+ * clipboard fallback then copies a path, which is honest: the reader
+ * can see it is not a full link, rather than being handed a wrong one.
+ */
+function shareUrl(explainer: Explainer): string {
+  return absoluteUrl(`/explain/${explainer.slug}`) ?? `/explain/${explainer.slug}`;
 }
 
 /**

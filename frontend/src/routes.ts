@@ -42,6 +42,11 @@ export default [
   // prerendered -- see `src/build/prerenderPaths.ts`. No loader: the
   // content is in the bundle, so there is nothing to fetch and none of
   // #40A's `ssr: false` export constraints apply.
+  // The explainer INDEX (#45B). Deliberately before the slug route so
+  // `/explain` resolves to the index rather than to a missing slug.
+  // Prerendered with real content, and deliberately NOT in primary
+  // navigation -- see the module docstring for why.
+  route("explain", "routes/explainerIndex.tsx"),
   route("explain/:slug", "routes/explainer.tsx"),
   route("intelligence/:intelligenceId", intelligenceModule),
   route("*?", "routes/catchall.tsx"),

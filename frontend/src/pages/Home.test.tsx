@@ -241,7 +241,7 @@ describe("Current State", () => {
   });
 });
 
-describe("How They Relate (Increment #23C)", () => {
+describe("Inflation and Jobs, side by side (Increment #23C; heading corrected in #45B)", () => {
   it("renders the exact same-period composition sentence when both periods match", async () => {
     resolveAll({
       monitor: buildMonitor({ underlying_momentum: buildMomentum({ state: "COOLING", calculation_period: "2026-07-01" }) }),
@@ -249,7 +249,7 @@ describe("How They Relate (Increment #23C)", () => {
     });
     renderPage();
 
-    const section = await findSection("How They Relate");
+    const section = await findSection("Inflation and Jobs, side by side");
     expect(within(section).getByText("As of July 2026, Inflation is Cooling while Jobs is Strengthening.")).toBeInTheDocument();
   });
 
@@ -260,7 +260,7 @@ describe("How They Relate (Increment #23C)", () => {
     });
     renderPage();
 
-    const section = await findSection("How They Relate");
+    const section = await findSection("Inflation and Jobs, side by side");
     expect(
       within(section).getByText("Inflation is Cooling as of July 2026. Jobs is Strengthening as of August 2026."),
     ).toBeInTheDocument();
@@ -274,7 +274,7 @@ describe("How They Relate (Increment #23C)", () => {
     });
     renderPage();
 
-    const section = await findSection("How They Relate");
+    const section = await findSection("Inflation and Jobs, side by side");
     expect(
       within(section).getByText("Jobs is Stable as of July 2026. Inflation does not currently have enough data to classify its state."),
     ).toBeInTheDocument();
@@ -287,7 +287,7 @@ describe("How They Relate (Increment #23C)", () => {
     });
     renderPage();
 
-    const section = await findSection("How They Relate");
+    const section = await findSection("Inflation and Jobs, side by side");
     expect(
       within(section).getByText("Inflation is Heating as of July 2026. Jobs does not currently have enough data to classify its state."),
     ).toBeInTheDocument();
@@ -300,7 +300,7 @@ describe("How They Relate (Increment #23C)", () => {
     });
     renderPage();
 
-    const section = await findSection("How They Relate");
+    const section = await findSection("Inflation and Jobs, side by side");
     expect(
       within(section).getByText("Not enough data is currently available to describe how Inflation and Jobs relate."),
     ).toBeInTheDocument();
@@ -316,7 +316,7 @@ describe("How They Relate (Increment #23C)", () => {
     mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
     renderPage();
 
-    const section = await findSection("How They Relate");
+    const section = await findSection("Inflation and Jobs, side by side");
     expect(within(section).getByText("Inflation data could not be loaded.")).toBeInTheDocument();
     // Not the insufficient-data fragment -- a resource error is a
     // different, distinct case (§10) and must never be composed as if
@@ -335,7 +335,7 @@ describe("How They Relate (Increment #23C)", () => {
     mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
     renderPage();
 
-    const section = await findSection("How They Relate");
+    const section = await findSection("Inflation and Jobs, side by side");
     expect(within(section).getByText("Jobs data could not be loaded.")).toBeInTheDocument();
     expect(within(section).queryByText(/does not currently have enough data/i)).not.toBeInTheDocument();
   });
@@ -350,7 +350,7 @@ describe("How They Relate (Increment #23C)", () => {
     mockedFetchRecent.mockResolvedValue(buildReleaseListResponse({ releases: [] }));
     renderPage();
 
-    const section = await findSection("How They Relate");
+    const section = await findSection("Inflation and Jobs, side by side");
     expect(within(section).getByText("Inflation data could not be loaded.")).toBeInTheDocument();
     expect(within(section).getByText("Jobs data could not be loaded.")).toBeInTheDocument();
   });
@@ -374,7 +374,7 @@ describe("How They Relate (Increment #23C)", () => {
     resolveAll();
     renderPage();
 
-    const section = await findSection("How They Relate");
+    const section = await findSection("Inflation and Jobs, side by side");
     expect(await within(section).findByText(/^As of/)).toBeInTheDocument();
   });
 
@@ -382,7 +382,7 @@ describe("How They Relate (Increment #23C)", () => {
     resolveAll();
     renderPage();
 
-    const section = await findSection("How They Relate");
+    const section = await findSection("Inflation and Jobs, side by side");
     expect(within(section).getByRole("link", { name: "View Inflation →" })).toHaveAttribute("href", "/inflation");
     expect(within(section).getByRole("link", { name: "View Jobs →" })).toHaveAttribute("href", "/jobs");
   });
@@ -397,7 +397,7 @@ describe("How They Relate (Increment #23C)", () => {
           laborMonitor: buildLaborMonitor({ state: laborState }),
         });
         const { unmount } = renderPage();
-        const section = await findSection("How They Relate");
+        const section = await findSection("Inflation and Jobs, side by side");
         const text = section.textContent ?? "";
         for (const forbidden of [/agrees?\b/i, /confirms?\b/i, /diverges?\b/i, /contradicts?\b/i, /goldilocks/i, /bullish/i, /bearish/i]) {
           expect(text).not.toMatch(forbidden);
@@ -423,7 +423,7 @@ describe("State Duration V1 exclusion (Increment #24D, frozen contract §41)", (
   it("renders with the two state-duration API clients never invoked", async () => {
     resolveAll();
     renderPage();
-    await screen.findByRole("heading", { name: "How They Relate" });
+    await screen.findByRole("heading", { name: "Inflation and Jobs, side by side" });
 
     // These are the same api/inflation.ts and api/labor.ts modules
     // Overview already mocks above -- if Overview ever came to import
@@ -440,7 +440,7 @@ describe("State Duration V1 exclusion (Increment #24D, frozen contract §41)", (
   it("never renders any State Duration copy string anywhere on the page", async () => {
     resolveAll();
     renderPage();
-    await screen.findByRole("heading", { name: "How They Relate" });
+    await screen.findByRole("heading", { name: "Inflation and Jobs, side by side" });
 
     const pageText = document.body.textContent ?? "";
     for (const forbidden of [
@@ -453,14 +453,14 @@ describe("State Duration V1 exclusion (Increment #24D, frozen contract §41)", (
     }
   });
 
-  it("How They Relate remains exactly as #23C established, unaffected by State Duration's own existence", async () => {
+  it("the Inflation/Jobs juxtaposition remains exactly as #23C established, unaffected by State Duration's own existence", async () => {
     resolveAll({
       monitor: buildMonitor({ underlying_momentum: buildMomentum({ state: "COOLING", calculation_period: "2026-07-01" }) }),
       laborMonitor: buildLaborMonitor({ state: "STRENGTHENING", evaluation_period: "2026-07-01" }),
     });
     renderPage();
 
-    const section = await findSection("How They Relate");
+    const section = await findSection("Inflation and Jobs, side by side");
     expect(section.textContent).toMatch(/As of July 2026, Inflation is Cooling while Jobs is Strengthening\./);
   });
 });
@@ -524,10 +524,15 @@ describe("Releases", () => {
     expect(within(employmentRow).getByRole("link", { name: "View Jobs →" })).toHaveAttribute("href", "/jobs");
 
     // JOLTS -- category tag reads "Labor" on this same row, but it has
-    // no canonical monitor relation, so its CTA is /releases, NEVER /labor.
+    // no canonical monitor relation. §3A's correction is unchanged and
+    // is if anything asserted more strongly since #45B: it gets NO
+    // Jobs link, and no generic link either. It states that MacroChipz
+    // does not track it, which is the true thing -- see §17's #45B
+    // addendum for why "View Calendar →" was replaced rather than kept.
     const joltsRow = within(section).getByText("JOLTS").closest("li") as HTMLElement;
-    expect(within(joltsRow).getByRole("link", { name: "View Calendar →" })).toHaveAttribute("href", "/calendar");
     expect(within(joltsRow).queryByRole("link", { name: "View Jobs →" })).not.toBeInTheDocument();
+    expect(within(joltsRow).queryByRole("link", { name: "View Calendar →" })).not.toBeInTheDocument();
+    expect(within(joltsRow).getByText(/Not tracked by MacroChipz yet/)).toBeInTheDocument();
   });
 
   it("shows at most one recent occurrence as compact context", async () => {
@@ -689,7 +694,19 @@ describe("page structure", () => {
     await screen.findByRole("heading", { name: "Current State" });
     expect(screen.getByRole("heading", { level: 1, name: "The economy right now" })).toBeInTheDocument();
     // #42A: "What Changed" and "Recent Data Updates" left `/`.
-    for (const name of ["Current State", "How They Relate", "Releases"]) {
+    // #45B added three: world orientation, curated questions, and the
+    // path into Revision Intelligence -- the three #45A findings about
+    // what the homepage could not reach. "Inflation and Jobs, side by side" became
+    // "Inflation and Jobs, side by side" (heading only; the frozen
+    // #23C composition is unchanged).
+    for (const name of [
+      "Explore the economy",
+      "Questions people ask",
+      "Current State",
+      "Inflation and Jobs, side by side",
+      "Releases",
+      "When a number changes",
+    ]) {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     }
   });

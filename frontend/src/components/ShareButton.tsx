@@ -1,7 +1,6 @@
 import { useCallback, useState } from "react";
 
-import { track } from "../analytics";
-import type { IntelligenceType } from "../api/intelligence.types";
+import { track, type ObjectType } from "../analytics";
 
 /**
  * One share control (Increment #40).
@@ -27,7 +26,11 @@ export function ShareButton({
   title,
   url,
 }: {
-  objectType: IntelligenceType;
+  /** The closed analytics vocabulary's object type (#37). Widened from
+   * `IntelligenceType` in #45B so permanent EXPLAINERS can share too --
+   * they are the most shareable pages in the product and were the only
+   * ones without the affordance. */
+  objectType: ObjectType;
   title: string;
   /** The permanent URL. Passed in rather than read from `location` so
    * the component is testable and so prerendering cannot bake in a

@@ -309,6 +309,20 @@ All five `ProcessingStatus` values (`NOT_CHECKED`, `NO_CHANGE`, `CHANGES_DETECTE
 | GDP | `"53"` | None | "View Releases →" | `/releases` |
 | Advance Monthly Retail Sales | `"9"` | None | "View Releases →" | `/releases` |
 
+### §17 ADDENDUM — corrected again in Increment #45B
+
+**What changed:** on `/calendar`, a release whose series feed **no** canonical monitor no longer receives a CTA at all. It renders an explicit statement that MacroChipz does not track it. Releases that **do** feed a monitor now receive their CTA on `/calendar`, where #22B had omitted every CTA.
+
+**Why the original rule was right and is now superseded.** #22B omitted per-row CTAs inside `ReleaseCalendarSection` because the frozen rule sent a non-monitor release to `/releases`, which is circular when the row is already there. That reasoning was sound. What it could not anticipate is what #45A measured: **`/calendar` became the product's only page with zero outbound internal links** — a hard dead end, and one of six primary navigation items.
+
+**#45B removes the circularity rather than the navigation.** The unconditional part of the frozen rule — *"a non-monitor release's next action is `/releases`"* — is the part being changed, and deliberately: pointing a reader at the page they are already on was never a *next action*, it was the absence of one wearing a link's clothing. The replacement is honest in a way the original could not be, because it answers a question #45A raised separately (§A.10.2): the Calendar was listing GDP, JOLTS and Advance Retail Sales — data MacroChipz **does not have** — with no indication of that. A row that says *"Not tracked by MacroChipz yet — the schedule only"* states the true thing.
+
+**What is NOT changed.** §3A's correction stands entirely: navigation still keys off CANONICAL MONITOR RELATION, never RELEASE CATEGORY. JOLTS still gets no Labor attribution — it now gets no link at all rather than a generic one, which is if anything a stronger reading of §3A. The `{"10","54"} → Inflation`, `{"50"} → Labor` constant is untouched, and `UpcomingReleasesPreview`'s behaviour on `/` is unchanged for monitor-related releases.
+
+**Provider token removed from the row (#45A §A.10.1).** `ReleaseRow` no longer renders the bare `{item.provider}` string — the literal word "FRED" on a consumer surface. Provenance is not hidden: `ReleaseScheduleDisclosure` now names the schedule's source in a second paragraph beside the frozen sentence, which is itself **byte-for-byte unchanged**.
+
+---
+
 **Rendering-context note (found during this correction, not previously surfaced):** `ReleaseRow` is used in four places, not two — `ReleaseCalendarSection.tsx` (on `/releases` itself), `RelevantRelease.tsx` (on `/labor`, Employment-Situation-only), `UpcomingReleasesPreview.tsx` (on `/`, the general curated list, where JOLTS/GDP/Retail Sales rows genuinely can appear), and `ReleaseRow.test.tsx`. A `"View Releases →"` CTA is a real, useful next action everywhere except when the row is already rendered on `/releases` itself (via `ReleaseCalendarSection`), where it would be circular. #22B must render that CTA conditionally on the row's own hosting context (omit it inside `ReleaseCalendarSection`, include it inside `UpcomingReleasesPreview`) — this is an implementation-level rendering detail, not a deviation from the frozen navigation rule itself, which is unconditional ("a non-monitor release's next action is `/releases`").
 
 **No deep-link query params are introduced anywhere** — every target above is a plain, existing route.

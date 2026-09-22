@@ -5,6 +5,7 @@ import { ErrorMessage } from "../components/ErrorMessage";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { PageHeader } from "../components/PageHeader";
 import { UnderstandWorld } from "../components/explainers/UnderstandLinks";
+import { RevisionsLink } from "../components/revisions/RevisionsLink";
 import { HousingEvidence } from "../components/housing/HousingEvidence";
 import { HousingPipelineChart } from "../components/housing/HousingPipelineChart";
 import { HousingStageCard } from "../components/housing/HousingStageCard";
@@ -172,6 +173,18 @@ export function HousingPage() {
       )}
       {housing.status === "success" && <HousingContent result={housing.data} />}
 
+      {/* Revision Intelligence (#45B). Justified for Housing by the
+          DATA SEMANTICS, not by symmetry: Census revises the prior
+          month in every monthly New Residential Construction release
+          (#45 verified "the revised July rate" in the published
+          release), Housing observations are versioned through the
+          shared writer, and #45 proved the PROSPECTIVE_REVISION path
+          end to end. The copy remains forward-looking -- MacroChipz has
+          still never captured a revision, and nothing here says it
+          has. */}
+      <div className="mt-10 border-t border-line pt-8">
+        <RevisionsLink context="Housing" />
+      </div>
       <div className="mt-10 border-t border-line pt-8">
         <UnderstandWorld world="HOUSING" />
       </div>

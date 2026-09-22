@@ -12,7 +12,7 @@ const INFLATION_ERROR_MESSAGE = "Inflation data could not be loaded.";
 const LABOR_ERROR_MESSAGE = "Jobs data could not be loaded.";
 
 /**
- * The Economic Overview's "How They Relate" section -- Relate V1,
+ * The homepage's Inflation-and-Jobs juxtaposition -- Relate V1,
  * frozen by docs/product/relate-composition-v1.md (Increment #23C).
  * Renders exactly one deterministic COMPOSITION sentence over
  * Inflation's and Labor's own already-canonical top-level states
@@ -20,6 +20,14 @@ const LABOR_ERROR_MESSAGE = "Jobs data could not be loaded.";
  * existing "View {Domain} →" CTAs -- nothing else. No new badges, no
  * score, no chart, no interpretation paragraph, no regime label, no
  * market implication (§12/§14 of the frozen contract).
+ *
+ * HEADING CORRECTED IN #45B, AND ONLY THE HEADING. It read "How They
+ * Relate", which promised a relationship the frozen contract forbids
+ * this component from asserting -- #45A flagged it as the clearest
+ * case in the product of a label overselling what the code beneath it
+ * is allowed to say. The composed sentence, the composition logic and
+ * the prohibited-vocabulary guard are all unchanged; the heading now
+ * describes what actually happens here, which is juxtaposition.
  *
  * Reuses the SAME two already-fetched monitor resources
  * `pages/Overview.tsx`'s `CurrentStateSection` already consumes -- no
@@ -49,7 +57,7 @@ export function HowTheyRelate({
   return (
     <section aria-labelledby="overview-how-they-relate-heading">
       <h2 id="overview-how-they-relate-heading" className="text-sm font-medium text-fg-muted">
-        How They Relate
+        Inflation and Jobs, side by side
       </h2>
 
       <div className="mt-3 space-y-3">

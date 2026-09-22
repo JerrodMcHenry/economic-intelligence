@@ -9,6 +9,8 @@ import { ExplanationTrigger } from "../components/explanations/ExplanationTrigge
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
 import { PageHeader } from "../components/PageHeader";
 import { UnderstandWorld } from "../components/explainers/UnderstandLinks";
+import { RevisionsLink } from "../components/revisions/RevisionsLink";
+import { Link } from "react-router-dom";
 import { CurveSpreadCard, InflationCompensationCard } from "../components/rates/DerivedMetricCard";
 import { RateChangeRow } from "../components/rates/RateChangeList";
 import { RateLevelCard } from "../components/rates/RateLevelCard";
@@ -205,13 +207,49 @@ function RatesContent({ result }: { result: RatesMonitorResult }) {
         </div>
       </section>
 
-      {/* 6. Methodology */}
+      {/* 6. Where these rates show up elsewhere (#45B).
+             NAVIGATION ONLY. #45A found cross-world linking was
+             one-directional -- `/housing` pointed here and nothing
+             pointed back. No causal claim is made or implied: the
+             frozen cross-domain prohibition in
+             relate-compare-audit-v1.md sections 15/16 is untouched,
+             and this section asserts nothing about how the two move. */}
+      <section aria-labelledby="rates-elsewhere-heading">
+        <h2 id="rates-elsewhere-heading" className="text-sm font-medium text-fg-muted">
+          Where these numbers come up
+        </h2>
+        <p className="mt-2 max-w-prose text-sm text-fg-secondary">
+          Long-term borrowing costs are part of the backdrop to home building, and the difference between nominal and
+          real yields is MacroChipz&rsquo;s market-implied inflation compensation above. MacroChipz publishes no
+          relationship between them — these are links, not conclusions.
+        </p>
+        <ul className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+          <li>
+            <Link
+              to="/housing"
+              className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
+            >
+              Explore Housing →
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/inflation"
+              className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
+            >
+              Explore Inflation →
+            </Link>
+          </li>
+        </ul>
+      </section>
+
+      {/* 7. Methodology */}
       <section aria-labelledby="rates-methodology-heading">
         <h2 id="rates-methodology-heading" className="text-sm font-medium text-fg-muted">
           Evidence &amp; methodology
         </h2>
         <div className="mt-3 max-w-3xl">
-          <Disclosure summary={`Methodology ${result.methodology_id}`}>
+          <Disclosure summary="Where these numbers come from">
             <div className="space-y-3 text-sm text-fg-secondary">
               <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
                 <dt className="text-fg-muted">Methodology</dt>
@@ -269,7 +307,7 @@ export function RatesPage() {
   return (
     <div>
       <PageHeader
-        title="Rates Intelligence"
+        title="Rates"
         description="Track U.S. Treasury yields, curve structure, real yields, and market-implied inflation compensation."
       >
         {/* A <div>, not a <p>: `ExplanationTrigger` renders a native
@@ -312,6 +350,9 @@ export function RatesPage() {
           available={analyst.status === "success" && analyst.data.available}
           headingId="rates-analyst-heading"
         />
+      </div>
+      <div className="mt-10 border-t border-line pt-8">
+        <RevisionsLink context="Treasury" />
       </div>
       <div className="mt-10 border-t border-line pt-8">
         <UnderstandWorld world="RATES" />

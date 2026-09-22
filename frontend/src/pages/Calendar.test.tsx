@@ -5,6 +5,7 @@
  * pattern pages/Inflation.test.tsx already established.
  */
 import { render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,7 +35,16 @@ function resolveBoth(overrides: {
 }
 
 function renderPage() {
-  return render(<CalendarPage />);
+  // #45B: the Calendar now carries real onward navigation, so its rows
+  // render router `Link`s and the page needs router context. Before
+  // #45B it had none -- which was exactly the hard dead end #45A
+  // measured (zero outbound internal links on the product's only
+  // page with that property).
+  return render(
+    <MemoryRouter>
+      <CalendarPage />
+    </MemoryRouter>,
+  );
 }
 
 async function findSection(name: string) {
@@ -63,7 +73,14 @@ describe("loading state", () => {
     renderPage();
 
     expect(screen.getAllByRole("status").length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByText(/FRED/)).not.toBeInTheDocument();
+    // The assertion is "no fabricated RELEASE DATA while loading", and
+    // it now checks release data directly. It used to check for the
+    // string "FRED", which was a proxy for "a row rendered" -- valid
+    // until #45B moved provider provenance out of the rows and into the
+    // page-level schedule note, which renders regardless of the rows.
+    // The sentinel changed; the property under test did not.
+    expect(screen.queryByText(/Consumer Price Index/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /View / })).not.toBeInTheDocument();
   });
 });
 
@@ -115,7 +132,25 @@ describe("Upcoming Releases", () => {
     expect(screen.getAllByRole("button", { name: "Retry" }).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("Increment #22B: never renders the per-row monitor/releases CTA here -- it would be circular, already on /releases (§17's rendering-context note)", async () => {
+  /**
+   * #45B SUPERSEDES the #22B rendering-context rule this block used to
+   * assert, deliberately and with the frozen contract updated to match
+   * (see overview-attention-model-v1.md §17's #45B addendum).
+   *
+   * #22B omitted per-row CTAs on `/calendar` for a specific reason: a
+   * release with no canonical monitor relation pointed at `/calendar`,
+   * which is circular when the row is already on `/calendar`. #45A then
+   * measured the cost -- `/calendar` was the product's only page with
+   * ZERO outbound internal links.
+   *
+   * #45B removes the circularity rather than the navigation: a
+   * non-monitor release no longer points anywhere at all, it states
+   * that MacroChipz does not track it. That is both a better answer to
+   * the original circularity problem and the honest one -- #45A found
+   * the Calendar was effectively advertising GDP and retail sales the
+   * product does not have.
+   */
+  it("links a release to the world its series actually feed, and says so plainly when they feed nothing", async () => {
     resolveBoth({
       upcoming: buildReleaseListResponse({
         releases: [
@@ -127,9 +162,58 @@ describe("Upcoming Releases", () => {
     renderPage();
 
     await screen.findByText("Consumer Price Index");
-    expect(screen.queryByRole("link", { name: "View Inflation →" })).not.toBeInTheDocument();
+
+    // CPI's mapped series feed the Inflation monitor (verified in the
+    // seeded migration), so the row points there.
+    expect(screen.getByRole("link", { name: "View Inflation →" })).toHaveAttribute("href", "/inflation");
+
+    // JOLTS has ZERO mapped series. It gets no world link -- and
+    // crucially, no "View Labor →" either, which is the exact
+    // misattribution §3A corrected.
+    expect(screen.queryByRole("link", { name: "View Jobs →" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "View Labor →" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Not tracked by MacroChipz yet/)).toBeInTheDocument();
+
+    // And no circular self-link back to the page the reader is on.
+    expect(screen.queryByRole("link", { name: "View Calendar →" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "View Releases →" })).not.toBeInTheDocument();
+  });
+
+  it("is no longer a dead end: the page has at least one outbound internal link", async () => {
+    // The #45A finding this increment exists to close.
+    resolveBoth({
+      upcoming: buildReleaseListResponse({
+        releases: [buildReleaseOccurrenceItem({ release_id: 1, name: "Consumer Price Index", provider_release_id: "10" })],
+      }),
+    });
+    renderPage();
+
+    await screen.findByText("Consumer Price Index");
+    const internal = screen.getAllByRole("link").filter((link) => (link.getAttribute("href") ?? "").startsWith("/"));
+    expect(internal.length).toBeGreaterThan(0);
+  });
+
+  it("never claims MacroChipz covers a release whose data it does not hold", async () => {
+    resolveBoth({
+      upcoming: buildReleaseListResponse({
+        releases: [
+          buildReleaseOccurrenceItem({ release_id: 1, name: "Gross Domestic Product", provider_release_id: "53" }),
+          buildReleaseOccurrenceItem({ release_id: 2, name: "Advance Monthly Retail Sales", provider_release_id: "9" }),
+        ],
+      }),
+    });
+    renderPage();
+
+    // `releaseDisplayLabel` shortens these two for display ("GDP",
+    // "Advance Retail Sales") with the canonical name preserved as the
+    // row's accessible name -- unchanged by #45B.
+    await screen.findByText("GDP");
+    expect(screen.getAllByText(/Not tracked by MacroChipz yet/)).toHaveLength(2);
+    // No world link for either -- MacroChipz holds neither GDP nor
+    // retail sales, and #45A found the Calendar implying otherwise.
+    for (const name of ["View Inflation →", "View Jobs →", "View Growth →", "View Consumer →"]) {
+      expect(screen.queryByRole("link", { name }), name).not.toBeInTheDocument();
+    }
   });
 });
 

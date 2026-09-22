@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 import type { ReleaseOccurrenceItem } from "../../api/releases.types";
 import { releaseTypeExplanation, scheduleStatusExplanation } from "../../content/explanations/releases";
-import { releaseMonitorCta } from "../../lib/releaseMonitorRelation";
+import { canonicalMonitorDomain, releaseMonitorCta } from "../../lib/releaseMonitorRelation";
 import { isShortenedLabel, releaseCategory, releaseDisplayLabel } from "../../lib/releasePresentation";
 import { ExplanationTrigger } from "../explanations/ExplanationTrigger";
 import { ScheduleStatusBadge } from "./ScheduleStatusBadge";
@@ -40,6 +40,7 @@ export function ReleaseRow({ item, showMonitorCta = false }: { item: ReleaseOccu
   const typeExplanation = releaseTypeExplanation(item.provider_release_id);
   const statusExplanation = scheduleStatusExplanation(item.schedule_status);
   const monitorCta = releaseMonitorCta(item.provider_release_id);
+  const hasCanonicalMonitor = canonicalMonitorDomain(item.provider_release_id) !== null;
 
   return (
     <div>
@@ -54,18 +55,36 @@ export function ReleaseRow({ item, showMonitorCta = false }: { item: ReleaseOccu
         </span>
         {typeExplanation && <ExplanationTrigger explanation={typeExplanation} />}
       </div>
+      {/* #45B: the bare `{item.provider}` token -- which rendered the
+          literal word "FRED" on the most consumer-facing schedule
+          surface in the product -- is gone. Provenance is NOT hidden:
+          `ReleaseScheduleDisclosure` on the same page now names the
+          schedule's source in a sentence, which is where a reader can
+          actually parse it. #38 spent a whole increment establishing
+          that a provider identifier is not MacroChipz's vocabulary. */}
       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
-        <span>{item.provider}</span>
         <span className="inline-flex items-center gap-1">
           <ScheduleStatusBadge status={item.schedule_status} />
           <ExplanationTrigger explanation={statusExplanation} />
         </span>
       </div>
-      {showMonitorCta && (
-        <Link to={monitorCta.to} className="mt-1 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
-          {monitorCta.label}
-        </Link>
-      )}
+
+      {/* ONWARD NAVIGATION (#45B). #45A measured `/calendar` as the
+          product's only hard dead end -- zero outbound internal links.
+          A release whose series actually feed a canonical monitor links
+          to that world. A release whose series feed NOTHING says so,
+          plainly, instead of linking somewhere useless: GDP, JOLTS and
+          Advance Retail Sales have zero mapped series (verified in the
+          seeded migrations), and #45A found the Calendar was
+          effectively advertising data the product does not have. */}
+      {showMonitorCta &&
+        (hasCanonicalMonitor ? (
+          <Link to={monitorCta.to} className="mt-1 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
+            {monitorCta.label}
+          </Link>
+        ) : (
+          <p className="mt-1 text-sm text-fg-muted">Not tracked by MacroChipz yet — the schedule only.</p>
+        ))}
     </div>
   );
 }

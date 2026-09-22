@@ -46,7 +46,7 @@ export function ReleaseCalendarSection({
               <ul className="min-w-0 flex-1 space-y-3">
                 {group.items.map((item) => (
                   <li key={`${item.release_id}-${item.scheduled_date}`}>
-                    <ReleaseRow item={item} />
+                    <ReleaseRow item={item} showMonitorCta />
                   </li>
                 ))}
               </ul>

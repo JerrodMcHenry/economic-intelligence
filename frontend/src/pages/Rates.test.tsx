@@ -48,7 +48,7 @@ describe("RatesPage header and freshness", () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Rates Intelligence" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Rates" })).toBeInTheDocument();
     expect(screen.getByText(/Track U.S. Treasury yields, curve structure, real yields/)).toBeInTheDocument();
   });
 
@@ -374,7 +374,7 @@ describe("RatesPage methodology discovery", () => {
     renderPage();
 
     const section = await screen.findByRole("region", { name: "Evidence & methodology" });
-    await userEvent.setup().click(within(section).getByText("Methodology rates_v1.0"));
+    await userEvent.setup().click(within(section).getByText("Where these numbers come from"));
 
     expect(within(section).getByText(/Changes count published business sessions/)).toBeInTheDocument();
     expect(within(section).getByText(/never interpolated or carried/)).toBeInTheDocument();

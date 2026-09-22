@@ -137,7 +137,7 @@ describe("the homepage renders no bootstrap noise", () => {
   it("still orients the reader with canonical state and real paths", async () => {
     await renderHome();
     expect(screen.getByRole("heading", { name: "Current State" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "How They Relate" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Inflation and Jobs, side by side" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Inflation →" })).toHaveAttribute("href", "/inflation");
     expect(screen.getByRole("link", { name: "Open Jobs →" })).toHaveAttribute("href", "/jobs");
   });

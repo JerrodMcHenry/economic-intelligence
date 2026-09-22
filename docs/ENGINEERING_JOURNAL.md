@@ -13010,3 +13010,168 @@ The narrower version, which I expect to keep applying: **the homepage is
 not a design surface, it is a projection of what the database contains.**
 Nobody made a decision to lead with bond yields. It is what 0.3%
 eligibility produces, and no amount of copywriting would have fixed it.
+
+## Increment #45B — Product Cohesion
+
+Implementation. Baseline: HEAD `2fdde80` (#45A's audit), clean tree.
+Requirements source: the #45A audit, treated as a specification rather
+than as advice. 1,844 frontend tests and 2,494 backend tests pass;
+nothing committed, nothing pushed.
+
+Spec first, as instructed:
+`docs/product/macrochipz-product-cohesion-v45b-spec.md` maps each audit
+finding to a fix, acceptance criteria and tests, and now carries the
+outcome including two deviations from itself.
+
+### The finding that decided the shape of the increment
+
+#45A measured 1,899 intelligence objects, of which **six are
+homepage-eligible and all six are Treasury yields**. The obvious move
+is to widen eligibility. It is also the wrong one: the policy excludes
+1,532 coverage records and 358 first observations, and every one of
+those exclusions is correct. The homepage was an accurate projection of
+a database whose only *changes* live in one world.
+
+So `homepage_presentation_v1.0` is untouched, and the homepage gained a
+second layer that makes a **different claim**:
+
+    THE LEDE       "this CHANGED"                  governed by the policy
+    ORIENTATION    "these EXIST, and here is the
+                    latest data on file"           governed by the registry
+
+Keeping those apart is the whole design. Orientation carries no change
+language, no direction, no significance and no state — a test asserts
+all four. It deliberately does **not** repeat Inflation's and Jobs'
+state badges either, because `CurrentStateSection` already publishes
+those with a "Why Mixed?" explanation, and two surfaces responsible for
+one fact is the duplication #45A itself flagged.
+
+### Three guards told me I was wrong, and all three were right
+
+**The publication-language guard.** The homepage forbids
+"published"/"released"/"data available" outside one sanctioned
+disclosure, because a "Past due" badge beside that word reads as a
+claim the data arrived. My new copy said "revised after it is first
+published" — true, general, and nowhere near a release row. The guard
+cannot tell the difference and should not have to. **The copy changed,
+not the guard.**
+
+**The analytics-abstraction guard.** `ShareButton` needed the
+`ObjectType` union and I imported `analytics/events` directly. The
+guard forbids reaching past the `analytics` barrel. My first instinct
+was "it is only a type". The barrel already re-exports it, so the right
+fix took one line and the guard kept its teeth.
+
+**The Overview read-only guard.** Adding `getHousing` to the homepage
+tripped an allow-list of documented read functions. That allow-list *is*
+the mechanism — `listHomepageIntelligence` and `useSinceLastVisit` were
+added the same way — so the fix was to document the addition, with the
+reason it is a read.
+
+Three for three. The pattern worth keeping: **when a guard fires on new
+work, the default assumption should be that the guard is right.**
+
+### A frozen rule I changed on purpose
+
+`overview-attention-model-v1.md` §17 froze "a non-monitor release's
+next action is `/releases`". On `/calendar` that is circular, so #22B
+implemented it as *no CTA at all on `/calendar`* — sound reasoning, and
+the direct cause of #45A measuring `/calendar` as the product's only
+page with zero outbound links.
+
+I changed the unconditional half of the rule and wrote a §17 addendum
+into the frozen document explaining what changed and why. The
+replacement is better than either option the original considered:
+pointing a reader at the page they are already on was never a *next
+action*, it was the absence of one wearing a link's clothing. A release
+whose series feed nothing now says **"Not tracked by MacroChipz yet —
+the schedule only"**, which also answers the separate #45A finding that
+the Calendar was advertising GDP and retail sales the product does not
+have.
+
+§3A's correction is untouched: navigation still keys off canonical
+monitor relation, and JOLTS still gets no Jobs attribution — it now
+gets no link at all, which is a stronger reading of §3A rather than a
+weaker one.
+
+Updating a freeze deliberately and recording it is fine. Editing one
+quietly because a test is in the way is not, and the difference is a
+paragraph in the document that owns the rule.
+
+### The frozen sentence I nearly edited
+
+Provenance had to leave the calendar rows — the literal word "FRED" was
+consumer-facing jargon on the most consumer-facing schedule surface in
+the product. I moved it into `ReleaseScheduleDisclosure` by appending a
+sentence, and a test failed on an exact-text match.
+
+That test was protecting a sentence `release-intelligence-v1.md` #2/#13
+makes load-bearing: *a scheduled date is not proof of publication.*
+Appending to it was editing frozen copy. The corrected implementation
+renders the frozen sentence unchanged in its own element with the
+provenance line beside it, and a new test asserts the frozen sentence
+byte-for-byte so the next person cannot do what I just tried.
+
+### What only the browser found
+
+A test-failure message dumped the rendered page text, and buried in it
+was the footer of `IntelligenceShell` — which permanent object pages
+and explainers use instead of `AppShell`. It read *"Source data: U.S.
+Department of the Treasury; FRED®"* and nothing else.
+
+#45 added the required Census non-endorsement notice to `AppShell`
+only. So the two shells had drifted, and the pages **most likely to be
+someone's first and only view of MacroChipz** — a shared explainer, a
+permanent object from a message — were the ones carrying no Census
+notice. Census's terms require it to be displayed. Fixed with the
+identical verbatim sentence.
+
+Two shells and one attribution obligation is a standing hazard, and it
+is now two places that must agree rather than one that must be right.
+
+### Measured, before and after
+
+Same method as #45A: rendered DOM, live backend.
+
+| | before | after |
+|---|---|---|
+| `/` internal links | 9 | **15** |
+| `/` worlds linked | 3 (no Housing) | **4** |
+| `/` → explainers | 0 | **4** |
+| `/calendar` outbound links | **0** | **2** |
+| Worlds linking to `/revisions` | 2 of 4 | **4 of 4** |
+| `/explain` | did not exist | **16 links, all 12 explainers** |
+| Frontend tests | 1,795 | **1,844** |
+| Prerendered pages | 18 | **19** |
+| Client JS (gzip) | 166,611 B | 169,083 B (**+2,472**) |
+
+Backend: **2,494 passed, 2 skipped** — unchanged, which was the point.
+Typecheck, lint and build clean.
+
+### What I could not verify, again
+
+The browser tooling reports a successful window resize while media
+queries go on matching desktop, so **mobile is still unverified at a
+real viewport** — the same limitation #45A hit, now costing a second
+increment. I added structural assertions instead (no fixed pixel
+widths, mobile-first grid), which catch the defect class that actually
+breaks phone layouts, and said plainly in both the artifact and here
+that a genuine 390px pass across eight surfaces is outstanding.
+
+`Ask MacroChipz` is still `NOT_CONFIGURED` in this environment. Its
+honest unavailable state renders — *"MacroChipz Analyst is
+unavailable."*, no input control — and its populated state remains
+untested. Nothing about it was widened.
+
+### Lesson
+
+**An audit is only worth the increment that acts on it**, and the
+acting is where the audit gets tested. Three of #45A's findings turned
+out to have a frozen decision sitting underneath them, and in each case
+the right move was different: one contract to update deliberately
+(§17), one to leave exactly alone and work around (the schedule
+sentence), and one where the label was wrong but the constraint beneath
+it was right ("How They Relate" → "Inflation and Jobs, side by side").
+
+None of those distinctions is visible from the audit. They only appear
+when you try to change the code and something pushes back.

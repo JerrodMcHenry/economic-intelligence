@@ -64,7 +64,14 @@ export type ObjectType =
   | "RELEASE_PROCESSED"
   | "OBSERVATION_CHANGE"
   | "ANALYSIS_CHANGE"
-  | "RATES_MOVEMENT";
+  | "RATES_MOVEMENT"
+  // Added in #45B for `share_initiated` on permanent explainer pages.
+  // A VALUE on an existing closed union, not a new event: sharing an
+  // explainer answers the same product question `share_initiated`
+  // already exists to answer ("do objects survive leaving
+  // MacroChipz?"), and a second event name would fragment it. Still
+  // records the TYPE only -- never the slug, the URL or the text.
+  | "explainer";
 
 /** Which monitor's recorded-intelligence history was opened. */
 export type Monitor = "inflation" | "labor";
