@@ -1,5 +1,7 @@
+import { useState } from "react";
+
 import { getRatesMonitor } from "../api/rates";
-import type { RateChange, RatesMonitorResult } from "../api/rates.types";
+import type { RateLevel, RatesMonitorResult } from "../api/rates.types";
 import { getAnalystAvailability } from "../api/analyst";
 import { useApiResource } from "../api/useApiResource";
 import { Disclosure } from "../components/Disclosure";
@@ -7,13 +9,13 @@ import { AskMacroChipz } from "../components/analyst/AskMacroChipz";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { ExplanationTrigger } from "../components/explanations/ExplanationTrigger";
 import { LoadingSkeleton } from "../components/LoadingSkeleton";
-import { PageHeader } from "../components/PageHeader";
 import { UnderstandWorld } from "../components/explainers/UnderstandLinks";
 import { RevisionsLink } from "../components/revisions/RevisionsLink";
 import { Link } from "react-router-dom";
 import { CurveSpreadCard, InflationCompensationCard } from "../components/rates/DerivedMetricCard";
-import { RateChangeRow } from "../components/rates/RateChangeList";
 import { RateLevelCard } from "../components/rates/RateLevelCard";
+import { SelectedMaturityPanel } from "../components/rates/SelectedMaturityPanel";
+import { StoryTeaser } from "../components/homepage/StoryTeaser";
 import { YieldCurveChart } from "../components/rates/YieldCurveChart";
 import {
   CURVE_SPREAD,
@@ -21,9 +23,8 @@ import {
   INFLATION_COMPENSATION,
   NOMINAL_YIELD,
   REAL_YIELD,
-  SESSION_WINDOW,
 } from "../content/explanations/rates";
-import { formatChangeWindow, formatObservationDate, maturityLabel } from "../lib/ratesFormat";
+import { formatObservationDate } from "../lib/ratesFormat";
 
 const MONITOR_ERROR_MESSAGE = "Rates intelligence could not be loaded.";
 
@@ -43,15 +44,26 @@ const MONITOR_ERROR_MESSAGE = "Rates intelligence could not be loaded.";
  * and how was all of it produced.
  */
 
-/** The single window whose cross-metric comparison the "What changed" table shows. */
-const WHAT_CHANGED_WINDOW = "5_SESSIONS";
-
-function changeForWindow(changes: RateChange[]): RateChange | undefined {
-  return changes.find((change) => change.window === WHAT_CHANGED_WINDOW);
-}
-
 function RatesContent({ result }: { result: RatesMonitorResult }) {
   const hasAnyData = result.as_of_date !== null;
+
+  /*
+   * DEFAULT 10Y. The product's own explainer singles it out — "Why does
+   * everyone watch the 10-year Treasury?" — and the homepage lede
+   * promotes it. If the 10-year is not ingested, the first maturity
+   * that IS becomes the default rather than the panel opening empty.
+   *
+   * ABOVE THE EMPTY-STATE RETURN, and not for style: a hook after a
+   * conditional return changes the hook order between a rendered page
+   * and an un-ingested one, which is the bug `rules-of-hooks` exists to
+   * catch. In an environment with no observations this simply holds
+   * `undefined` and nothing below it renders.
+   */
+  const selectable = result.nominal_curve.filter((level) => level.available && level.latest_value !== null);
+  const preferred = selectable.find((level) => level.series_id === "UST_NOMINAL_10Y") ?? selectable[0];
+  const [selectedId, setSelectedId] = useState<string | undefined>(preferred?.series_id);
+  const selected: RateLevel | undefined =
+    result.nominal_curve.find((level) => level.series_id === selectedId) ?? preferred;
 
   if (!hasAnyData) {
     return (
@@ -69,40 +81,44 @@ function RatesContent({ result }: { result: RatesMonitorResult }) {
   }
 
   return (
-    <div className="mt-8 divide-y divide-line [&>*]:py-8 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
-      {/* 1. Nominal Treasury yields */}
-      <section aria-labelledby="rates-nominal-heading">
+    <div className="mt-6 space-y-8 sm:mt-8">
+      {/* 1. The curve, as one selectable instrument */}
+      <section aria-labelledby="rates-curve-heading">
         <div className="flex items-center gap-1.5">
-          <h2 id="rates-nominal-heading" className="text-sm font-medium text-fg-muted">
-            Treasury yields
+          <h2 id="rates-curve-heading" className="text-sm font-medium text-fg-muted">
+            Treasury curve
           </h2>
           <ExplanationTrigger explanation={NOMINAL_YIELD} />
         </div>
-        <ul className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {result.nominal_curve.map((level) => (
-            <RateLevelCard key={level.series_id} level={level} explanation={NOMINAL_YIELD} showContext={false} />
-          ))}
-        </ul>
-      </section>
-
-      {/* 2. The curve, with its derived spreads beside it */}
-      <section aria-labelledby="rates-curve-heading">
-        <h2 id="rates-curve-heading" className="text-sm font-medium text-fg-muted">
-          Treasury curve
-        </h2>
-        <div className="mt-3 grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <div className="h-fit rounded-lg border border-line bg-surface p-5 sm:p-6">
-            <YieldCurveChart levels={result.nominal_curve} asOfDate={result.as_of_date} />
-          </div>
-          <ul className="grid content-start gap-4">
-            {result.curve_spreads.map((spread) => (
-              <CurveSpreadCard key={spread.spread_id} spread={spread} explanation={CURVE_SPREAD} />
-            ))}
-          </ul>
+        <div className="lx-card mt-3 rounded-xl p-4 sm:p-6">
+          <YieldCurveChart
+            levels={result.nominal_curve}
+            asOfDate={result.as_of_date}
+            selectedId={selected?.series_id}
+            onSelect={setSelectedId}
+          />
         </div>
       </section>
 
-      {/* 3. Real yields */}
+      {/* 2. The maturity the reader selected */}
+      {selected && (
+        <section aria-labelledby="rates-selected-heading">
+          <h2 id="rates-selected-heading" className="text-sm font-medium text-fg-muted">
+            The maturity you selected
+          </h2>
+          <div className="mt-3">
+            <SelectedMaturityPanel level={selected} explanation={NOMINAL_YIELD} />
+          </div>
+        </section>
+      )}
+
+      {/* 3. The story, immediately after the panel and before the
+             calculated measures. #49A measured zero links from this
+             page to the story that explains where these yields end up. */}
+      <StoryTeaser alwaysVisible />
+
+      {/* 4. Real yields — PUBLISHED observations, not calculated, so
+             they keep their own section rather than joining §5. */}
       <section aria-labelledby="rates-real-heading">
         <div className="flex items-center gap-1.5">
           <h2 id="rates-real-heading" className="text-sm font-medium text-fg-muted">
@@ -120,20 +136,23 @@ function RatesContent({ result }: { result: RatesMonitorResult }) {
         </ul>
       </section>
 
-      {/* 4. Market-implied inflation compensation */}
-      <section aria-labelledby="rates-compensation-heading">
+      {/* 5. Everything MacroChipz calculated from the curve */}
+      <section aria-labelledby="rates-derived-heading">
         <div className="flex items-center gap-1.5">
-          <h2 id="rates-compensation-heading" className="text-sm font-medium text-fg-muted">
-            Market-implied inflation compensation
+          <h2 id="rates-derived-heading" className="text-sm font-medium text-fg-muted">
+            Calculated from the curve
           </h2>
-          <ExplanationTrigger explanation={INFLATION_COMPENSATION} />
+          <ExplanationTrigger explanation={CURVE_SPREAD} />
         </div>
         <p className="mt-2 max-w-prose text-sm text-fg-secondary">
-          The difference between nominal and real Treasury yields at the same maturity. It can reflect inflation
+          Differences MacroChipz computes between published yields. Inflation compensation can reflect inflation
           expectations as well as liquidity and risk premia, so {result.methodology_id} does not call it an inflation
           forecast.
         </p>
         <ul className="mt-3 grid gap-4 sm:grid-cols-2">
+          {result.curve_spreads.map((spread) => (
+            <CurveSpreadCard key={spread.spread_id} spread={spread} explanation={CURVE_SPREAD} />
+          ))}
           {result.inflation_compensation.map((compensation) => (
             <InflationCompensationCard
               key={compensation.maturity}
@@ -142,69 +161,6 @@ function RatesContent({ result }: { result: RatesMonitorResult }) {
             />
           ))}
         </ul>
-      </section>
-
-      {/* 5. What changed, one window, every metric side by side */}
-      <section aria-labelledby="rates-changed-heading">
-        <div className="flex items-center gap-1.5">
-          <h2 id="rates-changed-heading" className="text-sm font-medium text-fg-muted">
-            What changed
-          </h2>
-          <ExplanationTrigger explanation={SESSION_WINDOW} />
-        </div>
-        <p className="mt-2 max-w-prose text-sm text-fg-secondary">
-          Every metric over the last {formatChangeWindow(WHAT_CHANGED_WINDOW)} of published Treasury data. Each card
-          above carries its own 1, 5, 21 and 63-session changes.
-        </p>
-        <div className="mt-3 max-w-3xl overflow-x-auto">
-          <table className="w-full">
-            <caption className="sr-only">
-              Change over {formatChangeWindow(WHAT_CHANGED_WINDOW)} for each rates metric
-            </caption>
-            <thead>
-              <tr className="text-left type-label text-fg-muted">
-                <th scope="col" className="pb-1 font-semibold">
-                  Metric
-                </th>
-                <th scope="col" className="pb-1 text-right font-semibold">
-                  Change
-                </th>
-                <th scope="col" className="pb-1 text-right font-semibold">
-                  From → to
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.nominal_curve.map((level) => {
-                const change = changeForWindow(level.changes);
-                return change ? (
-                  <RateChangeRow key={level.series_id} name={`${maturityLabel(level.series_id)} nominal`} change={change} unit="%" />
-                ) : null;
-              })}
-              {result.real_curve.map((level) => {
-                const change = changeForWindow(level.changes);
-                return change ? (
-                  <RateChangeRow key={level.series_id} name={`${maturityLabel(level.series_id)} real`} change={change} unit="%" />
-                ) : null;
-              })}
-              {result.curve_spreads.map((spread) => {
-                const change = changeForWindow(spread.changes);
-                return change ? <RateChangeRow key={spread.spread_id} name={spread.spread_id} change={change} unit="%" /> : null;
-              })}
-              {result.inflation_compensation.map((compensation) => {
-                const change = changeForWindow(compensation.changes);
-                return change ? (
-                  <RateChangeRow
-                    key={compensation.maturity}
-                    name={`${compensation.maturity} compensation`}
-                    change={change}
-                    unit="%"
-                  />
-                ) : null;
-              })}
-            </tbody>
-          </table>
-        </div>
       </section>
 
       {/* 6. Where these rates show up elsewhere (#45B).
@@ -227,7 +183,7 @@ function RatesContent({ result }: { result: RatesMonitorResult }) {
           <li>
             <Link
               to="/housing"
-              className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
             >
               Explore Housing →
             </Link>
@@ -235,7 +191,7 @@ function RatesContent({ result }: { result: RatesMonitorResult }) {
           <li>
             <Link
               to="/inflation"
-              className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
             >
               Explore Inflation →
             </Link>
@@ -249,7 +205,7 @@ function RatesContent({ result }: { result: RatesMonitorResult }) {
           Evidence &amp; methodology
         </h2>
         <div className="mt-3 max-w-3xl">
-          <Disclosure summary="Where these numbers come from">
+          <Disclosure summary="Where these numbers come from" summaryClassName="min-h-11">
             <div className="space-y-3 text-sm text-fg-secondary">
               <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
                 <dt className="text-fg-muted">Methodology</dt>
@@ -306,26 +262,65 @@ export function RatesPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Rates"
-        description="Track U.S. Treasury yields, curve structure, real yields, and market-implied inflation compensation."
-      >
-        {/* A <div>, not a <p>: `ExplanationTrigger` renders a native
-            <details>/<summary> disclosure, and <p> may contain only
-            phrasing content. Nesting it produced four invalid-nesting
-            errors on this page (<details>, <summary>, <div> and <p>
-            inside <p>) and, in a server-rendered build, a hydration
-            mismatch. The element is `display:flex` either way and
-            Tailwind's preflight zeroes paragraph margins, so the
-            rendering is unchanged. Guarded by the no-invalid-nesting
-            test in Rates.test.tsx. */}
+      {/*
+       * THE HERO (#49B), replacing `PageHeader`.
+       *
+       * ================================================================
+       * THE COPY IS PRECISE ON PURPOSE, AND IT IS NOT NEW
+       * ================================================================
+       *
+       * A Treasury yield is the return an investor earns on a security
+       * trading in the market. It is NOT the government's exact cost of
+       * any new borrowing — that depends on what is issued, at what
+       * coupon, at which auction. The page used to say "Track U.S.
+       * Treasury yields, curve structure, real yields, and
+       * market-implied inflation compensation", which named four
+       * constructs and defined none of them.
+       *
+       * Both sentences below are VERBATIM from the #44 explainer
+       * registry (`explain.what-is-a-treasury-yield`), so the precision
+       * is reviewed rather than invented here.
+       *
+       * KNOWN INCONSISTENCY, NOT FIXED HERE: that same explainer's own
+       * `answer`, and the homepage's world discovery line, both use the
+       * looser "what it costs the government to borrow" framing. Those
+       * are reviewed copy owned by the registry and the homepage, and
+       * rewriting them from this page would be the wrong place to do
+       * it. Flagged in the #49B notes for a copy review.
+       */}
+      <header>
+        <p className="type-label text-fg-muted">Rates</p>
+        <h1 className="type-page-title mt-2 max-w-3xl text-balance">
+          What investors earn on U.S. government debt.
+        </h1>
+        <p className="mt-3 max-w-prose text-fg-secondary">
+          The yield is the annual return an investor earns by holding one. Investors buy and sell Treasuries
+          continuously, and the yield moves with what they are willing to accept.
+        </p>
+
+        {/*
+         * HUMAN-READABLE SOURCE AND DATE.
+         *
+         * "TREASURY · rates_v1.0 · latest_published_data" was three
+         * machine identifiers in the most prominent metadata slot on
+         * the page. All three are still published, verbatim, in the
+         * methodology disclosure at the foot — which is where an
+         * identifier belongs and where the audit's "retain" column put
+         * them.
+         */}
         {monitor.status === "success" && monitor.data.as_of_date !== null && (
-          <div className="flex items-center gap-1.5 type-meta text-fg-muted">
-            <span>Latest available: {formatObservationDate(monitor.data.as_of_date)}</span>
-            <ExplanationTrigger explanation={DATA_FRESHNESS} />
+          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-fg-muted">
+            <span className="inline-flex items-center gap-2 rounded-full border border-line px-3 py-1">
+              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-brand" />
+              Latest published: {formatObservationDate(monitor.data.as_of_date)}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              Published by the U.S. Department of the Treasury
+              <ExplanationTrigger explanation={DATA_FRESHNESS} />
+            </span>
           </div>
         )}
-      </PageHeader>
+      </header>
 
       {monitor.status === "loading" && (
         <div className="mt-8">

@@ -36,7 +36,27 @@ export function ExplanationTrigger({ explanation }: { explanation: Explanation }
     >
       <summary
         aria-label={`What does ${explanation.title} mean?`}
-        className="inline-flex h-4 w-4 cursor-pointer select-none list-none items-center justify-center rounded-full text-[0.65rem] font-semibold leading-none text-fg-muted ring-1 ring-inset ring-line-strong hover:text-fg-secondary hover:ring-fg-muted group-open:bg-surface-secondary group-open:text-fg-secondary [&::-webkit-details-marker]:hidden"
+        /*
+         * THE ICON IS 16px. THE TARGET IS 44px (#49B).
+         *
+         * #49A measured this control at 16 x 16 CSS px in nineteen
+         * places on `/rates` alone -- 36% of the 44px minimum, on the
+         * one affordance a reader who does not know the vocabulary
+         * most needs.
+         *
+         * The hit area is a transparent, centred `::before` rather
+         * than padding, because padding would take 44px of layout in
+         * forty-one places and push every heading it sits beside out
+         * of line. A pseudo-element occupies no space, so nothing
+         * moves and nothing else on any page is touched.
+         *
+         * 44px is NOT chosen blind: the closest two triggers anywhere
+         * in the product were measured before this was set, and the
+         * value is the largest that does not let one trigger's
+         * invisible area cover another's icon. See
+         * `ExplanationTrigger.test.tsx`.
+         */
+        className="relative inline-flex h-4 w-4 cursor-pointer select-none list-none items-center justify-center rounded-full text-[0.65rem] font-semibold leading-none text-fg-muted ring-1 ring-inset ring-line-strong before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-11 before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] hover:text-fg-secondary hover:ring-fg-muted group-open:bg-surface-secondary group-open:text-fg-secondary [&::-webkit-details-marker]:hidden"
       >
         i
       </summary>

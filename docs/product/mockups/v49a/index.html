@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en" data-surface="cinematic">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Rates World — MacroChipz #49A prototype</title>
+<!--
+  ================================================================
+  RATES WORLD PROTOTYPE — increment #49A
+  ================================================================
+
+  A STANDALONE REVIEW ARTEFACT. It modifies no production file and is
+  not wired to anything. Its purpose is to answer one question: does the
+  Treasury curve work better as a selectable instrument on the approved
+  charcoal/midnight/violet surface than as four cards, a picture and a
+  table?
+
+  ----------------------------------------------------------------
+  THE THREE RULES IT HOLDS ITSELF TO
+  ----------------------------------------------------------------
+  1. NO INVENTED FIGURE. Every number is `window.RATES`, captured from
+     the running API. The as-of date is on the page and the snapshot
+     banner is not dismissible.
+  2. NOTHING IS CALCULATED HERE. No spread, no basis point, no
+     compensation, no percentile. `rates_v1.0` computed all of it. A
+     prototype that did its own arithmetic would be testing a different
+     product.
+  3. NO NEW ECONOMIC CLAIM. Selecting a maturity reveals figures that
+     were already fetched. No shape label, no "inverted", no forecast,
+     no cross-domain conclusion. The line between two maturities is a
+     drawn line, not a claim that a value lives between them.
+
+  ----------------------------------------------------------------
+  VISUALS ARE SVG. INTERACTION IS HTML.
+  ----------------------------------------------------------------
+  The curve, its gridlines and its plotted line are SVG. The four
+  selectable maturities are HTML <button>s positioned over it at
+  percentage coordinates, so their hit area is 44x44 CSS px whatever
+  the viewBox does. #46D shipped 48-unit SVG targets that rendered at
+  41px; that is the defect this split exists to prevent.
+-->
+<style>
+  :root {
+    /* shipped brand tokens, resolved from the dark theme */
+    --mc-brand: #9facf1;
+    --mc-focus: #a2b0ff;
+    --mc-fg: #e9ebef;
+    --mc-fg-secondary: #bdc1c8;
+    --mc-fg-muted: #979ca3;
+
+    /* the approved ground: charcoal and midnight, violet as light */
+    --lx-char: #121317;
+    --lx-char-2: #191b21;
+    --lx-mid: #0e1422;
+    --lx-line: #2a2d35;
+    --lx-line-2: #363a45;
+    --lx-bloom-a: rgba(124, 96, 240, .34);
+    --lx-bloom-b: rgba(162, 176, 255, .24);
+    --lx-card: rgba(255,255,255,.045);
+    --lx-card-hi: rgba(255,255,255,.14);
+    --lx-card-lo: rgba(255,255,255,.075);
+    --lx-selected: rgba(124, 96, 240, .30);
+    --lx-selected-hover: rgba(124, 96, 240, .42);
+
+    /* A DIM FLOOR, NOT A PREFERENCE. An unselected maturity dims to
+       this and no further, so a dimmed thing stays legible rather than
+       becoming inaccessible. (#46E) */
+    --lx-dim: rgba(159, 172, 241, .34);
+
+    /* editorial warm accent -- NEVER on a data element, because
+       --mc-state-warm carries economic classification under #27B */
+    --ed-amber: #c9954a;
+
+    --sans: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--lx-char); -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; color: var(--mc-fg); font-family: var(--sans); font-size: 16px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(120% 640px at 82% -60px, var(--lx-bloom-a) 0%, transparent 62%),
+      radial-gradient(90% 520px at 4% 560px, var(--lx-bloom-b) 0%, transparent 66%),
+      linear-gradient(180deg, var(--lx-mid) 0px, var(--lx-char) 760px),
+      var(--lx-char);
+    background-repeat: no-repeat;
+  }
+  .wrap { max-width: 1216px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+  @media (min-width: 640px) { .wrap { padding-left: 24px; padding-right: 24px; } }
+  @media (min-width: 1024px) { .wrap { padding-left: 32px; padding-right: 32px; } }
+
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--mc-focus); outline-offset: 2px;
+  }
+
+  /* ---------- chrome ---------- */
+  .bar {
+    display: flex; align-items: center; gap: 12px; min-height: 54px;
+    background: #0d0e11; border-bottom: 1px solid var(--lx-line);
+    position: relative; z-index: 3; flex-wrap: wrap;
+  }
+  .bar .in { display: flex; align-items: center; gap: 16px; width: 100%; }
+  .wm { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+  .wm span { color: var(--mc-brand); }
+  /* Prototype chrome only. The real shell collapses this behind a
+     Menu button below `md`; here it is simply hidden, because a
+     wrapped two-line nav is a distraction from what is under review. */
+  .bar nav { display: none; gap: 2px; margin-left: auto; }
+  @media (min-width: 720px) { .bar nav { display: flex; } }
+  .bar nav a {
+    display: inline-flex; align-items: center; min-height: 44px; padding: 0 9px; border-radius: 8px;
+    font-size: 13px; color: var(--mc-fg-secondary); text-decoration: none;
+  }
+  .bar nav a[aria-current] { color: var(--mc-fg); background: rgba(255,255,255,.07); font-weight: 600; }
+
+  /* THE SNAPSHOT BANNER. Not dismissible, and first. */
+  .snap {
+    background: rgba(201,149,74,.10); border-bottom: 1px solid rgba(201,149,74,.30);
+    font-size: 12.5px; line-height: 1.45; color: var(--mc-fg-secondary);
+  }
+  .snap .in { padding: 9px 0; }
+  .snap b { color: var(--ed-amber); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; font-size: 11px; }
+
+  /* ---------- hero ---------- */
+  .hero .in { padding-top: 24px; padding-bottom: 8px; }
+  .kicker {
+    margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--ed-amber);
+  }
+  h1 { margin: 10px 0 0; font-size: 28px; line-height: 1.1; font-weight: 700; letter-spacing: -.03em; text-wrap: balance; }
+  @media (min-width: 640px) { h1 { font-size: 36px; } }
+  @media (min-width: 1024px) { h1 { font-size: 42px; } }
+  .sub { margin: 10px 0 0; max-width: 60ch; font-size: 15px; color: var(--mc-fg-secondary); }
+  @media (min-width: 1024px) { .sub { font-size: 16.5px; } }
+  .asof { margin: 14px 0 0; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 12.5px; color: var(--mc-fg-muted); }
+  .asof .pill {
+    display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 999px;
+    border: 1px solid var(--lx-line-2); background: rgba(255,255,255,.03);
+  }
+  .asof .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--mc-brand); }
+
+  /* ---------- cards ---------- */
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.028) 100%), #1b1d26;
+    border: 1px solid var(--lx-card-lo); border-radius: 14px;
+    box-shadow: inset 0 1px 0 0 var(--lx-card-hi), 0 18px 40px -22px rgba(0,0,0,.95);
+  }
+  section { padding-top: 34px; }
+  .sec {
+    margin: 0 0 14px; font-size: 11px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--ed-amber); display: flex; align-items: center; gap: 10px;
+  }
+  .sec::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(201,149,74,.45), transparent); }
+
+  /* ---------- the curve instrument ---------- */
+  .curveWrap { padding: 16px 14px 14px; }
+  @media (min-width: 640px) { .curveWrap { padding: 20px 18px 16px; } }
+  /*
+   * HEIGHT IN CSS, NOT IN JS.
+   *
+   * It was set from `matchMedia` inside `renderCurve()` and came out
+   * 240px at a 1440px viewport -- the first render read the query
+   * before the frame had its final width, and nothing re-ran. This is
+   * the same lesson ADR-041 recorded when it replaced measurement with
+   * a CSS-swapped viewBox: a breakpoint the browser owns cannot go
+   * stale.
+   */
+  .board { position: relative; width: 100%; height: 240px; }
+  @media (min-width: 640px) { .board { height: 300px; } }
+  .board svg { display: block; width: 100%; height: 100%; }
+
+  /* The HTML control layer. One button per maturity, absolutely
+     positioned at the point's own percentage coordinates. 44px is a
+     CSS pixel guarantee that no viewBox can scale away. */
+  .layer { position: absolute; inset: 0; }
+  .pt {
+    position: absolute; transform: translate(-50%, -50%);
+    min-width: 44px; min-height: 44px; padding: 0; border: 0; background: none;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .pt .ring {
+    width: 34px; height: 34px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+    border: 1px solid transparent; transition: background-color .15s, border-color .15s;
+  }
+  .pt .core { width: 9px; height: 9px; border-radius: 999px; background: var(--lx-dim); transition: background-color .15s, box-shadow .15s; }
+  .pt[aria-pressed="true"] .ring { background: rgba(124,96,240,.22); border-color: rgba(162,176,255,.55); }
+  .pt[aria-pressed="true"] .core { background: #eef0ff; box-shadow: 0 0 0 4px rgba(162,176,255,.22); }
+  .pt:hover .core { background: #cfd6ff; }
+  .pt[disabled] { cursor: not-allowed; }
+  .pt[disabled] .core { background: transparent; border: 1.5px dashed var(--mc-fg-muted); width: 11px; height: 11px; }
+
+  /* Axis labels are HTML too, for the same reason the controls are. */
+  .xlab { position: absolute; transform: translateX(-50%); font-size: 12px; font-weight: 600; color: var(--mc-fg-muted); white-space: nowrap; }
+  .xlab.on { color: var(--mc-fg); }
+  .vlab { position: absolute; transform: translate(-50%, -100%); font-size: 12.5px; font-weight: 700; color: var(--mc-fg-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .vlab.on { color: #eef0ff; }
+  .ylab { position: absolute; transform: translateY(-50%); font-size: 11px; color: var(--mc-fg-muted); font-variant-numeric: tabular-nums; }
+
+  /* ---------- selected panel ---------- */
+  .panel { padding: 16px; }
+  @media (min-width: 640px) { .panel { padding: 20px; } }
+  .panel .m { margin: 0; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--mc-fg-muted); font-weight: 700; }
+  .panel .v { margin: 6px 0 0; font-size: 44px; line-height: 1; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+  @media (min-width: 640px) { .panel .v { font-size: 52px; } }
+  .panel .t { margin: 8px 0 0; font-size: 13.5px; color: var(--mc-fg-secondary); }
+  .panel .plain { margin: 12px 0 0; font-size: 14.5px; color: var(--mc-fg-secondary); max-width: 54ch; }
+  .win { margin: 16px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+  @media (min-width: 480px) { .win { grid-template-columns: repeat(4, 1fr); } }
+  .win dt { font-size: 11.5px; color: var(--mc-fg-muted); }
+  .win dd { margin: 3px 0 0; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 5px; }
+  .win .g { font-size: 10px; color: var(--mc-fg-muted); }
+  .na { font-weight: 400; color: var(--mc-fg-muted); font-size: 13.5px; }
+
+  /* ---------- disclosures, at a real target size ---------- */
+  details { border-top: 1px solid var(--lx-line); margin-top: 14px; }
+  summary {
+    display: flex; align-items: center; gap: 9px; min-height: 44px; cursor: pointer;
+    font-size: 13.5px; font-weight: 600; color: var(--mc-fg-secondary); list-style: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary .chev { transition: transform .15s; color: var(--mc-fg-muted); }
+  details[open] summary .chev { transform: rotate(90deg); }
+  .dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 16px; font-size: 13px; padding-bottom: 14px; }
+  .dl dt { color: var(--mc-fg-muted); }
+  .dl dd { margin: 0; color: var(--mc-fg-secondary); overflow-wrap: anywhere; }
+
+  /* ---------- derived ---------- */
+  .grid2 { display: grid; gap: 12px; }
+  @media (min-width: 640px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+  .d { padding: 16px; }
+  .d h3 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+  .d .calc { margin: 4px 0 0; font-size: 12.5px; color: var(--mc-fg-muted); }
+  .d .badge {
+    display: inline-block; margin-top: 10px; padding: 3px 9px; border-radius: 6px; font-size: 10.5px;
+    font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--mc-fg-secondary); background: rgba(255,255,255,.06); border: 1px solid var(--lx-line-2);
+  }
+  .d .val { margin: 10px 0 0; font-size: 30px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .d .work { margin: 4px 0 0; font-size: 12.5px; color: var(--mc-fg-muted); font-variant-numeric: tabular-nums; }
+
+  /* ---------- story band ---------- */
+  .story {
+    display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 14px; text-decoration: none;
+    background: linear-gradient(120deg, rgba(124,96,240,.22) 0%, rgba(124,96,240,.09) 62%, transparent 100%), var(--lx-char-2);
+    border: 1px solid rgba(162,176,255,.28);
+  }
+  .story:hover { border-color: rgba(162,176,255,.5); }
+  .story .frame {
+    position: relative; flex: none; width: 56px; height: 56px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(120% 120% at 30% 15%, rgba(124,96,240,.4) 0%, transparent 70%), rgba(10,8,20,.55);
+    border: 1px solid rgba(162,176,255,.3); box-shadow: inset 0 1px 0 0 rgba(255,255,255,.07);
+  }
+  .story .go {
+    position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center; font-size: 12px;
+    color: #e4e8ff; background: rgba(124,96,240,.34); border: 1px solid rgba(162,176,255,.42);
+  }
+  .story .k { font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--mc-brand); }
+  .story .q { margin-top: 4px; font-size: 15px; font-weight: 700; line-height: 1.25; }
+  .story .s { margin-top: 3px; font-size: 12.5px; color: var(--mc-fg-muted); }
+
+  /* ---------- lists ---------- */
+  .links { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .links a { display: flex; align-items: center; min-height: 44px; font-size: 14px; color: var(--mc-fg-secondary); text-decoration: none; }
+  .links a:hover { color: var(--mc-fg); text-decoration: underline; text-underline-offset: 4px; }
+
+  footer { margin-top: 44px; border-top: 1px solid var(--lx-line); background: #0b0c0f; }
+  footer .in { padding-top: 20px; padding-bottom: 28px; display: grid; gap: 10px; }
+  footer .c { font-size: 11.5px; line-height: 1.6; color: var(--mc-fg-muted); }
+
+  /* The prototype's own controls, visibly not part of the product. */
+  .demo { margin-top: 26px; border: 1px dashed var(--lx-line-2); border-radius: 12px; padding: 12px 14px; }
+  .demo p { margin: 0 0 9px; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--mc-fg-muted); font-weight: 700; }
+  .demo button {
+    min-height: 44px; padding: 0 14px; margin: 0 8px 8px 0; border-radius: 9px; cursor: pointer;
+    font-size: 13px; font-weight: 600; color: var(--mc-fg-secondary);
+    background: rgba(255,255,255,.04); border: 1px solid var(--lx-line-2);
+  }
+  .demo button[aria-pressed="true"] { color: #eef0ff; background: var(--lx-selected); border-color: rgba(162,176,255,.42); }
+
+  .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar"><div class="wrap in">
+  <span class="wm">Macro<span>Chipz</span></span>
+  <nav><a href="#">Home</a><a href="#">Inflation</a><a href="#">Jobs</a><a href="#" aria-current="page">Rates</a><a href="#">Housing</a><a href="#">Calendar</a></nav>
+</div></div>
+
+<div class="snap"><div class="wrap in">
+  <b>Prototype</b> &middot; <span id="snapText"></span>
+</div></div>
+
+<!-- ============ 1 · HERO ============ -->
+<header class="hero"><div class="wrap in">
+  <p class="kicker">Rates</p>
+  <h1 id="heroH"></h1>
+  <p class="sub" id="heroSub"></p>
+  <div class="asof">
+    <span class="pill"><span class="dot"></span><span id="asOf"></span></span>
+    <span id="provider"></span>
+  </div>
+</div></header>
+
+<main>
+<!-- ============ 2 · THE CURVE ============ -->
+<section class="wrap" aria-labelledby="curve-h">
+  <h2 class="sec" id="curve-h">The Treasury curve</h2>
+  <div class="card curveWrap">
+    <div class="board" id="board">
+      <svg id="curveSvg" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-labelledby="curveDesc"></svg>
+      <div class="layer" id="layer"></div>
+    </div>
+    <p id="curveDesc" class="sr"></p>
+  </div>
+</section>
+
+<!-- ============ 3 · SELECTED MATURITY ============ -->
+<section class="wrap" aria-labelledby="sel-h">
+  <h2 class="sec" id="sel-h">The maturity you selected</h2>
+  <div class="card panel" id="panel" aria-live="polite"></div>
+</section>
+
+<!-- ============ 4 · DERIVED ============ -->
+<section class="wrap" aria-labelledby="der-h">
+  <h2 class="sec" id="der-h">Calculated from the curve</h2>
+  <div class="grid2" id="derived"></div>
+</section>
+
+<!-- ============ 5 · THE STORY ============ -->
+<section class="wrap" aria-labelledby="story-h">
+  <h2 class="sec" id="story-h">Where this number ends up</h2>
+  <a class="story" href="#" id="storyLink">
+    <span class="frame">
+      <svg id="glyph" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style="width:38px;height:42px"></svg>
+      <span class="go" aria-hidden="true">&rarr;</span>
+    </span>
+    <span style="min-width:0;flex:1">
+      <span class="k">Interactive story</span>
+      <span class="q">Wait, the Fed doesn&rsquo;t set mortgage rates?</span>
+      <span class="s">Six actors, two of them set by anyone. Tap through the network.</span>
+    </span>
+  </a>
+</section>
+
+<!-- ============ 6 · UNDERSTAND / ELSEWHERE ============ -->
+<section class="wrap" aria-labelledby="und-h">
+  <h2 class="sec" id="und-h">Understand this</h2>
+  <ul class="links" id="understand"></ul>
+</section>
+
+<section class="wrap" aria-labelledby="else-h">
+  <h2 class="sec" id="else-h">Where these numbers come up</h2>
+  <p class="sub" style="font-size:14px">
+    Long-term borrowing costs are part of the backdrop to home building, and the difference between nominal and real
+    yields is MacroChipz&rsquo;s market-implied inflation compensation above. MacroChipz publishes no relationship
+    between them &mdash; these are links, not conclusions.
+  </p>
+  <ul class="links" id="elsewhere"></ul>
+</section>
+
+<!-- ============ 7 · METHODOLOGY ============ -->
+<section class="wrap" aria-labelledby="meth-h">
+  <h2 class="sec" id="meth-h">Evidence &amp; methodology</h2>
+  <div class="card" style="padding:0 16px">
+    <details>
+      <summary><span class="chev" aria-hidden="true">&rsaquo;</span>Where these numbers come from</summary>
+      <dl class="dl" id="methodology"></dl>
+    </details>
+  </div>
+
+  <div class="demo">
+    <p>Prototype controls &mdash; not part of the product</p>
+    <button type="button" id="demoNormal" aria-pressed="true">Data available</button>
+    <button type="button" id="demoMissing" aria-pressed="false">30Y not yet ingested</button>
+    <span class="sr" id="demoNote"></span>
+  </div>
+</section>
+</main>
+
+<footer><div class="wrap in">
+  <p class="c" id="attrib"></p>
+  <p class="c">
+    Source data: U.S. Department of the Treasury; FRED&reg;, Federal Reserve Bank of St. Louis; U.S. Census Bureau and
+    U.S. Department of Housing and Urban Development. This product uses the Census Bureau Data API but is not endorsed
+    or certified by the Census Bureau.
+  </p>
+</div></footer>
+
+<script src="data.js"></script>
+<script>
+(function () {
+  "use strict";
+  var D = window.RATES;
+  var $ = function (id) { return document.getElementById(id); };
+  var NS = "http://www.w3.org/2000/svg";
+  function el(t, a, p) { var n = document.createElementNS(NS, t); for (var k in a) n.setAttribute(k, a[k]); if (p) p.appendChild(n); return n; }
+
+  /* ================================================================
+     COPY. Every consumer sentence here is either reviewed copy reused
+     verbatim or a composition of backend fields. Nothing new is
+     written about the economy.
+     ================================================================ */
+  var HERO_H = "What it costs the government to borrow.";
+  /* Verbatim from the homepage's reviewed world discovery line (#48). */
+  var HERO_SUB = "Treasury yields are what it costs the government to borrow — and the reference other borrowing is priced against. Nobody sets them: investors do, by buying and selling government debt.";
+
+  /* Plain-English identity for each maturity. Composed from the
+     backend's own `title` plus the one fact the title omits -- how long
+     the loan is. No claim about level, direction or meaning. */
+  var PLAIN = {
+    UST_NOMINAL_2Y: "What it costs the government to borrow for two years.",
+    UST_NOMINAL_5Y: "What it costs the government to borrow for five years.",
+    UST_NOMINAL_10Y: "What it costs the government to borrow for ten years. This is the one most long-term borrowing is priced against.",
+    UST_NOMINAL_30Y: "What it costs the government to borrow for thirty years."
+  };
+
+  var UNDERSTAND = [
+    "What is a Treasury yield, really?",
+    "Why does everyone watch the 10-year Treasury?",
+    "What is the yield curve telling me?",
+    "What is a ‘real’ yield?"
+  ];
+
+  function fmtDate(iso) {
+    if (!iso) return "no date";
+    var p = iso.split("-"), m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return m[Number(p[1]) - 1] + " " + Number(p[2]) + ", " + p[0];
+  }
+  function maturity(seriesId) { return seriesId.replace(/^UST_(NOMINAL|REAL)_/, ""); }
+  function bp(v) { if (v === null || v === undefined) return null; return (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v) + " bp"; }
+  function glyphFor(v) { return v === null || v === undefined ? "" : v > 0 ? "▲" : v < 0 ? "▼" : "■"; }
+  function word(v) { return v === null || v === undefined ? "unavailable" : v > 0 ? "up" : v < 0 ? "down" : "unchanged"; }
+
+  /* ================================================================
+     STATE. `missing30` is a PROTOTYPE control, not a product feature:
+     it re-renders the real unavailable copy against the real data so a
+     reviewer can see the empty state without a figure being invented
+     for it.
+     ================================================================ */
+  var state = { selected: "UST_NOMINAL_10Y", missing30: false };
+
+  function nominals() {
+    return D.nominal.map(function (n) {
+      if (state.missing30 && n.series_id === "UST_NOMINAL_30Y") {
+        return { series_id: n.series_id, title: n.title, value: null, available: false, date: null, c1: null, c5: null, c21: null, c63: null, provenance: null };
+      }
+      return n;
+    });
+  }
+
+  /* ---------- header ---------- */
+  $("snapText").textContent = "Snapshot of " + D._endpoint + ", captured " + D._captured_at.slice(0, 10) +
+    ". Real values, real as-of date, not live. Nothing on this page is estimated.";
+  $("heroH").textContent = HERO_H;
+  $("heroSub").textContent = HERO_SUB;
+  $("asOf").textContent = "Latest published: " + fmtDate(D.as_of_date);
+  $("provider").textContent = D.provider + " · " + D.methodology_id + " · " + D.data_basis;
+  $("attrib").textContent = D.attribution;
+
+  /* ================================================================
+     THE CURVE.
+
+     The SVG carries the line, the gridlines and nothing a person needs
+     to read at a size. Every label and every control is HTML, laid out
+     against the same percentage coordinates the plot uses -- so a
+     44px target stays 44px and an 11px label stays 11px, whatever the
+     board is scaled to.
+     ================================================================ */
+  var PAD = { top: 16, right: 10, bottom: 20, left: 13 };
+
+  function layout() {
+    var pts = nominals().filter(function (n) { return n.available && n.value !== null; });
+    if (pts.length === 0) return null;
+    var vals = pts.map(function (p) { return p.value; });
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    var pad = lo === hi ? 0.5 : (hi - lo) * 0.35;
+    var min = lo - pad, max = hi + pad;
+    var all = nominals();
+    return {
+      min: min, max: max, plotted: pts, all: all,
+      x: function (i) { return all.length === 1 ? 50 : PAD.left + (i / (all.length - 1)) * (100 - PAD.left - PAD.right); },
+      y: function (v) { return PAD.top + (100 - PAD.top - PAD.bottom) * (1 - (v - min) / (max - min)); }
+    };
+  }
+
+  function renderCurve() {
+    var L = layout();
+    var svg = $("curveSvg"), layer = $("layer");
+    svg.innerHTML = ""; layer.innerHTML = "";
+
+    if (!L) {
+      layer.innerHTML = '<p style="padding:20px;color:var(--mc-fg-muted);font-size:14px">' +
+        "The curve cannot be drawn until at least one maturity has been ingested.</p>";
+      return;
+    }
+
+    /* gridlines: three, labelled, so the scale is readable without a
+       second axis component */
+    [L.min, (L.min + L.max) / 2, L.max].forEach(function (v) {
+      el("line", { x1: PAD.left, x2: 100 - PAD.right, y1: L.y(v), y2: L.y(v),
+                   stroke: "rgba(255,255,255,.09)", "stroke-width": .4, "vector-effect": "non-scaling-stroke" }, svg);
+      var yl = document.createElement("span");
+      yl.className = "ylab"; yl.textContent = v.toFixed(2) + "%";
+      yl.style.left = "0"; yl.style.top = L.y(v) + "%";
+      layer.appendChild(yl);
+    });
+
+    /* The line, drawn only through published points. A gap in the data
+       stays a visible gap -- never interpolated across. */
+    var d = L.plotted.map(function (p) {
+      var i = L.all.findIndex(function (a) { return a.series_id === p.series_id; });
+      return (L.plotted.indexOf(p) === 0 ? "M" : "L") + " " + L.x(i) + " " + L.y(p.value);
+    }).join(" ");
+    el("path", { d: d, fill: "none", stroke: "url(#g)", "stroke-width": 2.2, "stroke-linejoin": "round",
+                 "stroke-linecap": "round", "vector-effect": "non-scaling-stroke" }, svg);
+    var g = el("linearGradient", { id: "g", gradientUnits: "userSpaceOnUse", x1: 0, y1: 0, x2: 100, y2: 0 }, svg);
+    el("stop", { offset: "0%", "stop-color": "#c2caff" }, g);
+    el("stop", { offset: "100%", "stop-color": "#ba7af0" }, g);
+
+    /* Controls and labels, in HTML. */
+    L.all.forEach(function (n, i) {
+      var on = n.series_id === state.selected;
+      var cx = L.x(i), cy = n.available && n.value !== null ? L.y(n.value) : L.y((L.min + L.max) / 2);
+
+      if (n.available && n.value !== null) {
+        var vl = document.createElement("span");
+        vl.className = "vlab" + (on ? " on" : "");
+        vl.textContent = n.value.toFixed(2);
+        vl.style.left = cx + "%"; vl.style.top = "calc(" + cy + "% - 22px)";
+        layer.appendChild(vl);
+      }
+
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "pt";
+      b.style.left = cx + "%"; b.style.top = cy + "%";
+      b.setAttribute("aria-pressed", String(on));
+      if (!n.available) { b.disabled = true; }
+      b.innerHTML = '<span class="ring"><span class="core"></span></span>';
+      b.appendChild(Object.assign(document.createElement("span"), {
+        className: "sr",
+        textContent: maturity(n.series_id) + (n.available && n.value !== null
+          ? ", " + n.value.toFixed(2) + " percent"
+          : ", not yet ingested")
+      }));
+      b.addEventListener("click", function () {
+        if (!n.available) return;
+        state.selected = n.series_id;
+        renderCurve(); renderPanel();
+        $("layer").querySelector('[aria-pressed="true"]').focus();
+      });
+      layer.appendChild(b);
+
+      var xl = document.createElement("span");
+      xl.className = "xlab" + (on ? " on" : "");
+      xl.textContent = maturity(n.series_id);
+      xl.style.left = cx + "%"; xl.style.bottom = "0";
+      layer.appendChild(xl);
+    });
+
+    $("curveDesc").textContent = "Nominal Treasury par yields as of " + fmtDate(D.as_of_date) + ": " +
+      L.all.map(function (n) {
+        return maturity(n.series_id) + " " + (n.available && n.value !== null ? n.value.toFixed(2) + "%" : "not yet ingested");
+      }).join(", ") + ". Each maturity is a button; selecting one shows its detail below.";
+  }
+
+  /* ---------- the selected maturity ---------- */
+  function renderPanel() {
+    var n = nominals().find(function (x) { return x.series_id === state.selected; });
+    var p = $("panel");
+    if (!n) { p.innerHTML = ""; return; }
+
+    if (!n.available) {
+      p.innerHTML = '<p class="m">' + maturity(n.series_id) + "</p>" +
+        '<p class="v na" style="font-size:22px">Not available</p>' +
+        '<p class="t">' + n.title + " has not been ingested yet, so no level, change, or context can be shown for it.</p>";
+      return;
+    }
+
+    var windows = [["1 session", n.c1], ["5 sessions", n.c5], ["21 sessions", n.c21], ["63 sessions", n.c63]];
+    var html =
+      '<p class="m">' + maturity(n.series_id) + "</p>" +
+      '<p class="v">' + n.value.toFixed(2) + "%</p>" +
+      '<p class="t">' + n.title + " · observed " + fmtDate(n.date) + "</p>" +
+      '<p class="plain">' + (PLAIN[n.series_id] || "") + "</p>" +
+      '<dl class="win">' + windows.map(function (w) {
+        var c = w[1];
+        if (!c || !c.available || c.basis_points === null) {
+          return "<div><dt>" + w[0] + '</dt><dd class="na">Not enough history</dd></div>';
+        }
+        return "<div><dt>" + w[0] + "</dt><dd>" +
+          '<span class="g" aria-hidden="true">' + glyphFor(c.basis_points) + "</span>" +
+          "<span>" + bp(c.basis_points) + "</span>" +
+          '<span class="sr">' + word(c.basis_points) + "</span></dd></div>";
+      }).join("") + "</dl>";
+
+    if (n.provenance) {
+      html += "<details><summary><span class=\"chev\" aria-hidden=\"true\">›</span>Source &amp; provenance</summary>" +
+        '<dl class="dl">' +
+        "<dt>Value type</dt><dd>Published by the source</dd>" +
+        "<dt>Provider</dt><dd>" + n.provenance.provider + "</dd>" +
+        "<dt>Dataset</dt><dd>" + n.provenance.dataset + "</dd>" +
+        "<dt>Series</dt><dd>" + n.provenance.series_id + "</dd>" +
+        "<dt>Observation date</dt><dd>" + fmtDate(n.provenance.observation_date) + "</dd>" +
+        "<dt>Revisions</dt><dd>" + (n.provenance.revision_count === 0 ? "None since first ingested" : n.provenance.revision_count) + "</dd>" +
+        "<dt>Source reference</dt><dd>" + n.provenance.source_url + "</dd>" +
+        "</dl></details>";
+    }
+    p.innerHTML = html;
+  }
+
+  /* ---------- derived values ---------- */
+  function renderDerived() {
+    var host = $("derived");
+    host.innerHTML = "";
+    var items = [];
+
+    D.spreads.forEach(function (s) {
+      items.push({
+        title: s.spread_id === "2s10s" ? "10-year minus 2-year" : "30-year minus 2-year",
+        id: s.spread_id, available: s.available,
+        value: s.basis_points === null ? null : Math.round(s.basis_points) + " bp",
+        work: null, prov: s.provenance
+      });
+    });
+    D.compensation.forEach(function (c) {
+      items.push({
+        title: c.maturity + " inflation compensation",
+        id: "nominal minus real, " + c.maturity,
+        available: c.available,
+        value: c.percent === null ? null : c.percent.toFixed(2) + "%",
+        work: null, prov: c.provenance
+      });
+    });
+
+    items.forEach(function (it) {
+      var d = document.createElement("div");
+      d.className = "card d";
+      var inner = "<h3>" + it.title + "</h3>" +
+        '<p class="calc">' + it.id + "</p>" +
+        '<span class="badge">Calculated by MacroChipz</span>' +
+        (it.available && it.value !== null
+          ? '<p class="val">' + it.value + "</p>"
+          : '<p class="val na" style="font-size:18px">Not available</p>');
+      if (it.prov) {
+        inner += "<details><summary><span class=\"chev\" aria-hidden=\"true\">›</span>How this is calculated</summary>" +
+          '<dl class="dl">' +
+          "<dt>Value type</dt><dd>Calculated by MacroChipz, not published by the source</dd>" +
+          "<dt>Methodology</dt><dd>" + it.prov.methodology_id + "</dd>" +
+          "<dt>Calculation</dt><dd>" + it.prov.calculation + "</dd>" +
+          "<dt>Input series</dt><dd>" + it.prov.input_series_ids.join(", ") + "</dd>" +
+          "<dt>Input observation date</dt><dd>" + fmtDate(it.prov.input_observation_date) + "</dd>" +
+          "</dl></details>";
+      }
+      d.innerHTML = inner;
+      host.appendChild(d);
+    });
+  }
+
+  /* ---------- story glyph: the reviewed network, at thumbnail size ---------- */
+  var NODES = [
+    { id: "fed-policy", x: 15, y: 8 }, { id: "fed-funds", x: 15, y: 24.8 },
+    { id: "treasury", x: 85, y: 41.6 }, { id: "mbs", x: 85, y: 58.4 },
+    { id: "lenders", x: 22, y: 75.2 }, { id: "mortgage-rate", x: 78, y: 92 }
+  ];
+  var EDGES = [
+    ["fed-policy", "fed-funds", "sets"], ["fed-policy", "treasury", "inf"], ["treasury", "mbs", "inf"],
+    ["treasury", "lenders", "inf"], ["mbs", "lenders", "inf"], ["lenders", "mortgage-rate", "sets"]
+  ];
+  (function glyph() {
+    var svg = $("glyph"), at = {};
+    NODES.forEach(function (n) { at[n.id] = n; });
+    EDGES.forEach(function (e) {
+      var a = at[e[0]], b = at[e[1]];
+      el("path", {
+        d: "M " + a.x + " " + a.y + " L " + b.x + " " + b.y,
+        stroke: e[2] === "sets" ? "#9facf1" : "rgba(159,172,241,.42)",
+        "stroke-width": e[2] === "sets" ? 6 : 3,
+        "stroke-dasharray": e[2] === "sets" ? "" : "6 10",
+        "stroke-linecap": "round", fill: "none"
+      }, svg);
+    });
+    NODES.forEach(function (n) {
+      el("circle", { cx: n.x, cy: n.y, r: 11, fill: "rgba(162,176,255,.20)" }, svg);
+      el("circle", { cx: n.x, cy: n.y, r: 6.5, fill: "#e9ecff" }, svg);
+    });
+  })();
+
+  /* ---------- links and methodology ---------- */
+  UNDERSTAND.forEach(function (q) {
+    var li = document.createElement("li");
+    li.innerHTML = '<a href="#">' + q + " →</a>";
+    $("understand").appendChild(li);
+  });
+  [["Explore Housing", "#"], ["Explore Inflation", "#"]].forEach(function (p) {
+    var li = document.createElement("li");
+    li.innerHTML = '<a href="' + p[1] + '">' + p[0] + " →</a>";
+    $("elsewhere").appendChild(li);
+  });
+
+  var meth = [
+    ["Methodology", D.methodology_id], ["Data basis", D.data_basis], ["Provider", D.provider],
+    ["Latest observation", fmtDate(D.as_of_date)],
+    ["Sources", "Nominal par yields and real (TIPS) par yields are published by the U.S. Department of the Treasury, derived from indicative quotations collected at approximately 3:30 PM ET each business day."],
+    ["Session windows", "Changes count published business sessions, never calendar days. 21 sessions is approximately, not exactly, one month, which is why windows are never labelled in months."],
+    ["Alignment", "A derived value is calculated only where both inputs have an observation on the same date. A missing counterpart is never interpolated or carried forward."],
+    ["Limitations", "Daily, end-of-session facts, not intraday prices. Values reflect the latest published data including later corrections, so this is not a point-in-time record. " + D.methodology_id + " defines no state label, no forecast, and no cross-domain conclusion."]
+  ];
+  meth.forEach(function (row) {
+    var dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = row[0]; dd.textContent = row[1];
+    $("methodology").appendChild(dt); $("methodology").appendChild(dd);
+  });
+
+  /* ---------- prototype controls ---------- */
+  function setDemo(missing) {
+    state.missing30 = missing;
+    if (missing && state.selected === "UST_NOMINAL_30Y") state.selected = "UST_NOMINAL_10Y";
+    $("demoNormal").setAttribute("aria-pressed", String(!missing));
+    $("demoMissing").setAttribute("aria-pressed", String(missing));
+    $("demoNote").textContent = missing
+      ? "Showing the unavailable state for the 30-year. No figure is invented; the series simply reports as not ingested."
+      : "Showing every maturity as published.";
+    renderCurve(); renderPanel();
+  }
+  $("demoNormal").addEventListener("click", function () { setDemo(false); });
+  $("demoMissing").addEventListener("click", function () { setDemo(true); });
+
+  renderCurve(); renderPanel(); renderDerived();
+  window.addEventListener("resize", function () { renderCurve(); });
+})();
+</script>
+</body>
+</html>

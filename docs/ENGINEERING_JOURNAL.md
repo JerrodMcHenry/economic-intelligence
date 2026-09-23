@@ -14551,3 +14551,162 @@ Both fixes came from asking what the component is *for* rather than what looks
 balanced. The frame, because the teaser advertises an interactive diagram. The
 corner, because covering a node of that diagram to decorate the advert defeats
 the advert.
+
+---
+
+## #49A — auditing Rates: nineteen 16-pixel targets
+
+**2026-09-23.** Audit and prototype. **No production frontend file was
+modified**, no dependency added, nothing committed.
+
+### The number that reframed the audit
+
+`/rates` has **38 interactive controls under 44×44 CSS px**, identical at every
+width. Nineteen of them are the `ExplanationTrigger` "i", at **16 × 16px**.
+
+That is the control which opens every definition on the page — "what is a
+nominal yield", "what is a session window", "what is a percentile rank". It is
+the one affordance a non-expert reader most needs, and it is the hardest thing
+on the page to hit. 16px is 36% of the minimum.
+
+Nothing about it looks wrong. It looks like a tidy little icon. It took
+measuring every interactive element on the page to see it, and it appears
+nineteen times.
+
+### The page is 6,777px on a phone, and the chart is 201px of it
+
+Section heights at 390px told the story better than any screenshot: the curve
+section is **1,598px**, and the actual chart inside it is **201px**. The other
+1,397px are a four-row table repeating the chart's own values, and two spread
+cards.
+
+`4.76` appears **six times** in the rendered text of one page — the yield card,
+the chart's plotted label, the chart's table, the "What changed" row's from→to,
+and the spread card's working. Every instance is individually defensible. Six
+of them is why the page is eight screens.
+
+### The story about this world is not linked from this world
+
+`grep` for `/story/fed-and-mortgage-rates` across `pages/Rates.tsx` and
+`components/rates/`: zero matches. The interactive story explains the
+relationship between Treasury yields and the rate a reader is actually quoted.
+A reader who taps "Open Rates" on the homepage cannot reach it from where they
+land.
+
+### What the audit did NOT find
+
+The economics are fine. `rates_v1.0` computes every figure and the frontend
+renders it verbatim, enforced by a test rather than by convention. Published
+observations and derived values never share a component. Unavailable is a
+first-class state with a named reason and never a fabricated `0.00%`. Direction
+is carried by sign, glyph and a hidden word, never colour. Session windows are
+never called months.
+
+**The problem is not what the page says. It is how much of it there is, in what
+order, and how small the controls are.**
+
+### Two defects in my own prototype
+
+1. **Board height set from `matchMedia` in JS** rendered 240px at a 1440px
+   viewport: the first render read the query before the frame had its final
+   width, and nothing re-ran. Moved to CSS — the same correction ADR-041 made
+   when it replaced measurement with a CSS-swapped viewBox. **A breakpoint the
+   browser owns cannot go stale.**
+2. The prototype rebuilds its control layer on every selection and re-focuses
+   the new button. It works and it is fragile; noted in the spec so the
+   implementation does not copy it.
+
+### Lesson
+
+**"Is it accurate?" and "can a person use it?" are different audits, and this
+codebase has only ever run the first one.** Every guard on `/rates` — the
+no-calculation test, the provenance split, the unavailable states — protects
+truthfulness. Not one of them would fail if every control on the page were
+16px, the page were eight screens long, and the same number appeared six times.
+
+The measurements that found all three took about twenty minutes and no new
+tooling.
+
+---
+
+## #49B — the guard that nearly got weakened, and the target that could not be measured
+
+**2026-09-23.** The #49A Rates prototype in production. 1,969 tests, typecheck,
+lint and production build pass. `rates_v1.0`, every provenance field and every
+unavailable state untouched.
+
+### A CSS percentage and a basis-point conversion are the same two characters
+
+`no-rates-calculation.test.ts` scans every Rates UI file for `* 100`, because in
+a rates module that is the shape of a percentage-point to basis-point
+conversion — the financial arithmetic the frontend is forbidden from doing.
+
+The new curve control layer needs to turn a 0..1 position into a CSS
+percentage. Same two characters. Entirely different act. And the test failed,
+exactly as designed.
+
+The tempting fix was an allow-list entry. The pattern already has one
+(`percentile * 100`), so a second would have looked routine — and each one makes
+the guard slightly less able to do its job.
+
+What shipped instead: the conversion moved to `lib/cssUnits.ts`, outside the
+economics boundary, doing something no reader could mistake for a rate
+calculation. **The guard is exactly as strict as it was.** When a guard fires on
+something legitimate, the question is whether the code is in the right file, not
+whether the guard is too strict.
+
+### The fix that my own measurement said had not worked
+
+`ExplanationTrigger` was 16 × 16px in nineteen places. The fix is a transparent
+44px `::before` — padding would have taken 44px of layout in forty-one call
+sites and pushed every heading it sits beside out of line.
+
+Then the measurement pass reported all nineteen still at 16 × 16.
+
+`getBoundingClientRect()` returns the *element's* box. A pseudo-element is not
+in it. The tool that found the defect was structurally incapable of seeing the
+fix.
+
+Confirmed instead with `elementFromPoint` at ±19px in four directions from each
+icon's centre — a hit test rather than a box measurement. Every trigger
+responds.
+
+**A measurement technique has a blind spot, and the blind spot is not announced.**
+The number came back unchanged and looked like a failed fix.
+
+### Zero needed three components, not one
+
+The brief scoped the target fix to `ExplanationTrigger`. After it, six links
+were still under 44px — `UnderstandLinks`, `RevisionsLink`, and a provenance
+source URL.
+
+Fixed them too, and said so. Reporting "targets compliant" with six known
+undersized links on the page I had just rebuilt would not have been true, and
+the brief's scope is a description of the main problem rather than a licence to
+leave the rest. `/rates` is now **0 under-44px at every width**, from 38.
+
+### One control per maturity, and why that was the hard part
+
+The chart renders two plots — 760×260 and 360×240 — against the same absolute
+padding. So 52px of left padding is **6.8% of one box and 14.4% of the other**. A
+control layer computed from either box alone is visibly wrong on the other, and
+the obvious fix (one layer per breakpoint, CSS-swapped like the plots) puts two
+buttons per maturity in the DOM: two tab stops, two accessible names, one of
+them always wrong.
+
+Each control carries both coordinate pairs and a CSS rule picks at the same
+640px boundary. One element. The breakpoint stays the browser's to evaluate,
+which is the same reasoning ADR-041 used when it chose a CSS-swapped viewBox
+over measurement.
+
+### Lesson
+
+**Three things went right because something failed loudly.** The calculation
+guard failed and stopped a bad edit. `rules-of-hooks` failed and caught a hook
+placed after a conditional return — a real bug that only shows up in an
+un-ingested environment, which no local run would have reached. And the target
+measurement "failed" in a way that turned out to be the instrument, not the code.
+
+The one that worries me is the third, because it is the only one that would have
+failed silently in the other direction: a measurement that cannot see a fix can
+equally fail to see a defect.

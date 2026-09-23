@@ -678,3 +678,29 @@ data {
     transition: none;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* The yield curve's control points (#49B)                             */
+/* ------------------------------------------------------------------ */
+/*
+ * `YieldCurveChart` renders one plot per breakpoint because the two
+ * viewBoxes are different shapes (760x260 and 360x240) against the same
+ * absolute padding -- so 52px of left padding is 6.8% of one box and
+ * 14.4% of the other. A control layer computed from either box alone is
+ * visibly wrong on the other.
+ *
+ * Rather than duplicate the controls, each one carries both coordinate
+ * pairs and this rule picks at the SAME 640px boundary the plots swap
+ * at. One button per maturity: one tab stop, one accessible name.
+ */
+.rx-point {
+  left: var(--rx-x-mobile);
+  top: var(--rx-y-mobile);
+}
+
+@media (min-width: 640px) {
+  .rx-point {
+    left: var(--rx-x-desktop);
+    top: var(--rx-y-desktop);
+  }
+}

@@ -56,7 +56,7 @@ export function RevisionsLink({ context }: { context?: string }) {
       </p>
       <Link
         to="/revisions"
-        className="mt-3 inline-block text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
+        className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
       >
         How MacroChipz handles revisions →
       </Link>

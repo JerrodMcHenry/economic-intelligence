@@ -26,6 +26,8 @@ export type PageSurface = "cinematic";
 const SURFACE_BY_PATH: Readonly<Record<string, PageSurface>> = {
   /** The Living Economy homepage. Charcoal, midnight and violet. */
   "/": "cinematic",
+  /** The Rates world (#49B), on the same approved surface. */
+  "/rates": "cinematic",
 };
 
 export function surfaceForPath(pathname: string): PageSurface | undefined {

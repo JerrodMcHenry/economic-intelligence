@@ -48,15 +48,31 @@ describe("RatesPage header and freshness", () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Rates" })).toBeInTheDocument();
-    expect(screen.getByText(/Track U.S. Treasury yields, curve structure, real yields/)).toBeInTheDocument();
+    // #49B: the h1 is a definition rather than the world's name, and
+    // the name survives as the kicker above it. The standfirst is now
+    // verbatim reviewed copy from `explain.what-is-a-treasury-yield` --
+    // a Treasury yield is the return an investor earns on a security
+    // trading in the market, NOT the government's exact cost of any
+    // new borrowing.
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "What investors earn on U.S. government debt." }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Rates", { selector: "p" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/The yield is the annual return an investor earns by holding one/),
+    ).toBeInTheDocument();
   });
 
   it("states the latest observation date rather than implying a live feed", async () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    expect(await screen.findByText("Latest available: Sep 18, 2026")).toBeInTheDocument();
+    // #49B: "Latest available" became "Latest published", beside a
+    // human-readable source. The three machine identifiers that used to
+    // sit here are still published verbatim in the methodology
+    // disclosure.
+    expect(await screen.findByText(/Latest published: Sep 18, 2026/)).toBeInTheDocument();
+    expect(screen.getByText(/Published by the U.S. Department of the Treasury/)).toBeInTheDocument();
     // The page must not claim a cadence the source does not have. The
     // explanation copy may legitimately say what this is NOT ("not a
     // streaming market feed"), so these assert positive claims only.
@@ -68,22 +84,82 @@ describe("RatesPage header and freshness", () => {
 });
 
 describe("RatesPage nominal yields", () => {
-  it("renders each canonical maturity with the backend's own value", async () => {
+  /*
+   * #49B: the four maturities are one selectable curve plus a panel for
+   * the selected one, instead of four simultaneous cards. Every value
+   * is still published — the chart's accessible table carries all four
+   * at once, and the panel carries the selected one in full. The
+   * assertions below check the same facts in their new homes.
+   */
+  it("publishes every canonical maturity with the backend's own value", async () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Treasury yields" });
-    expect(within(section).getByRole("heading", { level: 3, name: "2Y" })).toBeInTheDocument();
-    expect(within(section).getByRole("heading", { level: 3, name: "30Y" })).toBeInTheDocument();
-    expect(within(section).getByText("4.76%")).toBeInTheDocument();
-    expect(within(section).getByText("5.34%")).toBeInTheDocument();
+    const curve = await screen.findByRole("region", { name: "Treasury curve" });
+    const table = within(curve).getByRole("table", { name: "Nominal Treasury par yields by maturity" });
+    expect(within(table).getByRole("rowheader", { name: "2Y" })).toBeInTheDocument();
+    expect(within(table).getByRole("rowheader", { name: "30Y" })).toBeInTheDocument();
+    expect(within(table).getByText("4.76%")).toBeInTheDocument();
+    expect(within(table).getByText("5.34%")).toBeInTheDocument();
+  });
+
+  it("offers every maturity as a control, and selects the 10-year by default", async () => {
+    mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
+    renderPage();
+
+    const curve = await screen.findByRole("region", { name: "Treasury curve" });
+    const controls = within(curve).getAllByRole("button");
+    expect(controls).toHaveLength(4);
+    const pressed = controls.filter((c) => c.getAttribute("aria-pressed") === "true");
+    expect(pressed).toHaveLength(1);
+    expect(pressed[0]).toHaveAccessibleName(/10Y/);
+
+    const panel = await screen.findByRole("region", { name: "The maturity you selected" });
+    expect(within(panel).getByText("5.01%")).toBeInTheDocument();
+  });
+
+  it("selecting a maturity shows that maturity, and only one is ever selected", async () => {
+    const user = userEvent.setup();
+    mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
+    renderPage();
+
+    const curve = await screen.findByRole("region", { name: "Treasury curve" });
+    const twoYear = within(curve).getByRole("button", { name: /^2Y/ });
+    await user.click(twoYear);
+
+    const panel = screen.getByRole("region", { name: "The maturity you selected" });
+    expect(within(panel).getByText("4.76%")).toBeInTheDocument();
+    expect(twoYear).toHaveAttribute("aria-pressed", "true");
+    expect(within(curve).getAllByRole("button").filter((c) => c.getAttribute("aria-pressed") === "true")).toHaveLength(
+      1,
+    );
+    // Selection is not navigation: focus stays where the reader put it.
+    expect(twoYear).toHaveFocus();
+  });
+
+  it("keeps an unavailable maturity as a labelled, disabled control rather than hiding it", async () => {
+    mockedGetRatesMonitor.mockResolvedValue(
+      buildRatesMonitor({
+        nominal_curve: [
+          buildRateLevel({ series_id: "UST_NOMINAL_2Y", latest_value: 4.76 }),
+          buildRateLevel({ series_id: "UST_NOMINAL_30Y", available: false, latest_value: null, provenance: null }),
+        ],
+      }),
+    );
+    renderPage();
+
+    const curve = await screen.findByRole("region", { name: "Treasury curve" });
+    const missing = within(curve).getByRole("button", { name: /30Y, not yet ingested/ });
+    expect(missing).toBeDisabled();
+    // And no zero is invented for it anywhere.
+    expect(document.body.textContent).not.toContain("0.00%");
   });
 
   it("labels change windows in sessions, never in calendar periods", async () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Treasury yields" });
+    const section = await screen.findByRole("region", { name: "The maturity you selected" });
     expect(within(section).getAllByText("1 session").length).toBeGreaterThan(0);
     expect(within(section).getAllByText("21 sessions").length).toBeGreaterThan(0);
     expect(within(section).getAllByText("63 sessions").length).toBeGreaterThan(0);
@@ -101,9 +177,10 @@ describe("RatesPage nominal yields", () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Treasury yields" });
-    // 2Y moved +9.0 bp in the fixture; 10Y moved +7.0 bp.
-    expect(within(section).getAllByText("+9 bp").length).toBeGreaterThan(0);
+    // The selected maturity carries its own four windows. The fixture
+    // gives every maturity the same change, so this asserts the sign
+    // and unit survive the backend's value unmodified.
+    const section = await screen.findByRole("region", { name: "The maturity you selected" });
     expect(within(section).getAllByText("+7 bp").length).toBeGreaterThan(0);
   });
 
@@ -115,7 +192,7 @@ describe("RatesPage nominal yields", () => {
     );
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Treasury yields" });
+    const section = await screen.findByRole("region", { name: "The maturity you selected" });
     expect(within(section).getAllByText("lower").length).toBeGreaterThan(0);
   });
 });
@@ -164,10 +241,13 @@ describe("RatesPage curve and spreads", () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Treasury curve" });
-    expect(within(section).getByRole("heading", { level: 3, name: "2s10s" })).toBeInTheDocument();
+    // #49B: spreads sit in "Calculated from the curve" and lead with
+    // the backend's own `title` -- "2s10s" is a trading desk's word.
+    // The identifier is still printed, directly beneath.
+    const section = await screen.findByRole("region", { name: "Calculated from the curve" });
+    expect(within(section).getByRole("heading", { level: 3, name: "10-Year minus 2-Year" })).toBeInTheDocument();
+    expect(within(section).getByText("2s10s")).toBeInTheDocument();
     expect(within(section).getByText("25 bp")).toBeInTheDocument();
-    expect(within(section).getByRole("heading", { level: 3, name: "2s30s" })).toBeInTheDocument();
     expect(within(section).getByText("58 bp")).toBeInTheDocument();
   });
 
@@ -177,7 +257,7 @@ describe("RatesPage curve and spreads", () => {
     );
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Treasury curve" });
+    const section = await screen.findByRole("region", { name: "Calculated from the curve" });
     expect(within(section).getByText("−42 bp")).toBeInTheDocument();
     const page = document.body.textContent ?? "";
     for (const forbidden of ["recession", "risk-off", "hawkish", "tightening", "easing"]) {
@@ -200,7 +280,7 @@ describe("RatesPage real yields and inflation compensation", () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Market-implied inflation compensation" });
+    const section = await screen.findByRole("region", { name: "Calculated from the curve" });
     expect(within(section).getByText("2.31%")).toBeInTheDocument();
     expect(within(section).getByText("2.33%")).toBeInTheDocument();
     // Never renamed to the claim the methodology refuses.
@@ -211,7 +291,7 @@ describe("RatesPage real yields and inflation compensation", () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Market-implied inflation compensation" });
+    const section = await screen.findByRole("region", { name: "Calculated from the curve" });
     expect(within(section).getByText(/5\.01% nominal/)).toBeInTheDocument();
     expect(within(section).getByText(/2\.68% real/)).toBeInTheDocument();
   });
@@ -222,7 +302,7 @@ describe("RatesPage source vs derived distinction", () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    await screen.findByRole("region", { name: "Treasury curve" });
+    await screen.findByRole("region", { name: "Calculated from the curve" });
     // Two spreads + two compensation cards.
     expect(screen.getAllByText("Calculated by MacroChipz")).toHaveLength(4);
   });
@@ -231,7 +311,7 @@ describe("RatesPage source vs derived distinction", () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Treasury yields" });
+    const section = await screen.findByRole("region", { name: "The maturity you selected" });
     const disclosures = within(section).getAllByText("Source & provenance");
     await userEvent.setup().click(disclosures[0]!);
 
@@ -244,7 +324,7 @@ describe("RatesPage source vs derived distinction", () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Treasury curve" });
+    const section = await screen.findByRole("region", { name: "Calculated from the curve" });
     await userEvent.setup().click(within(section).getAllByText("How this is calculated")[0]!);
 
     expect(within(section).getAllByText("Calculated by MacroChipz, not published by the source").length).toBeGreaterThan(0);
@@ -258,10 +338,17 @@ describe("RatesPage historical context", () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Treasury curve" });
-    expect(within(section).getAllByText(/57th/).length).toBeGreaterThan(0);
-    expect(within(section).getAllByText(/40th/).length).toBeGreaterThan(0);
-    expect(within(section).getAllByText(/113 prior 5 sessions changes/).length).toBeGreaterThan(0);
+    // #49B: the selected maturity shows its own historical context for
+    // the first time. `RateLevelCard` is rendered with
+    // `showContext={false}` on this page, so this data has been fetched
+    // and discarded since #30.
+    const panel = await screen.findByRole("region", { name: "The maturity you selected" });
+    expect(within(panel).getAllByText(/57th/).length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText(/40th/).length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText(/113 prior 5 sessions changes/).length).toBeGreaterThan(0);
+
+    const derived = screen.getByRole("region", { name: "Calculated from the curve" });
+    expect(within(derived).getAllByText(/57th/).length).toBeGreaterThan(0);
   });
 
   it("says context is unavailable rather than inventing a rank", async () => {
@@ -281,7 +368,7 @@ describe("RatesPage historical context", () => {
     );
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Treasury curve" });
+    const section = await screen.findByRole("region", { name: "Calculated from the curve" });
     expect(within(section).getByText(/needs more history than is currently stored/)).toBeInTheDocument();
   });
 });
@@ -304,7 +391,7 @@ describe("RatesPage unavailable data never becomes zero", () => {
     );
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Market-implied inflation compensation" });
+    const section = await screen.findByRole("region", { name: "Calculated from the curve" });
     expect(within(section).getByText("Not available")).toBeInTheDocument();
     expect(within(section).getByText(/no observation on the same date, so this value is not calculated/)).toBeInTheDocument();
     expect(within(section).queryByText("0.00%")).not.toBeInTheDocument();
@@ -326,7 +413,7 @@ describe("RatesPage unavailable data never becomes zero", () => {
     );
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "Treasury yields" });
+    const section = await screen.findByRole("region", { name: "The maturity you selected" });
     expect(within(section).getAllByText("Not enough history").length).toBeGreaterThan(0);
   });
 
@@ -350,21 +437,42 @@ describe("RatesPage unavailable data never becomes zero", () => {
     const realSection = await screen.findByRole("region", { name: "Real yields" });
     expect(within(realSection).getByText("Not available")).toBeInTheDocument();
     // The rest of the page still renders.
-    expect(screen.getByRole("region", { name: "Treasury yields" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Treasury curve" })).toBeInTheDocument();
   });
 });
 
 describe("RatesPage what changed", () => {
-  it("compares every metric over one clearly-labelled session window", async () => {
+  /*
+   * #49B REMOVED THE "What changed" TABLE, AND NOT THE FACT.
+   *
+   * It printed all ten metrics' 5-session change in one place --
+   * duplicating a change every card already carried, with the same
+   * "(Sep 11, 2026 - Sep 18, 2026)" on every row. #49A measured the
+   * page at 6,777px on a phone and this table as 559 of them.
+   *
+   * What it guarded is that EVERY metric publishes its change over a
+   * window labelled in sessions. That is asserted here against the
+   * cards and the panel, which is where those changes now live -- and
+   * where each metric carries all four windows rather than one.
+   */
+  it("publishes every metric's change over windows labelled in sessions", async () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    const section = await screen.findByRole("region", { name: "What changed" });
-    const table = within(section).getByRole("table", { name: /Change over 5 sessions/ });
-    expect(within(table).getByRole("rowheader", { name: "10Y nominal" })).toBeInTheDocument();
-    expect(within(table).getByRole("rowheader", { name: "10Y real" })).toBeInTheDocument();
-    expect(within(table).getByRole("rowheader", { name: "2s10s" })).toBeInTheDocument();
-    expect(within(table).getByRole("rowheader", { name: "10Y compensation" })).toBeInTheDocument();
+    const panel = await screen.findByRole("region", { name: "The maturity you selected" });
+    const real = screen.getByRole("region", { name: "Real yields" });
+    const derived = screen.getByRole("region", { name: "Calculated from the curve" });
+
+    for (const section of [panel, real, derived]) {
+      expect(within(section).getAllByText("5 sessions").length).toBeGreaterThan(0);
+      expect(within(section).getAllByText("63 sessions").length).toBeGreaterThan(0);
+    }
+
+    // Still never relabelled as a calendar period.
+    const page = document.body.textContent ?? "";
+    for (const forbidden of ["1 week", "1 month", "3 months"]) {
+      expect(page).not.toContain(forbidden);
+    }
   });
 });
 
@@ -399,7 +507,7 @@ describe("RatesPage product states", () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     await userEvent.setup().click(screen.getByRole("button", { name: "Retry" }));
 
-    expect(await screen.findByRole("region", { name: "Treasury yields" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Treasury curve" })).toBeInTheDocument();
   });
 
   it("shows an explicit empty state when nothing has been ingested", async () => {
@@ -408,7 +516,7 @@ describe("RatesPage product states", () => {
 
     expect(await screen.findByText("No rates data yet")).toBeInTheDocument();
     expect(screen.getByText(/Nothing here is estimated in the meantime/)).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Treasury yields" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Treasury curve" })).not.toBeInTheDocument();
   });
 });
 
@@ -417,14 +525,16 @@ describe("RatesPage accessibility semantics", () => {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     renderPage();
 
-    await screen.findByRole("region", { name: "Treasury yields" });
+    await screen.findByRole("region", { name: "Treasury curve" });
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    // #49B section list: four nominal maturities became one curve plus
+    // one panel, and the two derived sections merged into one.
     for (const name of [
-      "Treasury yields",
       "Treasury curve",
+      "The maturity you selected",
       "Real yields",
-      "Market-implied inflation compensation",
-      "What changed",
+      "Calculated from the curve",
+      "Where these numbers come up",
       "Evidence & methodology",
     ]) {
       expect(screen.getByRole("region", { name })).toBeInTheDocument();
@@ -450,7 +560,7 @@ describe("RatesPage emits valid HTML nesting", () => {
   async function renderLoadedPage() {
     mockedGetRatesMonitor.mockResolvedValue(buildRatesMonitor());
     const { container } = renderPage();
-    await screen.findByRole("region", { name: "Treasury yields" });
+    await screen.findByRole("region", { name: "Treasury curve" });
     return container;
   }
 
@@ -475,7 +585,7 @@ describe("RatesPage emits valid HTML nesting", () => {
     const trigger = screen.getByLabelText("What does Observation date mean?");
     expect(trigger.closest("p")).toBeNull();
     // The note itself still renders, so the fix did not remove content.
-    expect(screen.getByText(/Latest available:/)).toBeInTheDocument();
+    expect(screen.getByText(/Latest published:/)).toBeInTheDocument();
     expect(container.querySelector("details")).not.toBeNull();
   });
 

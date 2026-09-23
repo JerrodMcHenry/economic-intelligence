@@ -150,3 +150,31 @@ describe("ExplanationTrigger", () => {
     expect(screen.getByText("i").closest("summary")).toHaveAttribute("aria-label", "What does Full Concept mean?");
   });
 });
+
+describe("the hit target (#49B)", () => {
+  /*
+   * #49A measured this control at 16 x 16 CSS px in nineteen places on
+   * `/rates` alone -- 36% of the 44px minimum, on the affordance a
+   * reader who does not know the vocabulary most needs.
+   */
+  it("expands to 44px with a pseudo-element, so no layout moves", () => {
+    const { container } = render(<ExplanationTrigger explanation={MINIMAL} />);
+    const summary = container.querySelector("summary") as HTMLElement;
+    expect(summary).not.toBeNull();
+
+    // The icon itself is unchanged: forty-one call sites sit beside
+    // headings and values, and a 44px BOX would push every one of them
+    // out of line. A pseudo-element occupies no space.
+    expect(summary.className).toContain("h-4");
+    expect(summary.className).toContain("w-4");
+
+    // The target is the `::before`: 44px, centred on the icon.
+    expect(summary.className).toContain("before:h-11");
+    expect(summary.className).toContain("before:w-11");
+    expect(summary.className).toContain("before:-translate-x-1/2");
+    expect(summary.className).toContain("before:-translate-y-1/2");
+    // Without `relative` the pseudo-element would be positioned
+    // against some ancestor and land somewhere else entirely.
+    expect(summary.className).toContain("relative");
+  });
+});

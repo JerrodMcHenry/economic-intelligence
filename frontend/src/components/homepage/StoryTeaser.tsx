@@ -49,7 +49,7 @@ import { NETWORK_EDGES, NETWORK_NODES, networkNode } from "../../explainers/rate
 const ACTOR_COUNT = NETWORK_NODES.length;
 const SET_EDGES = NETWORK_EDGES.filter((edge) => edge.kind === "sets");
 
-export function StoryTeaser() {
+export function StoryTeaser({ alwaysVisible = false }: { alwaysVisible?: boolean } = {}) {
   const explainer = explainerById("explain.fed-and-mortgage-rates");
   if (explainer === undefined) return null;
 
@@ -67,7 +67,9 @@ export function StoryTeaser() {
        * icon that decorates a link, and the arrow became a round
        * affordance. No prose was added and the height did not move.
        */
-      className="lx-teaser group flex items-center gap-3.5 rounded-xl px-3.5 py-3.5 transition-colors motion-reduce:transition-none lg:hidden"
+      className={`lx-teaser group flex items-center gap-3.5 rounded-xl px-3.5 py-3.5 transition-colors motion-reduce:transition-none${
+        alwaysVisible ? "" : " lg:hidden"
+      }`}
     >
       {/*
        * The network, framed, with the affordance ON the frame.

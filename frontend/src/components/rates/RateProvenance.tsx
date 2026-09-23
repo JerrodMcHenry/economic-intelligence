@@ -20,7 +20,10 @@ export function SourceProvenanceDisclosure({ provenance }: { provenance: SourceP
   }
 
   return (
-    <Disclosure summary="Source &amp; provenance">
+    /* #49B: `summaryClassName` is the opt-in #46C added for exactly
+       this — the summary row is a 20px tap target, and the rates
+       surfaces have now been checked on a phone. */
+    <Disclosure summary="Source &amp; provenance" summaryClassName="min-h-11">
       <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
         <dt className="text-fg-muted">Value type</dt>
         <dd>Published by the source</dd>
@@ -44,7 +47,7 @@ export function SourceProvenanceDisclosure({ provenance }: { provenance: SourceP
         <dd className="break-all">
           <a
             href={provenance.source_url}
-            className="text-brand underline underline-offset-2 hover:text-brand-hover"
+            className="inline-flex min-h-11 items-center text-brand underline underline-offset-2 hover:text-brand-hover"
             target="_blank"
             rel="noreferrer noopener"
           >
@@ -62,7 +65,7 @@ export function DerivedProvenanceDisclosure({ provenance }: { provenance: Derive
   }
 
   return (
-    <Disclosure summary="How this is calculated">
+    <Disclosure summary="How this is calculated" summaryClassName="min-h-11">
       <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
         <dt className="text-fg-muted">Value type</dt>
         <dd>Calculated by MacroChipz, not published by the source</dd>

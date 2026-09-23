@@ -1,4 +1,7 @@
+import type React from "react";
+
 import type { RateLevel } from "../../api/rates.types";
+import { percentOf } from "../../lib/cssUnits";
 import { formatObservationDate, formatRateValue, maturityLabel } from "../../lib/ratesFormat";
 
 /**
@@ -22,6 +25,20 @@ import { formatObservationDate, formatRateValue, maturityLabel } from "../../lib
  * real `<table>`. A screen-reader user gets the exact values rather
  * than a described picture, and every point is reachable without a
  * pointer.
+ *
+ * SELECTION, ADDED IN #49B
+ * ------------------------
+ * VISUALS ARE SVG. INTERACTION IS HTML. The curve, its gridlines and
+ * its line stay SVG; the four selectable maturities are HTML
+ * `<button>`s positioned over the plot at the same percentage
+ * coordinates, so a tap target is 44 x 44 CSS PIXELS whatever the
+ * viewBox is scaled to. #46D shipped 48-unit SVG targets that rendered
+ * at 41px, and that is the defect this split exists to prevent.
+ *
+ * Selecting adds NO DATA. It chooses among values the single rates
+ * request already returned. An unavailable maturity keeps its control
+ * -- labelled, disabled and explained -- and is still omitted from the
+ * line, so a gap in the data stays a visible gap.
  *
  * ASPECT RATIO, CORRECTED IN #41
  * ------------------------------
@@ -61,7 +78,19 @@ function axisBounds(values: number[]): { min: number; max: number } {
   return { min: lowest - padding, max: highest + padding };
 }
 
-export function YieldCurveChart({ levels, asOfDate }: { levels: RateLevel[]; asOfDate: string | null }) {
+export function YieldCurveChart({
+  levels,
+  asOfDate,
+  selectedId,
+  onSelect,
+}: {
+  levels: RateLevel[];
+  asOfDate: string | null;
+  /** The maturity whose detail is shown beneath. Never undefined in practice. */
+  selectedId?: string;
+  /** Omitted renders the chart exactly as it was before #49B. */
+  onSelect?: (seriesId: string) => void;
+}) {
   const points: CurvePoint[] = levels
     .filter((level) => level.available && level.latest_value !== null)
     .map((level) => ({
@@ -80,12 +109,27 @@ export function YieldCurveChart({ levels, asOfDate }: { levels: RateLevel[]; asO
   }
 
   const { min, max } = axisBounds(points.map((point) => point.value));
-  const label = `Nominal Treasury yield curve as of ${formatObservationDate(asOfDate)}. The same values follow in a table.`;
+  const label = `Nominal Treasury yield curve as of ${formatObservationDate(asOfDate)}. ${levels
+    .map(
+      (level) =>
+        `${maturityLabel(level.series_id)} ${
+          level.available && level.latest_value !== null ? `${formatRateValue(level.latest_value)}` : "not yet ingested"
+        }`,
+    )
+    .join(", ")}. The same values follow in a table.`;
 
   return (
     <figure className="m-0">
-      <CurvePlot box={MOBILE} points={points} min={min} max={max} label={label} className="sm:hidden" />
-      <CurvePlot box={DESKTOP} points={points} min={min} max={max} label={label} className="hidden sm:block" />
+      {/* The plot and its controls share one positioned box, so a
+          control can sit exactly on its own point at any width. */}
+      <div className="relative">
+        <CurvePlot box={MOBILE} points={points} min={min} max={max} label={label} className="sm:hidden" />
+        <CurvePlot box={DESKTOP} points={points} min={min} max={max} label={label} className="hidden sm:block" />
+
+        {onSelect && (
+          <ControlLayer levels={levels} min={min} max={max} selectedId={selectedId} onSelect={onSelect} />
+        )}
+      </div>
 
       <figcaption className="sr-only">
         Nominal Treasury par yields by maturity as of {formatObservationDate(asOfDate)}.
@@ -120,6 +164,121 @@ export function YieldCurveChart({ levels, asOfDate }: { levels: RateLevel[]; asO
         </tbody>
       </table>
     </figure>
+  );
+}
+
+/**
+ * The HTML control layer (#49B).
+ *
+ * ONE CONTROL PER MATURITY, CORRECT AT BOTH BREAKPOINTS.
+ *
+ * The obvious implementation -- one layer per viewBox, CSS-swapped like
+ * the plots themselves -- would put two buttons per maturity in the
+ * DOM. The subtler problem is why that was tempting: `PADDING` is in
+ * viewBox units and the two boxes are different shapes, so the same
+ * 52px left padding is 6.8% of the desktop box and 14.4% of the mobile
+ * one. A layer computed from one box is visibly wrong on the other.
+ *
+ * So each control carries BOTH sets of coordinates as custom
+ * properties and a CSS rule picks the pair at the same 640px boundary
+ * the plots swap at. One element, one tab stop, one accessible name,
+ * and the breakpoint stays the browser's to evaluate -- the same
+ * reasoning ADR-041 used when it chose a CSS-swapped viewBox over
+ * measurement.
+ */
+/**
+ * A point's position as CSS percentages of the plot box.
+ *
+ * `percentOf` rather than an inline conversion: the rates
+ * no-calculation guard scans this file for `* 100`, which in a rates
+ * module is the shape of a percentage-point to basis-point conversion.
+ * This is a layout fraction, so it uses a layout helper — see
+ * `lib/cssUnits.ts`.
+ */
+function coordinates(
+  box: { width: number; height: number },
+  index: number,
+  count: number,
+  value: number | null,
+  min: number,
+  max: number,
+) {
+  const xUnits =
+    count === 1
+      ? box.width / 2
+      : PADDING.left + (index / (count - 1)) * (box.width - PADDING.left - PADDING.right);
+  const yUnits =
+    value === null
+      ? box.height / 2
+      : PADDING.top + (box.height - PADDING.top - PADDING.bottom) * (1 - (value - min) / (max - min));
+  return { x: percentOf(xUnits / box.width), y: percentOf(yUnits / box.height) };
+}
+
+function ControlLayer({
+  levels,
+  min,
+  max,
+  selectedId,
+  onSelect,
+}: {
+  levels: RateLevel[];
+  min: number;
+  max: number;
+  selectedId: string | undefined;
+  onSelect: (seriesId: string) => void;
+}) {
+  return (
+    <div className="pointer-events-none absolute inset-0">
+      {levels.map((level, index) => {
+        const available = level.available && level.latest_value !== null;
+        const value = available ? (level.latest_value as number) : null;
+        const selected = level.series_id === selectedId;
+        const maturity = maturityLabel(level.series_id);
+        const desktop = coordinates(DESKTOP, index, levels.length, value, min, max);
+        const mobile = coordinates(MOBILE, index, levels.length, value, min, max);
+
+        return (
+          <button
+            key={level.series_id}
+            type="button"
+            aria-pressed={selected}
+            disabled={!available}
+            onClick={() => onSelect(level.series_id)}
+            style={
+              {
+                "--rx-x-mobile": mobile.x,
+                "--rx-y-mobile": mobile.y,
+                "--rx-x-desktop": desktop.x,
+                "--rx-y-desktop": desktop.y,
+              } as React.CSSProperties
+            }
+            className="rx-point pointer-events-auto absolute flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full disabled:cursor-not-allowed"
+          >
+            <span
+              aria-hidden="true"
+              className={[
+                "flex h-8 w-8 items-center justify-center rounded-full border transition-colors motion-reduce:transition-none",
+                selected ? "border-[color:var(--mc-focus)] bg-[color:var(--mc-selected)]" : "border-transparent",
+              ].join(" ")}
+            >
+              {/* An unavailable maturity is a dashed outline, never a
+                  filled point at a value it does not have. */}
+              <span
+                className={
+                  available
+                    ? `block h-2.5 w-2.5 rounded-full ${selected ? "bg-fg" : "bg-brand"}`
+                    : "block h-3 w-3 rounded-full border border-dashed border-fg-muted"
+                }
+              />
+            </span>
+            <span className="sr-only">
+              {maturity}
+              {available ? `, ${formatRateValue(level.latest_value)}` : ", not yet ingested"}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -194,7 +353,16 @@ function CurvePlot({
           <circle cx={x(index)} cy={y(point.value)} r="4.5" className="fill-brand" />
           <text
             x={x(index)}
-            y={y(point.value) - 12}
+            /*
+             * -22, not -12 (#49B). The selected maturity's control
+             * draws a 32px ring centred on its point, which covered
+             * the value label sitting 12 viewBox units above it —
+             * roughly 11px at mobile scale. Measured at 390px: the
+             * highest point lands at y 53 with the axis padding this
+             * chart uses, so 22 units of clearance still leaves the
+             * label inside the frame.
+             */
+            y={y(point.value) - 22}
             textAnchor="middle"
             className="fill-fg text-[12px] font-semibold tabular-nums"
           >

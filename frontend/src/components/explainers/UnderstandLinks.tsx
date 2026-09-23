@@ -26,7 +26,7 @@ export function UnderstandWorld({ world }: { world: WorldId }) {
           <li key={explainer.id}>
             <a
               href={`/explain/${explainer.slug}`}
-              className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
             >
               {explainer.question}
             </a>
@@ -56,7 +56,7 @@ export function UnderstandConcept({ conceptId }: { conceptId: string | undefined
           <li key={explainer.id}>
             <a
               href={`/explain/${explainer.slug}`}
-              className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
             >
               {explainer.question}
             </a>

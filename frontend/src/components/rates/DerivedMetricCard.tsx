@@ -1,6 +1,7 @@
 import type { CurveSpread, InflationCompensation } from "../../api/rates.types";
 import { describeUnavailableReason, formatBasisPointLevel, formatObservationDate, formatRateValue } from "../../lib/ratesFormat";
 import { Card } from "../Card";
+import { Disclosure } from "../Disclosure";
 import { ExplanationTrigger } from "../explanations/ExplanationTrigger";
 import type { Explanation } from "../../content/explanations/types";
 import { HistoricalContextNote } from "./HistoricalContextNote";
@@ -55,9 +56,13 @@ function DerivedShell({
 
 export function CurveSpreadCard({ spread, explanation }: { spread: CurveSpread; explanation: Explanation }) {
   return (
+    /* #49B: the CALCULATION leads and the identifier follows. "2s10s"
+       is a trading desk's word; "10-Year minus 2-Year" is the backend's
+       own `title` and is what the reader can act on. Nothing is hidden
+       -- the id is still printed directly beneath. */
     <DerivedShell
-      heading={spread.spread_id}
-      subtitle={spread.title}
+      heading={spread.title}
+      subtitle={spread.spread_id}
       explanation={explanation}
       observationDate={spread.observation_date}
     >
@@ -77,8 +82,16 @@ export function CurveSpreadCard({ spread, explanation }: { spread: CurveSpread; 
             <RateChangeList changes={spread.changes} label={spread.spread_id} />
           </div>
 
-          <div className="mt-4 border-t border-line-subtle pt-3">
-            <HistoricalContextNote context={spread.historical_context} />
+          {/* #49B: behind a disclosure on the DERIVED cards.
+              Four of these render at once and each carried two
+              paragraphs of rank prose, which made this section 2,334px
+              of a 5,863px phone page. The data is unchanged and one
+              tap away; the selected maturity's own context stays open,
+              because only one of those is on screen. */}
+          <div className="mt-4 border-t border-line-subtle pt-1">
+            <Disclosure summary="Historical context" summaryClassName="min-h-11">
+              <HistoricalContextNote context={spread.historical_context} />
+            </Disclosure>
           </div>
 
           <div className="mt-4">
@@ -104,8 +117,8 @@ export function InflationCompensationCard({
 }) {
   return (
     <DerivedShell
-      heading={`${compensation.maturity} compensation`}
-      subtitle={compensation.title}
+      heading={compensation.title}
+      subtitle={`${compensation.maturity} compensation`}
       explanation={explanation}
       observationDate={compensation.observation_date}
     >
@@ -123,8 +136,10 @@ export function InflationCompensationCard({
             <RateChangeList changes={compensation.changes} label={`${compensation.maturity} compensation`} />
           </div>
 
-          <div className="mt-4 border-t border-line-subtle pt-3">
-            <HistoricalContextNote context={compensation.historical_context} />
+          <div className="mt-4 border-t border-line-subtle pt-1">
+            <Disclosure summary="Historical context" summaryClassName="min-h-11">
+              <HistoricalContextNote context={compensation.historical_context} />
+            </Disclosure>
           </div>
 
           <div className="mt-4">
