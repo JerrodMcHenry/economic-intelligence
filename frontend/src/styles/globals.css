@@ -303,3 +303,183 @@ data {
   background-color: var(--mc-selected);
   color: var(--mc-fg);
 }
+
+/* ------------------------------------------------------------------ */
+/* Luminous story surface (Increment #46E)                             */
+/* ------------------------------------------------------------------ */
+/*
+ * SCOPED ON PURPOSE. Every token below lives under
+ * `[data-surface="luminous"]` and uses an `--lx-` prefix, so the four
+ * disjoint `--mc-*` families -- and the #27B guard that polices them --
+ * are untouched. Nothing here is a semantic economic token; these are
+ * surface, depth and light.
+ *
+ * WHAT IS REUSED RATHER THAN INVENTED. MacroChipz's accent was already a
+ * blue-violet: `--mc-brand` resolves to #9facf1 and `--mc-focus` to
+ * #a2b0ff in the dark theme, both at hue ~275. So the approved
+ * "dark purple, electric blue" direction is an amplification of the
+ * existing brand, not a replacement, and every accent below is an
+ * existing token referenced by name.
+ *
+ * WHAT IS GENUINELY NEW is only depth. The shipped canvas (#0d0f13) sits
+ * at hue 262 with chroma 0.008 -- effectively neutral -- and the
+ * approved mockup needs violet weight underfoot. Chroma rises; the hue
+ * stays inside the brand's own family.
+ *
+ * ONE COLOUR IS REFUSED. The visual reference pairs magenta with CYAN.
+ * `--mc-state-cool` is a pale cyan that carries economic meaning, and
+ * the #27B hard rule is that state tones are a classification, never
+ * decoration. So the second luminous accent is a violet-magenta at hue
+ * ~300 and no cyan appears anywhere on this surface.
+ */
+[data-surface="luminous"] {
+  color-scheme: dark;
+
+  --lx-void: #07050e;
+  --lx-deep: #0f0a1e;
+  --lx-raise: #171130;
+
+  /* the two blooms: hero at upper right, second at lower left */
+  --lx-bloom-a: rgba(124, 96, 240, 0.34);
+  --lx-bloom-b: rgba(186, 122, 240, 0.26);
+
+  /* glass */
+  --lx-card: rgba(255, 255, 255, 0.048);
+  --lx-card-hi: rgba(255, 255, 255, 0.13);
+  --lx-card-lo: rgba(255, 255, 255, 0.07);
+
+  /* the diagram. `--lx-edge-dim` is a FLOOR, not a preference: unrelated
+     edges dim to it and no further, so a dimmed relationship stays
+     visible rather than becoming inaccessible. */
+  --lx-edge: rgba(159, 172, 241, 0.42);
+  --lx-edge-dim: rgba(159, 172, 241, 0.16);
+  --lx-node-core: #140e28;
+
+  background:
+    radial-gradient(126% 62% at 84% -6%, var(--lx-bloom-a) 0%, transparent 62%),
+    radial-gradient(104% 54% at 4% 78%, var(--lx-bloom-b) 0%, transparent 66%),
+    linear-gradient(176deg, var(--lx-deep) 0%, #0b0817 46%, var(--lx-void) 100%);
+  background-attachment: fixed;
+  color: var(--mc-fg);
+}
+
+/* Glass card. The lit top edge is the reference's, and the solid
+   fallback colour is declared rather than assumed so that a browser
+   without `backdrop-filter` keeps the same contrast. */
+[data-surface="luminous"] .lx-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.028) 100%),
+    var(--lx-raise);
+  border: 1px solid var(--lx-card-lo);
+  box-shadow:
+    inset 0 1px 0 0 var(--lx-card-hi),
+    0 18px 40px -22px rgba(0, 0, 0, 0.95);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  [data-surface="luminous"] .lx-card {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.028) 100%),
+      rgba(23, 17, 48, 0.55);
+    backdrop-filter: blur(18px) saturate(130%);
+    -webkit-backdrop-filter: blur(18px) saturate(130%);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* The network board, and its narrow-screen fallback (#46E)            */
+/* ------------------------------------------------------------------ */
+/*
+ * THE MEASURED BREAKPOINT, not a guessed one.
+ *
+ * Six node chips are 44px tall tap targets spaced 16.8 percentage
+ * points apart, so their separation is 0.168 x boardWidth. The board is
+ * the column minus a constant 47px gutter, so:
+ *
+ *     0.168 x (viewport - 47) >= 44   =>   viewport >= 308.9px
+ *
+ * Measured and confirmed: 312px is clean at 45px of separation, 294px
+ * collides at 41px. The switch sits at 312px, three pixels above the
+ * arithmetic floor, and the chips `truncate` so a larger user font
+ * cannot push them past one line and raise the floor underneath it.
+ *
+ * WHAT CHANGES BELOW IT. The same six buttons, in the same DOM order,
+ * stop being absolutely positioned and become a flex column. The SVG
+ * hides — a scatter diagram that cannot separate its own labels is not
+ * worth drawing — and `lx-link` rows take its place, carrying the
+ * relationship between adjacent nodes in words. Nothing is duplicated,
+ * no JavaScript measures anything, and there is no hydration mismatch
+ * because the switch is pure CSS.
+ */
+[data-surface="luminous"] .lx-node {
+  position: absolute;
+  top: var(--lx-y);
+  max-width: var(--lx-max);
+}
+[data-surface="luminous"] .lx-node[data-side="right"] {
+  left: var(--lx-x);
+  transform: translate(14px, -50%);
+}
+[data-surface="luminous"] .lx-node[data-side="left"] {
+  right: var(--lx-x-inv);
+  transform: translate(-14px, -50%);
+}
+
+/* The connector rows exist in the DOM at every width but only lay out
+   in the column, where they replace the drawn edges. */
+[data-surface="luminous"] .lx-link {
+  display: none;
+}
+[data-surface="luminous"] .lx-link-rule {
+  display: block;
+  width: 0;
+  height: 18px;
+  border-left: 2px dashed var(--mc-brand);
+  opacity: 0.55;
+}
+[data-surface="luminous"] .lx-link-rule.lx-link-sets {
+  border-left-style: solid;
+  border-left-width: 3px;
+  opacity: 1;
+}
+[data-surface="luminous"] .lx-link-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mc-fg-muted);
+}
+
+@media (max-width: 311.98px) {
+  [data-surface="luminous"] .lx-svg {
+    display: none;
+  }
+  [data-surface="luminous"] .lx-layer {
+    position: static;
+    display: flex;
+    flex-direction: column;
+  }
+  [data-surface="luminous"] .lx-node,
+  [data-surface="luminous"] .lx-node[data-side="right"],
+  [data-surface="luminous"] .lx-node[data-side="left"] {
+    position: static;
+    inset: auto;
+    transform: none;
+    max-width: none;
+    width: 100%;
+    flex-direction: row;
+  }
+  [data-surface="luminous"] .lx-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 18px;
+  }
+}
+
+[data-surface="luminous"] .lx-card-selected {
+  border-color: rgba(162, 176, 255, 0.34);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.18),
+    0 22px 46px -24px rgba(0, 0, 0, 0.95),
+    0 0 40px -14px rgba(124, 96, 240, 0.55);
+}

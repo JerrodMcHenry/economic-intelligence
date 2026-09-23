@@ -13175,3 +13175,818 @@ it was right ("How They Relate" → "Inflation and Jobs, side by side").
 
 None of those distinctions is visible from the audit. They only appear
 when you try to change the code and something pushes back.
+
+## Increment #46A — Follow & Brief Specification
+
+Research and specification. No production code, no migration, no email
+integration, nothing committed. Baseline: HEAD `bf5f7d9` (#45B).
+
+Artifact: `docs/product/macrochipz-follow-brief-v46a-spec.md`.
+
+### One query decided the increment
+
+Before writing anything I asked the development database what could
+actually trigger a notification today:
+
+    prospective revisions ever captured ....................... 0
+    observation versions, all backfilled ...................... 5,716
+    analysis updates, AVAILABILITY_RESTORED (coverage) ........ 1,488
+    analysis updates, CONFIRMATION_CHANGED (UNAVAILABLE -> x) .. 44
+    release check runs ever executed .......................... 3
+
+**MacroChipz currently has zero communication-eligible events.** Not
+few. Zero.
+
+That single fact answers the question the increment was really asked —
+should Follow ship first — and it answers it against the roadmap's own
+expectation. **An event-triggered Follow shipped today would send
+nothing, to anyone, indefinitely.** You would ship a subscribe button
+that promises notifications and then deliver silence, burning the one
+signup a reader will ever give you.
+
+So the recommendation is a **manually reviewed weekly Brief first**,
+with Follow sequenced behind the first real prospective revision — the
+event that both justifies an alert and makes the moat demonstrable.
+
+What makes that recommendation hold rather than merely sound cautious
+is that the product reasoning reached it independently: four of the five
+return scenarios in §A point at a periodic Brief, and the one that
+points at an alert (A3, "the number changed after they published it?")
+depends on the event that has never occurred.
+
+### Two blockers I found rather than assumed
+
+**MacroChipz has never been deployed.** The journal's increment sequence
+goes #26E → #27B. #26F was a research and contract freeze; #26G
+(infrastructure), #26H (bootstrap and scheduler activation) and #26I
+never ran. There is no production environment, no domain, no sending
+identity. I had been about to write a delivery architecture for a
+product with nowhere to send from.
+
+**Automated sending inherits a blocker this project has already
+declined twice.** ADR-029 defers scheduler activation and names the
+reason exactly — it needs "a real, network-reachable production database
+and an explicit, reviewed answer to whether a scheduler can reach it
+without weakening its own access controls." A `.disabled` workflow
+exists specifically so it cannot execute.
+
+A human pressing send needs neither. That turned editorial review from a
+temporary crutch into a design that **routes around a real blocker** —
+and it is the second independent reason the Brief precedes Follow.
+
+### The licensing problem nobody had to look for
+
+Inflation and Jobs figures come from FRED. #28 recorded two unresolved
+FRED terms: apps may not "replicate or attempt to replace the essential
+user experience of the FRED® API" (rated High), and "individual users
+of an application must use their own API key" (Medium-High, **UNKNOWN —
+REQUIRES VERIFICATION**).
+
+A newsletter is a **new distribution channel** for that data. It
+sharpens the question rather than softening it, and it is the kind of
+thing that is much cheaper to notice in a specification than in a
+sent email.
+
+Three ways out, in preference order: complete the #M2 migration and
+source CPI/PCE direct from BLS and BEA (both public domain, and what
+#28 and #45A have now both recommended); or ship the first Brief with
+Rates and Housing figures only, limiting Inflation and Jobs to state
+labels and links; or obtain written clarification. **Recorded as a
+launch dependency, not a footnote.**
+
+### The eligibility contract, and why it cannot be THE LEDE's
+
+`homepage_presentation_v1.0` answers "what should we show first?" — a
+selection among things a reader came to look at. Notification
+eligibility answers "is this worth interrupting someone who did not
+ask?" That is a categorically higher bar, and sharing a rule set would
+fail in a specific, predictable way: **if the homepage ever needed more
+content, the pressure would land on a shared policy, and a homepage
+change would silently start sending email.**
+
+So `communication_eligibility_v1` is separate, and frozen as a **strict
+subset** — never a superset, never an overlap with exceptions. An object
+that may not appear on the homepage may never be emailed, and a test
+should assert the subset relation directly.
+
+The other property that matters: the lede always picks *something* when
+anything qualifies. A communication policy must be able to pick
+**nothing, indefinitely, and have that be a success state**. Given §0.1,
+it will be doing exactly that for a while.
+
+### The architectural idea I did not expect to need
+
+Intelligence objects are generated on read and are *supposed* to change
+when data is revised — that is the feature (#39). An email is the
+opposite: once sent, what it said is fixed forever, and the data it
+quoted may since have moved.
+
+So a `BriefEdition` has to be **persisted and immutable** — the first
+thing in this system that must be. Regenerating one later would produce
+a different Brief, which is precisely why it cannot be regenerated.
+
+It is #31's current-state-cache versus system-time-history distinction
+applied one layer up, and it makes "what did we tell people, and was it
+right?" answerable. A product built on provenance ought to be able to
+answer that about its own output, and until now it could not have.
+
+A corollary fell out of it: a revision arriving after a Brief ships is
+**new content for the next edition, never a silent edit of the last**.
+If an edition was materially wrong, the correction is its own edition
+saying so — the discipline `/revisions` applies to economic data,
+applied to MacroChipz's own.
+
+### Where I argued myself out of AI
+
+The plausible use was drafting the one-sentence summary of a change from
+structured fields. I talked myself into it and then back out, because
+that sentence is a template over fields the system already has — *"Core
+PCE momentum moved from X to Y for {period}"* — and a template is
+deterministic, reviewable and cannot hallucinate a number. The
+generative version buys a dependency, a cost, a latency and a whole
+class of failure in exchange for prose an f-string produces correctly.
+
+The stronger argument is #44's: the explainer layer's value is that
+every sentence was written and reviewed. A Brief carrying one generated
+sentence forfeits exactly the property that distinguishes it.
+
+### On measurement, and one thing I refused
+
+`follow_signup: { target: World | "all" }` has been sitting in #37's
+vocabulary since it was written, marked "RESERVED — not emitted today.
+Follow/email does not exist yet (Increment #46)." It needs activating,
+not designing. That is what a closed vocabulary written with the next
+increment in mind buys you.
+
+The refusal: **no open tracking.** An open pixel measures whether an
+image loaded, which proxy prefetching has been steadily making
+meaningless anyway — and a tracking pixel in a product built on
+provenance is a poor trade for a number that was never the real
+question. The metric that matters is whether someone came back and read
+something, and `page_viewed` already answers it.
+
+`product-measurement.md` §6 prohibits collecting email addresses. That
+prohibition stands unchanged: subscriber data lives in MacroChipz's own
+database, analytics receives counts and world ids, and nothing crosses.
+
+### Lesson
+
+**Ask the database what the feature would actually do before designing
+it.** The roadmap said Follow next, the audit said RETURN was the
+broken stage, and both were right — and a feature built on that alone
+would have shipped a promise the data cannot keep for months.
+
+The narrower version, which I suspect generalises past this increment:
+**a push feature is only as good as its worst week**, and this product's
+worst week is currently every week. Designing for the quiet case first
+produced a better product than designing for the eventful one and
+handling quiet as an exception.
+
+## Increment #46B — Deployment & Launch Blockers
+
+Research, architecture and specification. No infrastructure provisioned,
+no service purchased, no credential configured, no migration run, no
+production code modified, nothing committed. Baseline: HEAD `d8ea5a8`
+(#46A).
+
+Artifact: `docs/architecture/macrochipz-deployment-launch-plan-v46b.md`.
+
+### Verifying rather than assuming, in both directions
+
+The instruction was not to assume an earlier deployment increment had
+completed merely because it was planned. That turned out to cut both
+ways, which I had not expected.
+
+**Against the plan:** there is no `render.yaml` and no
+infrastructure-as-code of any kind. #26F was a contract freeze; #26G,
+#26H and #26I never ran. Nothing has ever been deployed.
+
+**For the plan:** #26F recorded that the Dockerfile "hardcodes port
+8000 and never reads Render's own `PORT`", naming it a required fix for
+#26G. It reads `$PORT` today, at line 109. Somewhere between then and
+now it was fixed, and the record still says it is outstanding.
+
+Both directions are worth the same amount. A stale blocker costs you a
+task you do not need to do; a stale completion costs you a task you
+think is done.
+
+### The free tier is disqualified on architecture, not price
+
+The instruction says not to choose a provider on its free tier alone. On
+this stack the stronger statement holds: **Render's free tier is
+incompatible with what MacroChipz is**, and the reason is not cost.
+
+Free Render Postgres **expires 30 days after creation**, gets a 14-day
+grace period, and is then deleted with all its data. MacroChipz's entire
+differentiator is `observation_versions` — the append-only record of
+what it knew and when. A database that silently self-destructs monthly
+destroys precisely the asset the product is built on.
+
+Two more, either of which would be sufficient alone: free plans support
+no pre-deploy commands, so the migration release process #26D built has
+nowhere to run under #26F's exact-revision compatibility policy; and
+free web services spin down after 15 minutes with a ~1 minute cold
+start, so the first visitor from a shared link waits a minute for a page
+that then fires five API calls.
+
+The paid entry tiers are $7 and $6. **The whole platform is ≈$14/month**
+— Render's own published example for the same shape says ~$13. The free
+tier was never worth its constraints.
+
+### A deployment ordering constraint nobody has hit yet
+
+`prerenderPaths.ts` fetches `/api/v1/intelligence` **at build time** to
+decide which permanent object pages to prerender. Unset
+`VITE_API_BASE_URL` and it prerenders none, silently, and the build
+succeeds.
+
+So **the API must be deployed and reachable before the frontend can be
+built with object pages** — API first, then frontend, on the very first
+deploy. And the consequence is not cosmetic: permanent objects are the
+SHARE stage, and without prerendering a shared link hands a social
+crawler an application shell with no title, description or image. #40
+built those pages specifically to survive leaving MacroChipz, and one
+unset build variable undoes it silently.
+
+### Two defects found by reading the files
+
+**`robots.txt` has a relative sitemap directive.** It says `Sitemap:
+/sitemap.xml`; the directive requires an absolute URL, so crawlers may
+ignore it entirely. It has been wrong since #40 and no test covers it,
+because it is a static file nothing asserts against.
+
+**`/revisions` is neither prerendered nor in the sitemap.** It is a real
+public route carrying what #45A called the strongest single piece of
+writing in the product, it is now linked from all four worlds and the
+homepage after #45B — and it is invisible to crawlers and unfurls. One
+line in `STATIC_PATHS` fixes it.
+
+Neither was found by thinking about deployment. Both were found by
+opening the files that deployment would serve.
+
+### The expensive endpoint nobody is guarding
+
+`GET /api/v1/intelligence` is public, unauthenticated, rate-limited by
+nothing, and regenerates all 1,899 objects on every call — 42 queries,
+~194 ms, 138 KB. The homepage calls it on every load.
+
+The only rate limiter in the product guards `POST /analyst/explain`. On
+a $7 instance with 5 GB of included bandwidth, a trivial loop against
+that endpoint is a cost-and-availability amplifier. **Recorded as a
+launch blocker rather than a hardening nicety**, which is a judgement
+call I would rather make now than after a bill.
+
+### The licensing question, stated as a question
+
+The rule I held to: **permission for one activity is never inferred from
+permission for another.** API access does not imply redistribution;
+website display does not imply email redistribution.
+
+But one inference does hold, and stating it precisely was most of the
+work: for a **public-domain U.S. Government work**, the data carries no
+copyright, so the channel is not itself a copyright question. What
+travels with it is the terms of the *API used to obtain it*, plus
+attribution obligations that are contractual rather than copyright.
+
+That distinction resolves the shape of the problem. **All six
+FRED-dependent concepts are BLS or BEA public-domain works that FRED
+merely redistributes.** MacroChipz needs nothing proprietary to FRED —
+it needs a different pipe to the same public data, which is exactly what
+#28 recommended and the #M1–#M4 track already plans.
+
+And it produces a sequencing answer I did not anticipate: **FRED blocks
+the Brief, not the website.** A public site showing FRED-derived figures
+is the status quo, carrying the same rated risk it has carried since
+#29. Pushing those figures into email is the new act. So the website can
+launch with the question open; the first Brief cannot print an inflation
+figure until #M2/#M3 land, or must scope around it.
+
+What I did **not** do: contact the St. Louis Fed, obtain clarification,
+or re-read FRED's terms to see whether they changed. Each is real; none
+is engineering's to do alone. §D.3 says so.
+
+### Diagnosing the mobile failure instead of retrying it
+
+The 390px verification failed in #45A and again in #45B, both times with
+the same signature: `resize_window` reports success, then the page says
+`innerWidth: 1719` and `matchMedia('(min-width: 640px)')` is still true.
+One reading had `outerWidth: 686` alongside `innerWidth: 1719`, which is
+internally inconsistent.
+
+**It is not a flaky tool. It is the wrong mechanism.** Resizing an OS
+window is not device emulation. Emulation overrides the layout viewport,
+device pixel ratio, user agent and touch capability together; a window
+resize changes the window and may leave the layout viewport alone —
+under page zoom, a DPR of 2, or a maximised window state. Media queries
+key off the layout viewport, so nothing that matters changed.
+
+A third attempt would have produced the same non-result. What the plan
+specifies instead is DevTools device emulation or a real phone, plus a
+**confirmation gate that must pass before any mobile claim is made**:
+`innerWidth === 390` *and* `matchMedia('(min-width: 640px)') === false`.
+Both. Neither previous increment could produce that pair, and both said
+so rather than claiming a pass — which is the only reason this is a
+diagnosable problem rather than a false belief.
+
+### Recommending against a feature I built around
+
+The Analyst recommendation is Option B: launch without it.
+
+It is the product's **only unbounded cost**, at exactly the moment cost
+predictability matters most. Its populated state has **never been tested
+anywhere** — not in this environment, not in any. And #45A already
+measured it as barely discoverable: three pages, below the fold, absent
+from Housing by design.
+
+The uncomfortable corollary, which I included because leaving it out
+would make the recommendation look cheaper than it is: if it does not
+launch, the section should be **removed** from the three world pages
+rather than shipped as a permanently-unavailable heading. An unavailable
+feature advertised in three places is worse than an absent one.
+
+### Lesson
+
+**A deployment plan is mostly an inventory, and an inventory is only
+worth the reading it is based on.** Every genuinely useful finding here
+came from opening a file rather than reasoning about the system:
+`robots.txt` had been wrong since #40, the Dockerfile fix had quietly
+been done, `/revisions` had never been added to the prerender list, and
+the build-time API dependency had been sitting in `prerenderPaths.ts`
+with its consequences documented and unconnected to deployment order.
+
+None of those would have surfaced from the architecture documents, all
+of which are accurate. They describe what the system is *for*. Only the
+files say what it currently *does*.
+
+---
+
+## Increment #46C — Consumer Experience & Visual Direction
+
+Product design plus one bounded working prototype. Nothing committed,
+nothing pushed, nothing deployed, no `.env` value read. Baseline: HEAD
+`937dc1d` (#46B).
+
+Artifact: `docs/product/macrochipz-consumer-experience-v46c.md`.
+Prototype: `/story/fed-and-mortgage-rates`.
+
+### Three increments of mobile findings were measuring the wrong thing
+
+#45A and #45B both audited "mobile" and both carried a caveat: the tool
+reported the window resize as successful, and `matchMedia('(min-width:
+640px)')` kept answering `true` anyway. Every Tailwind `sm:` style was
+still applied. Those audits were describing a narrow desktop window,
+which is a layout no phone renders.
+
+#46B worked out why — resizing a window is not device emulation, and
+nothing in that path tells the page its viewport changed. #46C worked
+out the fix, which turned out to be four lines: **a same-origin iframe
+has its own viewport, and media queries inside it resolve against the
+iframe's width.**
+
+```js
+const frame = document.createElement('iframe');
+frame.style.cssText = 'position:fixed;left:0;top:0;width:390px;height:844px;border:0';
+frame.src = '/story/fed-and-mortgage-rates';
+// contentWindow.innerWidth                              -> 390
+// contentWindow.matchMedia('(min-width:640px)').matches -> false
+```
+
+Every measurement in this increment was taken with that gate passing.
+It is the first genuinely mobile measurement this product has had.
+
+What it found was not what the earlier audits implied. **The layout is
+sound** — zero horizontal overflow on all ten surfaces, which is not
+typical. **The touch layer is not**: `/calendar` has 45 controls of
+which all 45 are under 44px and 43 are under 24px, `/rates` has 40 of
+46, and the recurring offender is `ExplanationTrigger` at **16 × 16 px**
+— the primary discovery affordance for the best content in the product.
+
+The lesson I want to keep is narrower than "verify your tools". It is
+that **a measurement tool reporting success is not evidence that it
+measured anything.** `resize_window` returned `{success: true}` three
+increments running. The only thing that caught it was asserting on a
+property of the page itself rather than on the tool's own report.
+
+### The interaction had to teach, which ruled out most interactions
+
+The brief was explicit that decorative animation would not count. So the
+design question was: what can a reader *do* that changes what they
+understand?
+
+What made it answerable was noticing that the misconception is not a gap
+in knowledge. Nobody wonders who sets mortgage rates; they are confident
+the Fed does. **Reading a correction does very little to a confident
+belief.** Being asked to commit to it first does considerably more.
+
+So the interaction is four rates and one question — which one does the
+Fed actually set? — with nothing revealed until the reader picks. A
+reader who picks "your 30-year mortgage rate" has performed the
+misconception on themselves, which is a much better setup for the
+correction than a paragraph asserting that people commonly believe it.
+
+The constraint that shaped it most was what it had to refuse. No
+quantified Fed-to-mortgage relationship — no direction, no magnitude, no
+timescale — because the explainer's declared basis is
+`INSTITUTIONAL_ROLE` and *who sets what* is the only thing that basis
+supports. No score and no streak, because being wrong is the normal case
+and the entire point. No live data, which is why the whole route
+prerenders and has nothing that can fail.
+
+One precision mattered enough to change the copy: the Fed does not set
+*the* federal funds rate, the FOMC sets a **target range**. Writing it
+the loose way would have been the same species of imprecision the page
+exists to correct.
+
+### The second interaction is weaker, and the code says so
+
+The influence explorer is progressive disclosure. It does not change
+what a reader believes; it changes how much they read at once. That is a
+comprehension gain on a small screen, not a teaching mechanism, and both
+the component docstring and the design document say so rather than
+counting it as a second win.
+
+It keeps #44's actual argument intact — all four influences and the
+convergence line are visible with zero interaction, so the shape (things
+converging, Fed policy one of them, not a chain) survives for a reader
+who taps nothing.
+
+### The prototype's own tests caught the prototype twice
+
+Both worth recording because in both cases the right move was to change
+the code rather than the guard.
+
+The tap-target guard failed on an inline `<Link>` in the closing
+footnote. It would have been easy to add an exception for inline prose
+links. The guard was right: the link moved onto its own line as a 44px
+target.
+
+Then an earlier version of that same guard read the source with a regex
+that stopped at the first `>` — which `onClick={() => …}` contains — and
+so failed a control that was in fact 56px tall. That one *was* the
+guard's fault, and the fix was to stop regexing JSX and assert on the
+rendered tree instead.
+
+### Prerendering and indexing turn out to be different decisions
+
+The story is static, so it should prerender with real content like an
+explainer. But it is a prototype of a page that already exists, so it
+must not compete with it: it ships `robots: noindex` and a canonical
+pointing at `/explain/fed-and-mortgage-rates`.
+
+Those two facts collided in `generate-sitemap.mjs`, which since #40 has
+listed exactly what was prerendered — a good rule that had never had to
+distinguish the two. A sitemap entry plus a `noindex` meta gives a
+crawler two contradictory instructions about one URL. The fix reads each
+built page's own HTML and excludes any that declare `noindex`, so the
+sitemap cannot drift from what the pages actually say.
+
+### An early exit had been hiding a whole verification suite
+
+`verify-build-output.mjs` used to `process.exit(0)` when no intelligence
+pages had been prerendered — which is the normal local and frontend-CI
+build. The #44 explainer checks live below that line. They had been
+silently skipped in that build since they were written.
+
+I only found it because I added story checks to the same file and they
+did not run. That is the second time this increment that something
+reported success while doing nothing.
+
+### What I deliberately did not do
+
+The design document proposes a direction; it did not get applied
+anywhere. Eleven explainers still have no story, `/calendar` still has
+45 undersized controls, and `ExplanationTrigger` is still 16px. The
+brief said not to proceed to the application-wide redesign without
+review, and the touch-target work is the largest measured defect in the
+product, so §H proposes it as #46D's first item — explicitly worth
+shipping **even if the story format is rejected**.
+
+The evaluation section says the prototype is **34% longer** than the
+explainer it reimagines, and lists six hypotheses the increment did not
+test. Building something is not evidence that it works, and the
+comparison is available whenever there is traffic to compare, because
+both routes exist independently.
+
+### Lesson
+
+**Two different things reported success while doing nothing this
+increment** — `resize_window` for three increments, and a build verifier
+that exited before its own checks. Both were caught the same way: by
+asserting on a property of the artifact rather than on the report of the
+thing that produced it. A tool's own success message is the weakest
+evidence available, and it is the evidence that is hardest to stop
+trusting, because it is right most of the time.
+
+---
+
+## Increment #46E — Rate Network Story
+
+The approved luminous visual direction, made functional. One interactive
+economic network at `/story/fed-and-mortgage-rates`, replacing #46C's
+scrolling article-with-a-quiz at the same URL. Nothing committed,
+nothing deployed, no `.env` value read. Baseline: HEAD `937dc1d`.
+
+Specification written before code:
+`docs/product/macrochipz-rate-network-v46e-spec.md`.
+
+### The decision that made everything else easy
+
+**Visuals are SVG. Interaction is HTML.**
+
+The SVG draws the field, halos, edges and node cores and is
+`aria-hidden` — it is a picture. Every node is an absolutely positioned
+HTML `<button>` layered over it at the same percentage coordinates.
+
+Three problems disappeared at once. Tap targets stopped depending on SVG
+scale, which is the defect #46D shipped: 48 user units looked like 48
+pixels, but a scaled `viewBox` makes a user unit a RATIO, and the
+controls rendered at 41px. A button with `min-h-11` cannot be shrunk by
+a viewBox. Accessibility came from the platform — focus ring, tab order,
+Enter/Space, `aria-pressed` and an accessible name are native to
+`<button>` and all four are subtly wrong when hand-built on an SVG
+`role="button"`. And the behaviour became testable, because jsdom has no
+layout engine, so every assertion about SVG geometry there is theatre
+while button semantics are fully assertable.
+
+The measured result: six buttons, every one exactly 44px tall, every one
+inside the board, at a verified 390px.
+
+### Two SVG unit traps, and why one edge kept vanishing
+
+During visual exploration the Federal-Reserve-to-federal-funds edge —
+the single most important relationship on the page — rendered as nothing
+twice, for two independent reasons with the same root.
+
+`filter` and gradients both default to `objectBoundingBox` units. That
+edge is perfectly vertical, so its bounding box has **zero width**. A
+gradient in bounding-box units is not rendered at all on a zero-area
+box, and a filter region of 340% of zero is zero.
+
+The fixes are `gradientUnits="userSpaceOnUse"` and glow from stacked
+strokes rather than a blur filter. Both are now guarded by test, because
+this is not the kind of thing anyone re-derives when they next touch the
+file.
+
+### The traceability rule
+
+A diagram is an easy place to smuggle in a claim. An edge looks like a
+fact, and a confident sentence under a glowing node looks reviewed
+whether or not it is. So the registry holds a mechanical rule:
+
+> every user-visible sentence about the economy must be a **contiguous
+> substring** of a string that was already reviewed.
+
+Trimming a clause is allowed — deleting words cannot add a claim.
+Rewording is not, because it can. `rateNetwork.test.ts` checks every
+node's role against the #44 registry entry and the #46C copy, and the
+first entries are pulled live from the registry so that editing #44
+fails this suite rather than silently drifting.
+
+**Edges carry no prose at all** — a `kind` and two endpoints, nothing
+else. A test asserts the object has exactly three keys. An edge with a
+description is an edge that can acquire a claim.
+
+### One edge deliberately not drawn
+
+The approved mockup drew `federal funds rate → Treasury yields`. The
+implementation does not, and a test asserts its absence.
+
+The reviewed copy routes the Fed's effect on long-term rates through
+*expectations* — "that decision ripples through what investors expect
+for the future" — not through the funds rate itself. Drawing the
+shortcut would have asserted a mechanism the sources do not. It is the
+one place where matching the approved visual would have cost accuracy,
+and accuracy won.
+
+What survived is better anyway: **two direct edges at opposite ends of
+the graph with nothing but influence between them.** That shape is the
+explanation, which is why the legend is not decoration.
+
+### Fitting a panel under a diagram
+
+The brief allowed a bottom sheet. A sheet was rejected because it
+overlays the bottom of the viewport, which at 390px is exactly where the
+lower half of the diagram lives — so the thing describing a node would
+cover the node.
+
+Putting the panel under the diagram instead meant both had to fit above
+844px, and the first build missed by 157px. The board was the biggest
+line item: 4:5 at full width is 447px of a 844px screen. Compressing it
+to square and capping it at 330px on a phone bought 117px, and trimming
+type and padding found the rest. Worst case across all six selections is
+now 841px, measured per node rather than assumed from one.
+
+The panel also carries a `min-height` floor, so switching between a long
+role and a short one does not shunt the rest of the page up and down on
+every tap.
+
+### The absence is the finding
+
+Four of the six nodes have no setter. `NodePanel` states that in words —
+"Nobody sets it / it is priced in a market" — rather than leaving a
+missing row, because for this story the absence of an authority IS the
+substantive claim. A registry test asserts that the only two nodes
+naming a setter are the two that are the target of a `sets` edge, so the
+words and the picture cannot disagree.
+
+### A Constitution tension recorded rather than resolved
+
+§19.1 requires every explainer to bind at least one claim to a live
+MacroChipz figure. This route embeds none — #44 made that choice for the
+canonical explainer and #46C kept it, because a page with no data cannot
+fail and prerenders whole.
+
+The required movement (CONCEPT → CURRENT DATA → RELATED WORLD →
+EVIDENCE) is satisfied by landing the reader on `/rates` and `/housing`.
+That is satisfaction by navigation rather than by embedding, which is a
+narrower reading than the rule as written. Written down in the spec
+§3.6 and flagged here rather than quietly assumed.
+
+Similarly §23 wants an as-of date on every share card. This card carries
+no figure, so nothing on it can go stale; it says "institutional roles,
+not market data" where the date would go. The rule is not waived, it is
+inapplicable — and the moment the card carries a number it needs one.
+
+### Results
+
+1,913 tests across 78 files, typecheck, lint and production build all
+pass. 64 of those tests are new. The story chunk is 6.5 KB gzipped and
+adds no dependency. Prerendered HTML carries 3,710 characters of text,
+six node buttons and the default panel without JavaScript.
+
+One flake seen once in `Home.test.tsx`, a file this increment did not
+touch; it passed in isolation and in three consecutive full runs
+afterwards. Recorded rather than dismissed.
+
+### Lesson
+
+**The same bug class has now cost three increments: a measurement that
+looks like a measurement but is a ratio.** `resize_window` reported
+success while the viewport never changed. SVG user units looked like
+pixels and shipped 41px controls. A gradient and a filter in
+bounding-box units looked like geometry and rendered nothing on a
+zero-width box.
+
+Every one was caught the same way — by measuring the rendered artifact
+rather than trusting the declaration that produced it. The fix that
+generalises is not "remember these three"; it is that anything whose
+units are relative to something else should be asserted against the
+thing it actually rendered to.
+
+---
+
+## Increment #46E-R — Responsive refinement
+
+A measured pass over the rate network at 390px, 440px and under browser
+zoom. No visual identity change, no economic change, no architecture
+change. Nothing committed.
+
+### Three defects behind a green check
+
+The first implementation reported **zero horizontal overflow at every
+width**, and I took that as evidence the layout was sound. It was
+evidence of nothing: `scrollWidth` measures how wide the document is, and
+one control sitting on top of another does not make a document any wider.
+
+Measuring the rendered box of each of the six node controls instead found
+an overlap at every width, a chip hanging outside the diagram at 320px,
+and 110px of a 440px screen left unused.
+
+### The overlap was arithmetic
+
+Nodes sat at 11/25/39/58/70/91 percent. Two of them are twelve points
+apart; on a 330px board that is 40px, and each chip is a 44px tap target.
+So two controls overlapped by 5px on every single render, and the gap
+shrank as the board did — at 320px three pairs collided.
+
+Even 16.8-point spacing makes the minimum separation
+`0.168 x boardWidth`, which clears 44px for any board at least 262px
+wide. The test asserts that arithmetic rather than a screenshot, so it
+cannot regress when someone nudges a node by a point.
+
+### The clipping was two numbers that disagreed
+
+A chip is translated 14px away from its dot, and its `maxWidth` allowed a
+flat 2% of the board. Two percent is less than 14px on anything under
+700px wide, so the longest chip hung 8px outside the diagram at 320px.
+`maxWidth` now uses `calc()` with the same 14px the transform uses — one
+number, referenced twice, instead of two numbers that happened to agree
+at one width.
+
+### The cap that fixed one thing and caused another
+
+The 330px phone cap existed to keep the selected-node panel above the
+fold. It also made the board short, which is what pushed the chips close
+enough together to overlap. Removing it fixed both, because on a square
+board width *is* vertical room.
+
+The cost came due elsewhere: a bigger board pushes the panel down. The
+intro was compacted to one line carrying the tap affordance, and the
+connection lists moved behind a `<details>` — leaving the role and the
+"who sets it" claim always visible, which is what a reader needs
+immediately after tapping, and folding away the part the diagram already
+shows by highlighting.
+
+### What is still not true
+
+At 440px the whole panel does not fit above the fold; the explanation
+(ends 750px) and the setter claim (819px) do, and the collapsed
+`Connections` toggle is what crosses it. And below about 309px CSS width
+the overlap returns — 312px is clean at 45px separation, 294px collides
+at 41px, which is a 390px phone past roughly 125% zoom.
+
+Both are written down in the spec with their measurements rather than
+rounded off. The zoom floor needs a single-column reflow, which is a
+layout mode and not a tweak, so it is proposed rather than smuggled in.
+
+### Lesson
+
+**A passing check is only worth the thing it measures.** `scrollWidth`
+was a real measurement, taken correctly, of the wrong quantity — and it
+stayed green through an overlap that had been there since the first
+render. The useful habit is not "measure more", it is to ask what the
+metric would look like if the defect were present. Overlap does not widen
+a document, so a width check could never have found it.
+
+---
+
+## Increment #46E-S — Narrow-screen fallback
+
+The last piece of the rate network's responsive work: a single-column
+layout below the width at which six 44px controls can no longer avoid
+each other. Bounded, no redesign, nothing committed.
+
+### The breakpoint was calculated and then confirmed
+
+Six chips, 44px tall, 16.8 percentage points apart on a board that is
+the column minus a constant 47px gutter:
+
+    0.168 x (viewport - 47) >= 44   =>   viewport >= 308.9px
+
+Measured rather than trusted: 312px clean at 45px of separation, 294px
+collides at 41px. The switch sits at 312px — three pixels of margin, and
+the chips truncate so a larger user font cannot wrap them onto a second
+line and quietly raise the floor underneath the breakpoint.
+
+That is the difference from the earlier passes in this increment. The
+number is not a round device width someone liked; it is the point where
+an inequality stops holding, and the inequality is asserted by a test.
+
+### The fallback is CSS, and that is the whole trick
+
+The same six buttons, in the same DOM order, stop being absolutely
+positioned and become a flex column. The SVG hides and connector rows
+take its place.
+
+No second set of controls to keep in sync, no `matchMedia` in React, no
+measurement, and therefore nothing that can mismatch between the
+prerender and the browser. Positions moved from inline `style` into CSS
+custom properties so a media query could override them — which is the
+only reason a pure-CSS switch was available at all.
+
+### Where the column tells less than the truth, and how it says so
+
+A column can only draw an edge between adjacent rows. Four of six
+qualify; `fed-policy → treasury` and `treasury → lenders` skip a row and
+are not drawn.
+
+They are not lost: the panel's `Connections` disclosure lists every
+relationship of the selected node at every width. And because a
+connector is drawn only where an edge exists, adjacency without one
+means "no relationship between these two" — which is true. The diagram
+never implies an edge that is not there, which is the property that
+mattered.
+
+### A test I deleted on purpose
+
+"Sides alternate" was belt-and-braces from the previous pass. It
+conflicted with putting `fed-policy` and `fed-funds` on the same x so
+their edge stays perfectly vertical, and verticality is worth more: a
+vertical line has a zero-width bounding box, which is exactly the
+geometry that makes a bbox-relative gradient or filter render nothing.
+Keeping one vertical `sets` edge means that guard has a live example to
+fail against instead of a rule nobody can trigger.
+
+The even spacing, not the alternation, is what actually prevents
+overlap — so the weaker rule went and a stronger one replaced it.
+
+### Results
+
+294 / 312 / 320 / 390 / 440px, all six selections at each, measuring
+rendered control bounds: no overlaps, no clipping, no horizontal
+overflow, nothing under 44px. At 294px the column keeps DOM order equal
+to visual order, all six accurate `aria-label`s, focus on the activated
+button, 33 animating elements all carrying the reduced-motion opt-out,
+and all three disclosures.
+
+1,917 tests across 78 files, typecheck, lint and build pass. Story chunk
+6.7 KB gzipped, no new dependency.
+
+### Lesson
+
+**The good breakpoints are the ones you can derive.** Every previous
+attempt in this increment picked a width because it was a common device
+size, and each one either wasted space or broke somewhere nobody had
+measured. This one comes out of an inequality between a tap-target
+height and a percentage spacing — so it can be asserted in a unit test,
+and it moves correctly on its own if either input ever changes.
