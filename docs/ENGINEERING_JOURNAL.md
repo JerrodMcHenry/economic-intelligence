@@ -14136,3 +14136,418 @@ cancelling. The answer was nothing. It had never cancelled anything.
 
 Worth asking of any negative margin, any `overflow: hidden`, any `z-index`
 above 1: what is this cancelling, and is that thing still there?
+
+---
+
+## #48 production preparation — verifying rights, and one figure
+
+**2026-09-22.** Prototype only. No production route, component, dependency or
+methodology touched.
+
+### Three of four images could not be verified, and that is the result
+
+The brief asked for verified federal public-domain imagery and was explicit
+that hosting on a `.gov` domain proves nothing. That turned out to be the whole
+exercise.
+
+**One asset cleared the bar.** Carol M. Highsmith's photograph of the Treasury
+building at the Library of Congress. The item's `rights_advisory` reads "No
+known restrictions on publication." — but the Library also states it does not
+own rights and that assessing them is the researcher's obligation, so the
+advisory alone is not a commercial basis. What *is* one is the collection's own
+sentence: the photographer dedicated the archive's rights to the American
+people for copyright-free access. That is the sentence now on file.
+
+**Three could not be.** The Highsmith archive is architecture and landscape,
+not people at work or retail interiors; its steel-mill results are all *idle and
+abandoned* plants, which on a Jobs tile would assert industrial decline — a
+claim about the economy nothing in the product supports. The wider
+no-known-restrictions pool is 1880–1950. A 1940 grocery photograph on a page
+whose entire claim is *current, sourced* data misrepresents by context rather
+than by caption.
+
+So Inflation, Jobs and Housing keep marked placeholders. Deliberately: the
+alternative was to make a pretty page out of four images whose provenance
+nobody could state.
+
+### The rule that came out of reviewing candidate images
+
+Two of the four images supplied failed regardless of licence — one carried a
+legible third-party trademark on a worker's shirt, another an identifiable face
+with store signage. But the interesting one was subtler: **a shelf price tag,
+legible in frame, on what would be the Inflation tile.**
+
+Nobody would have written "tomatoes cost $1.49/lb" as copy. The photograph
+says it anyway, in a product whose entire promise is that every figure traces
+to the agency that published it. A figure that arrived through a photograph
+has no such trace.
+
+**New acceptance rule: no legible price, figure or date inside a photograph
+unless we intend to stand behind it.**
+
+### A truncated attribution is not an attribution
+
+The on-tile credit was 7.5px with `white-space: nowrap; text-overflow: ellipsis`.
+At 440px it rendered "Carol M. Highsmith Archive, Library of Congre…".
+
+It measured clean — inside its frame, no overflow, no clipped *layout*. The
+defect was only visible by reading the rendered pixels, because ellipsis is
+what the CSS was *asked* to do. The chip is now 9px and wraps, and the full
+required credit line is carried verbatim in the footer beside the Census
+notice.
+
+**An overflow check answers "did the box fit". It does not answer "is the
+sentence still there".** For a legal notice those are different questions, and
+only one of them matters.
+
+### The figure was audited against a different endpoint
+
+`5.01%` on `2026-09-18` was re-checked against
+`/api/v1/series/UST_NOMINAL_10Y/observations` rather than the monitor the
+snapshot came from — same claim, independent path. All four maturities match.
+Re-reading a number from the source that produced it is not an audit.
+
+### Lesson
+
+**"No known restrictions" is a statement about what the archive knows, not a
+licence.** The commercially usable fact was one sentence in the collection's
+About page, not the field that looked like the answer. When a rights field
+reads like permission, find the instrument that grants it.
+
+---
+
+## #48 production integration — the homepage, and three things only a measurement caught
+
+**2026-09-22.** The Living Economy homepage shipped to `/`. 1,946 tests,
+typecheck, lint and production build all pass. No canonical data, methodology
+or source-licensing rule touched.
+
+### The page now prerenders with its content
+
+`/` used to prerender as an application shell — real `<title>`, empty body,
+because every section fetched. The hero fetches nothing, so the static HTML now
+carries **3,866 characters** of real text, the `<h1>`, all four worlds and the
+Library of Congress credit line.
+
+That was a side effect of the orientation-first rule, not a goal, and it is the
+best argument for that rule: the same property that makes the page survive an
+API outage makes it legible to a crawler.
+
+### Three defects, none of which a screenshot would have shown
+
+**1. The hero's lighting was invisible, and looked like a colour problem.**
+
+It shipped as a `::before` on the hero at `z-index: -1`. Nothing appeared. The
+temptation was to reach for the opacity.
+
+The actual rule: a negative z-index child paints inside the nearest **stacking
+context**, not inside its parent. Nothing between the hero and the root created
+one, so the bloom painted at the root's step 3 — after the root background and
+*before* every normal-flow descendant, including `<main>`'s own opaque
+background, which then covered it.
+
+The fix was not `isolation: isolate`. It was to stop having a positioned element
+at all: the gradients are now `<main>`'s background, which makes them full-bleed
+by construction and makes horizontal overflow impossible, because nothing is
+positioned.
+
+**2. The light theme was unreadable, and every screenshot taken during design
+was taken in the dark theme.**
+
+`[data-surface]` pages are dark by design. They were reading `--mc-fg` from the
+active theme. In the light theme that is near-black — measured at
+`oklch(0.22 0.018 262)` on `rgb(18, 19, 23)`.
+
+The story page from #46F has had this since it shipped. It was never opened in
+the light theme, and neither was this one until a measurement forced it. The fix
+is one selector list: a permanently dark surface takes the dark palette.
+
+**A theme toggle is a second rendering of every page, and half of it was never
+being looked at.**
+
+**3. The required credit was at 1.12:1, and a text-shadow made it look fine.**
+
+The credit sits at the top-right of the Treasury photograph — which is exactly
+where the pale stone pediment is, the brightest region in the frame. White text
+on it measures **1.12:1**.
+
+It *looked* acceptable in a screenshot, because a `0 1px 2px rgba(0,0,0,.95)`
+shadow makes small white text look anchored. The shadow changes the measured
+ratio by nothing at all. It is a legibility illusion, and on a legally required
+attribution that is the worst place to have one.
+
+Measured by rasterising the actual crop — source image, `object-position`
+50%/58%, both overlay gradients — and taking the worst pixel under the text
+box. With a scrim: **4.78:1**. The world caption, checked the same way: 5.14:1.
+
+**The scrim is the point, not the number.** Contrast is now a property of the
+component instead of a property of the picture, so the next verified photograph
+cannot quietly break a legal notice.
+
+### A defect that was not ours
+
+The header overflows horizontally at 768px. Found while measuring the homepage;
+confirmed identical on `/rates` and `/calendar`. It is the theme toggle in
+`AppShell`, it predates this work, and it was reported rather than fixed — a
+shared-shell change touching every route is not something to fold into a
+homepage increment because it happened to be noticed there.
+
+### The rule the tests now carry
+
+`worldImagery.test.ts` fails the build if a `verified` photograph has no credit,
+no alt, no crop or no reserved dimensions, if a file it names does not exist, if
+its alt text contains an economic claim, or if the full notice stops naming an
+archive that is still in use. The rights rule stopped being a review habit.
+
+### Lesson
+
+**Three of the four defects in this increment were invisible to the eye and
+obvious to a number.** A gradient that does not paint, text that is the wrong
+colour in a theme nobody opened, and an attribution that is legible-looking at
+1.12:1 — none would have been caught by looking harder at a screenshot, and all
+three were caught by computing a value and comparing it to a threshold.
+
+The corollary is uncomfortable: **the parts of a design nobody measures are the
+parts that ship broken.** The light theme was not a hard problem. It was an
+unasked question.
+
+---
+
+## #48A — the rest of the homepage, and a header that never fitted
+
+**2026-09-23.** A visual-standard pass over everything below the approved
+hero. 1,953 tests, typecheck, lint and production build pass. No canonical
+data, methodology or licensing rule touched.
+
+### The header overflowed at 768px on every page, and flex-shrink was a red herring
+
+Measured at a 768px viewport, before anything was changed: the header row has
+**705px** of usable width and its three children need **762px** — brand 171,
+navigation 441, theme-and-menu 102, plus two 24px gaps.
+
+All three children have `flex-shrink: 1`. The obvious question is why nothing
+shrank. Because **`min-width: auto` is the default on a flex item**, and no
+child can go below its min-content width: six navigation links in a row do not
+compress. A shrink factor on an item that cannot shrink is decoration.
+
+Fixed three ways, because any one of them alone is a number that goes stale the
+day a fifth world is added:
+
+1. the wordmark tagline waits until `lg` — it is duplicated verbatim in the
+   footer, so this costs nothing and frees 75px;
+2. `md:gap-x-4` instead of 6, freeing 16 more — needed is now 671 against 705;
+3. **the row wraps again at `md`.**
+
+The third is the one that matters. With `flex-nowrap`, an over-long row becomes
+document overflow. Without it, the navigation moves to a second line and the
+header gets taller. A future world now makes the header grow instead of making
+every page scroll sideways.
+
+### Two sections that were one reading
+
+The lede showed the 10-year Treasury yield for 2026-09-18. "Also recorded"
+showed the 2-, 5- and 30-year and the real 10-year, for 2026-09-18. Same world,
+same date, same source — split by a heading, a horizontal rule and 64px of
+padding, as though they were different subjects.
+
+They are now one card: figure and chart on the left, the other maturities as a
+rail on the right at `lg` and beneath at every narrower width. Every value,
+as-of date, world and evidence link is unchanged.
+
+**What did not merge is the claim.** THE LEDE is chosen by
+`homepage_presentation_v1.0`; the rail is what `selection.whatChanged`
+returned. Two different selections, so the rail keeps its own heading — demoted
+to `h3` because it now sits inside the lede's `h2`. Pouring the five values into
+one undifferentiated list would have made the eligibility policy invisible, and
+that policy being visible is the reason it exists.
+
+### A preview of six unlabelled dots is not a preview
+
+The featured story's diagram shipped as six dots, six edges and a legend. It
+was accurate and it explained nothing.
+
+The names are now an HTML layer positioned over the SVG at the registry's own
+percentage coordinates — the same split the story page uses: **visuals are SVG,
+anything with a type size is HTML**. A `font-size` inside a `viewBox` shrinks
+with the box, which is the identical trap that gave #46D a 48-unit tap target
+rendering at 41px.
+
+Underneath it, composed from the registry's own `setBy` field rather than
+written by hand, is the line that answers the question without a click: which
+two of the six anyone sets, and who sets them. The diagram and that sentence
+cannot disagree, because they read the same field.
+
+Measured at 390px: six labels, zero overlaps, none outside the board.
+
+### The lower page: two columns with different jobs
+
+Five sections used to stack full-width with 64px between each, so everything
+below the story was a column of headings separated by space. Now:
+
+- **main** — what the economy currently reads (Inflation and Jobs as peer
+  cards, side by side from `md`), the one defended cross-world sentence, and
+  the questions that explain them;
+- **rail** — when the next data lands, and what happens when a figure changes.
+
+At 1440 the two columns came out 848px each without being told to. Document
+height fell **4181 → 2850 (−32%)** at 1440 and **4481 → 3869 (−14%)** at 768.
+
+Mobile went the other way: **4792 → 4886 (+94px)**, and that is the honest
+result rather than a miss. The labels and the who-sets-what list are new content
+the page did not have. A preview that explains itself is worth 94px.
+
+### The repetition I did not remove
+
+`HowTheyRelate` renders "View Inflation →" and "View Jobs →" directly beneath
+two cards that already say "Open Inflation →" and "Open Jobs →". It is real
+duplication and it was in scope.
+
+It stays, because `docs/product/relate-composition-v1.md` freezes this component
+as the composed sentence "plus the two existing CTAs — nothing else". A layout
+pass is not the place to reopen a frozen contract, and quietly deleting a CTA
+the contract names would be exactly the kind of small, reasonable-looking edit
+those contracts exist to stop.
+
+### Lesson
+
+**`flex-shrink: 1` on an item that cannot shrink looks like a fix and is
+nothing.** The header had carried a shrink factor on all three children the
+whole time it was overflowing. Reading the CSS would have said the row was
+allowed to compress; measuring it said the row was 57px too wide. Only one of
+those was true, and `min-width: auto` is why.
+
+---
+
+## #48B — the best thing on the page was 1,637px down
+
+**2026-09-23.** Presentation-only polish. 1,961 tests, typecheck, lint and
+production build pass.
+
+### The measurement that decided the whole increment
+
+At a 390×844 viewport, the featured story — the interactive network, the one
+thing on MacroChipz you can actually play with — began at **1,637px**. Two full
+screens down, the second of which is a Treasury chart.
+
+Every previous pass had been measuring the right things about that region:
+overflow, tap targets, contrast, clipping. All clean. None of them asked *how
+far down the page the best content is*, which turns out to be the question that
+mattered.
+
+Constitution §3 says the mortgage-rate misconception is the acquisition wedge.
+The page was burying the wedge behind the data.
+
+It now sits at **651px**, entirely inside the first screen, as a compact teaser
+between the hero's discovery strip and the chart. The chart moved nowhere and
+lost nothing.
+
+### One invitation, not two
+
+`StoryTeaser` renders below `lg`; `FeaturedStory` renders from `lg`. A phone
+meets the story once, early; a desktop meets it once, in its editorial
+position. The obvious cheap version — render the teaser everywhere and keep the
+section too — would have put the same question on the screen twice and been
+worse than the problem.
+
+Both are gated in CSS rather than by a JS breakpoint, so the prerendered HTML
+carries both and the browser picks. No layout shift, no hydration flash, and
+the static page is correct for a crawler at any width.
+
+### Removing a sentence that was true
+
+The desktop preview said "Six actors sit between a Federal Reserve decision and
+the rate a lender quotes you. Only two of them are set by anyone at all."
+Registry-derived, accurate, guarded by a test.
+
+It sat directly above a diagram that names six actors and a list that shows
+exactly two of them being set. It was the caption of a picture that already
+said it.
+
+The test that guarded it now asserts the **fact** instead — six nodes, two
+`sets` edges, six labels rendered, two rows in the list — and asserts the
+sentence is gone. A test that pins prose pins the prose; a test that pins the
+fact survives the prose changing.
+
+The count still appears on the mobile teaser, because there is no diagram there
+to carry it.
+
+### A rail is narrower than it looks
+
+"Personal Income and Outlays" was wrapping onto two lines under a one-line date
+badge. The obvious fix is smaller type in the release row — and it would have
+shrunk the type on `/releases` too, which renders the same component and has no
+such problem.
+
+So the column widened instead: 19rem → 21.5rem, which gave the name 215px and
+one line. **When a shared component looks wrong in one place, suspect the
+place.**
+
+### An overflow that wasn't
+
+At 1024 exactly one element reported a right edge past the viewport: a `span`
+reading "Why it matters:" inside a release row. It appeared at 1024 and at no
+other width, which is the shape of a real breakpoint bug.
+
+It is inside a **closed `<details>`**. Opening all six produced zero
+overflowing elements, and `scrollWidth === clientWidth` throughout. A closed
+disclosure's subtree can report a box that participates in no layout.
+
+Worth writing down because the instinct — a lone element, at one width, past
+the edge — was to go fix it. The check that settled it was cheap: open the
+thing and measure again.
+
+### Lesson
+
+**Every audit so far asked whether the page was correct. None asked what was
+reachable.** Overflow, hit targets, contrast and clipping are all properties of
+a rendered element; "how far must someone scroll before the product shows them
+what it is" is a property of the *order*, and no per-element check will ever
+surface it.
+
+The number to keep taking is the y-offset of the best thing on the page.
+
+---
+
+## #48C — the badge that covered a node
+
+**2026-09-23.** A presentation-only refinement of the mobile story teaser.
+1,963 tests, typecheck, lint and production build pass.
+
+### Two small decisions worth recording
+
+**A frame, not a bigger icon.** The teaser read as a navigation row with a
+picture beside it. What changed that was not making the glyph larger — it was
+giving it a lit frame. A framed graphic is a thumbnail of somewhere; an
+unframed one is decoration on a link. The same signal a video still gives.
+
+**The action badge went to the top-right, and the corner was the whole
+question.** Bottom-right is where an action badge goes. It also sits exactly
+where the registry puts `mortgage-rate`: x 78, y 92. So the conventional
+position covered one of the six nodes in a six-node diagram — on a component
+whose entire job is to advertise that diagram.
+
+The glyph is decorative and `aria-hidden`, so nothing was *wrong* in any sense
+a test would catch. It was just a worse picture of the thing being advertised.
+Moved to the top-right, which the registry leaves empty — nearest node is
+`treasury` at y 41.6. Asserted afterwards: 0 of 6 nodes under the badge.
+
+### The height that a layout change gave back
+
+First attempt put the badge at the far right of the strip. Frame 56 + chip 28 +
+two gaps took **36px** off the text column, which pushed the meta line from two
+lines to three and grew the strip from 133px to 153.
+
+Putting the badge on the frame's corner returned all of it. Same two elements,
+same sizes, one fewer thing competing for the same row: **133px at both 390 and
+440**, meta back to two lines.
+
+**Space in a flex row is zero-sum, and a decoration placed in the flow bills
+the text for it.** Placing it absolutely, on something that already occupies
+the row, costs nothing.
+
+### Lesson
+
+Both fixes came from asking what the component is *for* rather than what looks
+balanced. The frame, because the teaser advertises an interactive diagram. The
+corner, because covering a node of that diagram to decorate the advert defeats
+the advert.

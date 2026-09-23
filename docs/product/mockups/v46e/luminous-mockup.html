@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>MacroChipz · Luminous — 390px visual mockup</title>
+<!--
+  MACROCHIPZ "LUMINOUS" — ONE 390px MOBILE VISUAL MOCKUP
+  ======================================================
+  #46D, revised direction. Broadsheet / Signal / Field Notes /
+  Chips-and-Traces are abandoned; none of their palettes, layouts or
+  type survives here.
+
+  THIS IS A VISUAL MOCKUP, NOT A PROTOTYPE. Nothing is wired. The
+  network is rendered in its SELECTED state so the design can be judged,
+  but tapping does nothing — the interactive experience, the share card
+  and any production code are deliberately not built yet.
+
+  ------------------------------------------------------------------
+  WHAT WAS EXTRACTED FROM THE REFERENCES
+  ------------------------------------------------------------------
+  1. Interactive stories — a violet-to-black field lit by ONE hero
+     source with soft bloom; glassy cards with lit top edges; a calm,
+     nocturnal register rather than a loud one.
+  2. The Living Economy — near-black with a faint starfield; a
+     node-link graph whose nodes have white-hot cores inside coloured
+     halos; thin, semi-transparent edges; translucent panels over the
+     field.
+  3. Shareable discoveries — two-tone rim lighting and bloom, and real
+     depth: light spills onto what is behind it.
+
+  ------------------------------------------------------------------
+  HOW THE EXISTING BRAND SURVIVES INTACT
+  ------------------------------------------------------------------
+  MacroChipz's accent was ALREADY a blue-violet: `--mc-brand` resolves
+  to #9facf1 and `--mc-focus` to #a2b0ff in the dark theme, both at hue
+  ~275. So "dark purple and electric blue" is an amplification of the
+  brand, not a replacement of it. Every accent below is an existing
+  token. What is EXTENDED is only the surface ramp: the shipped canvas
+  (#0d0f13) sits at hue 262 with chroma 0.008 — effectively neutral —
+  and the references need violet depth, so chroma rises while the hue
+  stays in the brand's own family.
+
+  ONE COLOUR IS DELIBERATELY REFUSED. Reference 3 pairs magenta with
+  CYAN. `--mc-state-cool` is #85c8e6, a pale cyan that carries economic
+  meaning under the #27B hard rule — state tones are a classification,
+  never decoration. A cyan accent here would collide with it, so the
+  second luminous accent is a violet-magenta at hue ~300 instead. The
+  two-tone rim light survives; the ambiguity does not.
+
+  NO ECONOMIC CLAIM IS INVENTED. Every sentence comes from
+  ../v46d/content.js, which is itself verbatim from the reviewed
+  explainer registry. No live data, no figure, no quantified
+  relationship between a Fed decision and a mortgage rate.
+-->
+<style>
+  :root {
+    /* ---- REUSED, unchanged, from the shipped dark theme ----------- */
+    --mc-brand:        #9facf1;   /* accent, nodes, direct edges      */
+    --mc-focus:        #a2b0ff;   /* highlight / selected             */
+    --mc-fg:           #e9ebef;
+    --mc-fg-secondary: #bdc1c8;
+    --mc-fg-muted:     #979ca3;
+
+    /* ---- EXTENDED: violet depth in the surface ramp only ---------- */
+    --lx-void:   #07050e;   /* deepest field                          */
+    --lx-deep:   #0f0a1e;   /* violet-black                           */
+    --lx-raise:  #171130;   /* lifted surface                         */
+    --lx-glow-a: rgba(124, 96, 240, .34);  /* hero bloom, hue ~275    */
+    --lx-glow-b: rgba(186, 122, 240, .26); /* second accent, hue ~300 */
+    --lx-star:   rgba(233, 235, 239, .55);
+
+    /* glass */
+    --lx-card:    rgba(255, 255, 255, .048);
+    --lx-card-hi: rgba(255, 255, 255, .13);
+    --lx-card-lo: rgba(255, 255, 255, .07);
+
+    --sans: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Roboto,
+            "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--lx-void); -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    color: var(--mc-fg);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+    min-height: 100%;
+    /* THE FIELD. Three layers, not a flat rectangle: a hero bloom at
+       upper right (reference 1's moon), a second violet bloom at lower
+       left, and a deep vertical ramp underneath. */
+    background:
+      radial-gradient(126% 62% at 84% -6%,  var(--lx-glow-a) 0%, transparent 62%),
+      radial-gradient(104% 54% at 4% 78%,   var(--lx-glow-b) 0%, transparent 66%),
+      linear-gradient(176deg, var(--lx-deep) 0%, #0b0817 46%, var(--lx-void) 100%);
+    background-attachment: fixed;
+  }
+
+  /* the starfield sits above the blooms and below everything else */
+  #stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .layer { position: relative; z-index: 1; }
+
+  /* ---- chrome ------------------------------------------------------ */
+  .top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px 0;
+  }
+  .wordmark { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .wordmark span { color: var(--mc-brand); }
+  .chipnav {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 30px; padding: 0 12px; border-radius: 999px;
+    background: var(--lx-card); border: 1px solid var(--lx-card-lo);
+    font-size: 11.5px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--mc-fg-secondary);
+  }
+  .chipnav i {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--mc-brand);
+    box-shadow: 0 0 8px 1px rgba(159,172,241,.85);
+  }
+
+  /* ---- hook -------------------------------------------------------- */
+  .hook { padding: 22px 20px 0; }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--mc-brand); margin: 0 0 12px;
+  }
+  h1 {
+    margin: 0; font-size: 33px; line-height: 1.06; font-weight: 700;
+    letter-spacing: -0.032em; text-wrap: balance;
+  }
+  .sub {
+    margin: 10px 0 0; font-size: 14.5px; line-height: 1.45;
+    color: var(--mc-fg-secondary); max-width: 34ch;
+  }
+
+  /* ---- the network ------------------------------------------------- */
+  .netwrap { padding: 6px 8px 0; }
+  .net { display: block; width: 100%; height: auto; overflow: visible; }
+
+  .legend {
+    display: flex; gap: 16px; padding: 2px 20px 0;
+    font-size: 11.5px; color: var(--mc-fg-muted);
+  }
+  .legend div { display: inline-flex; align-items: center; gap: 7px; }
+  .legend .k { width: 22px; height: 0; border-top: 2px solid var(--mc-brand); }
+  .legend .k.ind {
+    border-top: 2px dashed rgba(159,172,241,.55);
+  }
+
+  /* ---- glass cards -------------------------------------------------- */
+  .card {
+    margin: 16px 20px 0; padding: 16px 17px 17px;
+    border-radius: 18px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.028) 100%),
+      rgba(23, 17, 48, .55);
+    border: 1px solid var(--lx-card-lo);
+    /* the lit top edge from reference 1, plus depth beneath */
+    box-shadow:
+      inset 0 1px 0 0 var(--lx-card-hi),
+      0 18px 40px -22px rgba(0,0,0,.95);
+    backdrop-filter: blur(18px) saturate(130%);
+    -webkit-backdrop-filter: blur(18px) saturate(130%);
+  }
+  .card.selected {
+    border-color: rgba(162,176,255,.34);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255,255,255,.18),
+      0 0 0 1px rgba(162,176,255,.10),
+      0 22px 46px -24px rgba(0,0,0,.95),
+      0 0 40px -14px rgba(124,96,240,.55);
+  }
+
+  .kicker {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--mc-focus); margin: 0 0 9px;
+  }
+  .kicker .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--mc-focus);
+    box-shadow: 0 0 10px 2px rgba(162,176,255,.8);
+  }
+  .card h2 {
+    margin: 0; font-size: 19px; line-height: 1.25; font-weight: 650;
+    letter-spacing: -0.015em;
+  }
+  .card p { margin: 9px 0 0; font-size: 14.5px; line-height: 1.52; color: var(--mc-fg-secondary); }
+
+  .rolerow {
+    display: flex; align-items: center; gap: 9px; margin: 13px 0 0;
+    padding-top: 12px; border-top: 1px solid rgba(255,255,255,.075);
+    font-size: 12px; color: var(--mc-fg-muted);
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; flex: none;
+    height: 24px; padding: 0 11px; border-radius: 999px; white-space: nowrap;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  }
+  .pill.direct {
+    color: #dfe4ff; background: rgba(124,96,240,.26);
+    border: 1px solid rgba(162,176,255,.38);
+  }
+  .pill.indirect {
+    color: var(--mc-fg-secondary); background: rgba(255,255,255,.05);
+    border: 1px dashed rgba(255,255,255,.18);
+  }
+
+  /* takeaway */
+  .takeaway h2 { font-size: 22px; line-height: 1.16; letter-spacing: -0.025em; }
+  .takeaway .glowline {
+    height: 2px; margin: 0 0 13px; border-radius: 2px; width: 46px;
+    background: linear-gradient(90deg, var(--mc-focus), rgba(186,122,240,.2));
+    box-shadow: 0 0 14px 1px rgba(162,176,255,.7);
+  }
+
+  /* evidence row */
+  .evidence {
+    margin: 12px 20px 0; padding: 14px 17px; border-radius: 16px;
+    background: rgba(255,255,255,.035);
+    border: 1px solid rgba(255,255,255,.06);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .evidence .l { font-size: 13.5px; font-weight: 600; }
+  .evidence .s { font-size: 11.5px; color: var(--mc-fg-muted); margin-top: 2px; }
+  .evidence .chev { color: var(--mc-fg-muted); flex: none; }
+
+  /* onward */
+  .onward { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 20px 0; }
+  .onward > div {
+    border-radius: 16px; padding: 13px 14px 14px;
+    background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.06);
+  }
+  .onward .w {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--mc-brand); margin-bottom: 5px;
+  }
+  .onward .t { font-size: 13.5px; line-height: 1.32; color: var(--mc-fg-secondary); }
+
+  .foot {
+    margin: 26px 20px 0; padding: 0 0 40px;
+    font-size: 11px; line-height: 1.6; color: var(--mc-fg-muted);
+  }
+</style>
+</head>
+<body>
+
+<svg id="stars" aria-hidden="true"></svg>
+
+<div class="layer">
+
+  <header class="top">
+    <div class="wordmark">Macro<span>Chipz</span></div>
+    <div class="chipnav"><i></i>Rates</div>
+  </header>
+
+  <section class="hook">
+    <p class="eyebrow">The living economy</p>
+    <h1 id="q"></h1>
+    <p class="sub">Six things decide what you are quoted. Only two are set by anyone directly.</p>
+  </section>
+
+  <!-- ============ THE NETWORK (static, shown in a selected state) ==== -->
+  <div class="netwrap">
+    <svg class="net" viewBox="0 0 390 446" role="img"
+         aria-label="A network of six economic actors. The Federal Reserve directly sets a target range for the federal funds rate, and mortgage lenders directly set your mortgage rate. Everything between them is influence rather than control.">
+      <defs>
+        <filter id="soft" x="-120%" y="-120%" width="340%" height="340%">
+          <feGaussianBlur stdDeviation="6" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="strong" x="-180%" y="-180%" width="460%" height="460%">
+          <feGaussianBlur stdDeviation="11" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <radialGradient id="halo">
+          <stop offset="0%"   stop-color="#a2b0ff" stop-opacity=".62"/>
+          <stop offset="46%"  stop-color="#7c60f0" stop-opacity=".22"/>
+          <stop offset="100%" stop-color="#7c60f0" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="haloSel">
+          <stop offset="0%"   stop-color="#d4d9ff" stop-opacity=".92"/>
+          <stop offset="40%"  stop-color="#8f7bff" stop-opacity=".42"/>
+          <stop offset="100%" stop-color="#8f7bff" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="fieldGlow">
+          <stop offset="0%"   stop-color="#7c60f0" stop-opacity=".22"/>
+          <stop offset="100%" stop-color="#7c60f0" stop-opacity="0"/>
+        </radialGradient>
+        <!-- userSpaceOnUse, NOT the default objectBoundingBox. The
+             Fed-to-federal-funds edge is perfectly vertical, so its
+             bounding box has zero width — and a gradient in bounding-box
+             units is not rendered at all on a zero-area box. The most
+             important edge on the page was invisible because of it.
+             Anchored across the whole board instead, which also gives
+             the violet-to-magenta sweep the references use. -->
+        <linearGradient id="edgeDirect" gradientUnits="userSpaceOnUse"
+                        x1="40" y1="30" x2="330" y2="420">
+          <stop offset="0%"   stop-color="#c2caff"/>
+          <stop offset="100%" stop-color="#ba7af0"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Layer order matters: a bloom strong enough to match the
+           references will swallow a line drawn underneath it, so the
+           halos sit BELOW the edges and only the node cores sit above.
+           The first build had the bright Fed-to-federal-funds edge —
+           the single most important relationship on the page —
+           washed out by the selected node's own glow. -->
+      <g id="field"></g>
+      <g id="halos"></g>
+      <g id="edges"></g>
+      <g id="cores"></g>
+      <g id="labels"></g>
+    </svg>
+  </div>
+
+  <div class="legend">
+    <div><span class="k"></span>Sets it directly</div>
+    <div><span class="k ind"></span>Influences it</div>
+  </div>
+
+  <!-- ============ SELECTED NODE ==================================== -->
+  <div class="card selected">
+    <p class="kicker"><span class="dot"></span>Selected</p>
+    <h2>The federal funds rate</h2>
+    <p id="nodeDetail"></p>
+    <div class="rolerow">
+      <span class="pill direct">Directly set</span>
+      <span>by the FOMC &mdash; as a target range</span>
+    </div>
+  </div>
+
+  <!-- ============ TAKEAWAY ========================================= -->
+  <div class="card takeaway">
+    <div class="glowline"></div>
+    <h2 id="conclusion"></h2>
+    <p id="conclusionSupport"></p>
+  </div>
+
+  <!-- ============ EVIDENCE ========================================= -->
+  <div class="evidence">
+    <div>
+      <div class="l">Sources &amp; what this does not tell you</div>
+      <div class="s">Fannie Mae &middot; NY Fed &middot; CFPB &middot; 2 limitations</div>
+    </div>
+    <svg class="chev" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+
+  <!-- ============ ONWARD =========================================== -->
+  <div class="onward">
+    <div><div class="w">Rates</div><div class="t">The Treasury yields MacroChipz tracks</div></div>
+    <div><div class="w">Housing</div><div class="t">How many homes are being built</div></div>
+  </div>
+
+  <p class="foot">
+    Visual mockup only (#46D revised). Nothing here is wired, no live data is shown, and no
+    economic claim appears that is not already in the reviewed explainer registry.
+  </p>
+</div>
+
+<script src="../v46d/content.js"></script>
+<script>
+(function () {
+  const S = window.STORY;
+  const NS = "http://www.w3.org/2000/svg";
+  const $ = (id) => document.getElementById(id);
+
+  $("q").textContent = S.question;
+  $("conclusion").textContent = S.conclusion;
+  $("conclusionSupport").textContent = S.conclusionSupport;
+  // The selected node's explanation, verbatim from the reviewed quiz copy.
+  $("nodeDetail").textContent = S.options.find((o) => o.isFed).reveal;
+
+  function el(tag, attrs, parent) {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  /* ---- starfield ---------------------------------------------------
+     Reference 2's depth comes from a sparse, low-opacity field — not
+     from a texture. Sixty points, three sizes, deterministic so the
+     mockup screenshots identically every time. */
+  const stars = $("stars");
+  stars.setAttribute("viewBox", "0 0 390 900");
+  stars.setAttribute("preserveAspectRatio", "xMidYMid slice");
+  let seed = 20260922;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < 64; i++) {
+    const r = rnd() < .18 ? 1.25 : rnd() < .5 ? .9 : .6;
+    el("circle", {
+      cx: (rnd() * 390).toFixed(1), cy: (rnd() * 900).toFixed(1), r: r,
+      fill: "rgba(233,235,239,1)", opacity: (0.12 + rnd() * 0.42).toFixed(2),
+    }, stars);
+  }
+
+  /* ==================================================================
+     THE NETWORK
+     ==================================================================
+     Six actors, and the distinction the brief asked for made VISUAL:
+
+       DIRECT (solid, bright, arrowhead) — someone decides this number.
+         · the FOMC sets a target range for the federal funds rate
+         · lenders set the rate they quote you
+       INFLUENCE (dashed, dimmer, no arrowhead) — it feeds in, and the
+         reviewed content is explicit that this is not a formula and
+         that relative importance changes over time.
+
+     Two direct edges, at opposite ends of the graph, with nothing but
+     influence between them. That shape IS the explanation.
+  */
+  const N = {
+    fed:     { x:  74, y:  50, label: "Federal Reserve",            side: "right" },
+    ffr:     { x:  74, y: 176, label: "Federal funds rate",         side: "right", selected: true },
+    ust:     { x: 312, y: 112, label: "Treasury yields",            side: "left" },
+    mbs:     { x: 320, y: 258, label: "Mortgage-backed securities", side: "left" },
+    lenders: { x: 104, y: 312, label: "Mortgage lenders",           side: "right" },
+    rate:    { x: 254, y: 404, label: "Your mortgage rate",         side: "left", outcome: true },
+  };
+
+  // DIRECT means someone decides the number. INFLUENCE means it feeds
+  // in. There are exactly two direct edges and they sit at opposite
+  // ends of the graph with nothing but influence between them — that
+  // shape is the explanation, and it is why the legend is not optional.
+  const EDGES = [
+    { a: "fed",     b: "ffr",     kind: "direct" },
+    { a: "fed",     b: "ust",     kind: "influence" },
+    { a: "ffr",     b: "ust",     kind: "influence" },
+    { a: "ust",     b: "mbs",     kind: "influence" },
+    { a: "ust",     b: "lenders", kind: "influence" },
+    { a: "mbs",     b: "lenders", kind: "influence" },
+    { a: "lenders", b: "rate",    kind: "direct" },
+  ];
+
+  const field = $("field"), halos = $("halos"), edges = $("edges"),
+        cores = $("cores"), labels = $("labels");
+  const R = 11, RSEL = 15, ROUT = 13;
+  const radius = (k) => N[k].selected ? RSEL : N[k].outcome ? ROUT : R;
+
+  // An ambient bloom behind the selected node, so the field itself
+  // reacts to the selection rather than only the dot.
+  const selKey = Object.keys(N).find((k) => N[k].selected);
+  el("circle", { cx: N[selKey].x, cy: N[selKey].y, r: 132, fill: "url(#fieldGlow)" }, field);
+
+  /* ---- halos (below the edges) -------------------------------------- */
+  Object.entries(N).forEach(([k, n]) => {
+    const sel = !!n.selected;
+    el("circle", { cx: n.x, cy: n.y, r: sel ? 54 : 38,
+                   fill: "url(#" + (sel ? "haloSel" : "halo") + ")" }, halos);
+  });
+
+  /* ---- edges, trimmed to the node rims ------------------------------ */
+  EDGES.forEach((e) => {
+    const a = N[e.a], b = N[e.b];
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+    const ux = dx / len, uy = dy / len;
+    const headRoom = e.kind === "direct" ? 13 : 0;
+    const x1 = a.x + ux * (radius(e.a) + 6), y1 = a.y + uy * (radius(e.a) + 6);
+    const x2 = b.x - ux * (radius(e.b) + 6 + headRoom);
+    const y2 = b.y - uy * (radius(e.b) + 6 + headRoom);
+
+    if (e.kind === "direct") {
+      const path = "M " + x1 + " " + y1 + " L " + x2 + " " + y2;
+      // GLOW WITHOUT A FILTER, deliberately. `filter` defaults to
+      // filterUnits="objectBoundingBox", so on a perfectly vertical
+      // line — zero-width bbox — the filter region is zero-area and the
+      // element renders as nothing at all. That is what hid the
+      // Fed-to-federal-funds edge twice. A wide, low-opacity stroke
+      // under a crisp one gives the same bloom and cannot degenerate.
+      el("path", { d: path, stroke: "url(#edgeDirect)", "stroke-width": 11,
+        "stroke-linecap": "round", fill: "none", opacity: .22 }, edges);
+      el("path", { d: path, stroke: "url(#edgeDirect)", "stroke-width": 6,
+        "stroke-linecap": "round", fill: "none", opacity: .38 }, edges);
+      el("path", { d: path, stroke: "url(#edgeDirect)", "stroke-width": 2.6,
+        "stroke-linecap": "round", fill: "none" }, edges);
+
+      const ax = b.x - ux * (radius(e.b) + 5), ay = b.y - uy * (radius(e.b) + 5);
+      const px = -uy, py = ux;
+      const head = "M " + ax + " " + ay +
+           " L " + (ax - ux * 12 + px * 6) + " " + (ay - uy * 12 + py * 6) +
+           " L " + (ax - ux * 12 - px * 6) + " " + (ay - uy * 12 - py * 6) + " Z";
+      el("path", { d: head, fill: "#cfd5ff", opacity: .3,
+                   stroke: "#cfd5ff", "stroke-width": 7,
+                   "stroke-linejoin": "round" }, edges);
+      el("path", { d: head, fill: "#e6e9ff" }, edges);
+    } else {
+      el("path", { d: "M " + x1 + " " + y1 + " L " + x2 + " " + y2,
+        stroke: "rgba(159,172,241,.40)", "stroke-width": 1.6,
+        "stroke-dasharray": "2 7", "stroke-linecap": "round", fill: "none" }, edges);
+    }
+  });
+
+  /* ---- node cores (above the edges) --------------------------------- */
+  Object.entries(N).forEach(([k, n]) => {
+    const g = el("g", {}, cores);
+    const sel = !!n.selected;
+    const r = radius(k);
+
+    if (sel) {
+      el("circle", { cx: n.x, cy: n.y, r: 26, fill: "none",
+                     stroke: "rgba(196,204,255,.46)", "stroke-width": 1.3 }, g);
+      el("circle", { cx: n.x, cy: n.y, r: 36, fill: "none",
+                     stroke: "rgba(162,176,255,.16)", "stroke-width": 1 }, g);
+    }
+    el("circle", { cx: n.x, cy: n.y, r: r, fill: "#140e28",
+                   stroke: sel ? "#dfe3ff" : "#9facf1",
+                   "stroke-width": sel ? 3 : 2,
+                   filter: "url(#" + (sel ? "strong" : "soft") + ")" }, g);
+    el("circle", { cx: n.x, cy: n.y, r: sel ? 5 : 3.6,
+                   fill: sel ? "#ffffff" : "#e4e8ff" }, g);
+  });
+
+  /* ---- labels as chips, drawn ABOVE the glow ------------------------
+     Reference 2 labels its nodes in small translucent pills rather than
+     in bare text over the field. That is also what keeps type legible
+     once the bloom is strong enough to match the references — the brief
+     is explicit that glow must not obscure information, so the chips
+     carry their own background and sit in the topmost layer. */
+  const FONT = "ui-sans-serif, -apple-system, 'SF Pro Text', Segoe UI, Roboto, sans-serif";
+  Object.entries(N).forEach(([k, n]) => {
+    const sel = !!n.selected;
+    const r = radius(k);
+    const size = sel ? 14 : 13;
+    const padX = 11, h = sel ? 28 : 26;
+    // Approximate advance width: this is a mockup, and a measured
+    // getBBox pass would reflow on every font fallback.
+    const w = Math.round(n.label.length * size * 0.545) + padX * 2;
+    const right = n.side === "right";
+    const x = right ? n.x + r + 13 : n.x - r - 13 - w;
+
+    const g = el("g", {}, labels);
+    el("rect", { x: x, y: n.y - h / 2, width: w, height: h, rx: h / 2,
+      fill: sel ? "rgba(40,30,86,.88)" : "rgba(18,13,36,.78)",
+      stroke: sel ? "rgba(196,204,255,.45)" : "rgba(255,255,255,.10)",
+      "stroke-width": 1 }, g);
+    const t = el("text", { x: x + padX, y: n.y + size * 0.36,
+      fill: sel ? "#f4f5ff" : "#e9ebef", "font-family": FONT,
+      "font-size": size, "font-weight": sel ? 700 : 600,
+      "letter-spacing": "-0.2" }, g);
+    t.textContent = n.label;
+  });
+
+})();
+</script>
+</body>
+</html>

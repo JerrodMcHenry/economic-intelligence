@@ -102,6 +102,28 @@
 /* ------------------------------------------------------------------ */
 /* Dark theme -- same roles, independently chosen values               */
 /* ------------------------------------------------------------------ */
+/*
+ * A PERMANENTLY DARK SURFACE TAKES THE DARK PALETTE, WHATEVER THE
+ * THEME SAYS (#48).
+ *
+ * `[data-surface]` pages are dark by design -- the story's luminous
+ * violet and the homepage's charcoal both are -- but they were reading
+ * `--mc-fg` from the active theme. In the LIGHT theme that resolved to
+ * near-black text, painted on a near-black surface. Measured at
+ * `oklch(0.22 0.018 262)` on `rgb(18, 19, 23)`: unreadable, and it
+ * would have shipped, because every screenshot taken during design was
+ * taken in the dark theme.
+ *
+ * Listing the surfaces beside the dark theme is the whole fix. They
+ * get the same roles with the same values, so nothing is special-cased
+ * and no token is redefined anywhere else.
+ *
+ * The dark-theme selector is listed LAST on purpose: `stateTone.test.ts`
+ * parses this block by finding the literal `:root[data-theme="dark"] {`,
+ * and order in a selector list changes nothing else.
+ */
+[data-surface="luminous"],
+[data-surface="cinematic"],
 :root[data-theme="dark"] {
   color-scheme: dark;
 
@@ -355,6 +377,10 @@ data {
   --lx-edge-dim: rgba(159, 172, 241, 0.16);
   --lx-node-core: #140e28;
 
+  /* the translucent card fill, declared per surface so the shared
+     `.lx-card` rule below does not hardcode one surface's hue */
+  --lx-card-bg: rgba(23, 17, 48, 0.55);
+
   background:
     radial-gradient(126% 62% at 84% -6%, var(--lx-bloom-a) 0%, transparent 62%),
     radial-gradient(104% 54% at 4% 78%, var(--lx-bloom-b) 0%, transparent 66%),
@@ -366,7 +392,8 @@ data {
 /* Glass card. The lit top edge is the reference's, and the solid
    fallback colour is declared rather than assumed so that a browser
    without `backdrop-filter` keeps the same contrast. */
-[data-surface="luminous"] .lx-card {
+[data-surface="luminous"] .lx-card,
+[data-surface="cinematic"] .lx-card {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.028) 100%),
     var(--lx-raise);
@@ -377,10 +404,11 @@ data {
 }
 
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
-  [data-surface="luminous"] .lx-card {
+  [data-surface="luminous"] .lx-card,
+  [data-surface="cinematic"] .lx-card {
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.028) 100%),
-      rgba(23, 17, 48, 0.55);
+      var(--lx-card-bg);
     backdrop-filter: blur(18px) saturate(130%);
     -webkit-backdrop-filter: blur(18px) saturate(130%);
   }
@@ -482,4 +510,171 @@ data {
     inset 0 1px 0 0 rgba(255, 255, 255, 0.18),
     0 22px 46px -24px rgba(0, 0, 0, 0.95),
     0 0 40px -14px rgba(124, 96, 240, 0.55);
+}
+
+/* ================================================================== */
+/* THE LIVING ECONOMY SURFACE (#48)                                    */
+/* ================================================================== */
+/*
+ * The homepage's own ground, scoped to `[data-surface="cinematic"]` on
+ * `<main>`. Like the luminous story surface it uses the `--lx-` prefix,
+ * so the four disjoint `--mc-*` token families and the #27B guard that
+ * polices them are untouched. Nothing here is a semantic economic
+ * token; these are surface, depth and light.
+ *
+ * WHY A SECOND SURFACE RATHER THAN REUSING `luminous`. The story page
+ * is violet all the way down, which is right for one immersive
+ * diagram and wrong for a page carrying photography. #48's approved
+ * direction puts CHARCOAL AND MIDNIGHT underfoot so that violet reads
+ * as light falling on the page rather than as the page itself — and so
+ * a photograph sits in it without competing with it.
+ *
+ * THE BACKGROUND IS OWNED BY THE SHELL. `<main>` carries it, full
+ * width, through `AppShell`'s `surface` prop. #46F's lesson is the
+ * reason this is stated: that page faked a full-bleed surface with a
+ * negative margin which had nothing to cancel, and it pulled the
+ * background up through the header border. No negative margins, no
+ * `overflow: hidden`, nothing simulated.
+ *
+ * NO CYAN, again. `--mc-state-cool` is a pale cyan carrying economic
+ * classification, and #27B's hard rule is that state tones are a
+ * classification and never decoration.
+ */
+[data-surface="cinematic"] {
+  color-scheme: dark;
+
+  /* charcoal and midnight: the ground */
+  --lx-char: #121317;
+  --lx-char-2: #191b21;
+  --lx-mid: #0e1422;
+
+  /* violet, kept as the signature */
+  --lx-bloom-a: rgba(124, 96, 240, 0.34);
+  --lx-bloom-b: rgba(162, 176, 255, 0.24);
+
+  /* glass, shared with the luminous surface */
+  --lx-card: rgba(255, 255, 255, 0.045);
+  --lx-card-hi: rgba(255, 255, 255, 0.14);
+  --lx-card-lo: rgba(255, 255, 255, 0.075);
+  --lx-raise: #1b1d26;
+
+  /* the story preview's edges, from the luminous surface unchanged */
+  --lx-edge: rgba(159, 172, 241, 0.42);
+  --lx-node-core: #140e28;
+
+  /* the one filled control tone, used by the hero, the lede and the
+     featured band so a primary action looks the same everywhere */
+  --lx-card-bg: rgba(27, 29, 38, 0.62);
+
+  /* the one filled control tone */
+  --lx-selected: rgba(124, 96, 240, 0.3);
+  --lx-selected-hover: rgba(124, 96, 240, 0.42);
+
+  /*
+   * THE LIGHT IS PART OF THE SURFACE, NOT AN ELEMENT ON IT.
+   *
+   * This first shipped as a `::before` on the hero at `z-index: -1`,
+   * and it was invisible. A negative z-index child paints inside the
+   * nearest STACKING CONTEXT -- which was the root, since nothing
+   * between them creates one -- so it landed above the root background
+   * and below `<main>`'s, and `<main>`'s background is opaque.
+   *
+   * Painting it here instead removes the problem rather than working
+   * around it: the gradients are the surface's own background, so they
+   * are full-bleed by construction, need no extra element, no stacking
+   * context and no horizontal offset. Nothing can overflow, because
+   * nothing is positioned.
+   *
+   * The two blooms are sized in PIXELS vertically so the lit band is a
+   * fixed height at the top of the page rather than a proportion of a
+   * document whose length depends on how much data loaded.
+   */
+  background:
+    radial-gradient(120% 640px at 82% -60px, var(--lx-bloom-a) 0%, transparent 62%),
+    radial-gradient(90% 520px at 4% 560px, var(--lx-bloom-b) 0%, transparent 66%),
+    linear-gradient(180deg, var(--lx-mid) 0px, var(--lx-char) 760px),
+    var(--lx-char);
+  background-repeat: no-repeat;
+  color: var(--mc-fg);
+}
+
+/* A world tile. The border is the unselected state's only decoration;
+   selection adds a lit ring and a brand-coloured edge, so the state is
+   carried by more than colour. */
+[data-surface="cinematic"] .lx-tile {
+  border: 1px solid var(--lx-card-lo);
+  background: var(--lx-char-2);
+}
+
+[data-surface="cinematic"] .lx-tile:hover {
+  border-color: var(--lx-card-hi);
+}
+
+[data-surface="cinematic"] .lx-tile-on {
+  border-color: rgba(162, 176, 255, 0.62);
+  box-shadow:
+    0 0 0 1px rgba(162, 176, 255, 0.34),
+    0 14px 34px -20px rgba(124, 96, 240, 0.85);
+}
+
+/* Motion is decoration here and carries no meaning, so it is removed
+   wholesale rather than adjusted. */
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="cinematic"] .lx-tile {
+    transition: none;
+  }
+}
+
+/* The mobile story teaser (#48B). Tinted rather than glass, so it
+   reads as an invitation rather than as one more reading. */
+[data-surface="cinematic"] .lx-teaser {
+  background: linear-gradient(120deg, rgba(124, 96, 240, 0.22) 0%, rgba(124, 96, 240, 0.09) 62%, transparent 100%),
+    var(--lx-char-2);
+  border: 1px solid rgba(162, 176, 255, 0.28);
+}
+
+[data-surface="cinematic"] .lx-teaser:hover {
+  border-color: rgba(162, 176, 255, 0.5);
+}
+
+/*
+ * The framed network (#48C).
+ *
+ * The teaser read as a navigation row with a small picture beside it.
+ * Giving the glyph a lit frame of its own is what makes it a THUMBNAIL
+ * OF SOMEWHERE rather than an icon decorating a link — the same signal
+ * a video still gives. It costs no height: the frame is 56px inside a
+ * strip whose text already stands taller than that.
+ */
+[data-surface="cinematic"] .lx-teaser-frame {
+  background:
+    radial-gradient(120% 120% at 30% 15%, rgba(124, 96, 240, 0.4) 0%, transparent 70%),
+    rgba(10, 8, 20, 0.55);
+  border: 1px solid rgba(162, 176, 255, 0.3);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.07);
+}
+
+[data-surface="cinematic"] .lx-teaser:hover .lx-teaser-frame {
+  border-color: rgba(162, 176, 255, 0.55);
+}
+
+/* The affordance. A bare arrow is what every link on the page has; a
+   round one reads as something to press. Visual only — it is
+   `aria-hidden`, and the link's own text is its accessible name. */
+[data-surface="cinematic"] .lx-teaser-go {
+  color: #e4e8ff;
+  background: rgba(124, 96, 240, 0.34);
+  border: 1px solid rgba(162, 176, 255, 0.42);
+}
+
+[data-surface="cinematic"] .lx-teaser:hover .lx-teaser-go {
+  background: rgba(124, 96, 240, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="cinematic"] .lx-teaser,
+  [data-surface="cinematic"] .lx-teaser-frame,
+  [data-surface="cinematic"] .lx-teaser-go {
+    transition: none;
+  }
 }

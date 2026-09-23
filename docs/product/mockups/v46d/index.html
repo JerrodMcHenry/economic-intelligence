@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>#46D — Four visual directions</title>
+<style>
+  :root { --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 60px; background: #1a1a1e; color: #eceae4;
+    font-family: var(--sans); line-height: 1.55;
+  }
+  .wrap { max-width: 1760px; margin: 0 auto; }
+  h1 { font-size: 26px; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .sub { color: #a5a3ac; margin: 0 0 8px; max-width: 70ch; }
+  .note { color: #a5a3ac; font-size: 13px; margin: 0 0 26px; max-width: 80ch; }
+  .grid { display: grid; gap: 22px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .col.rec h2::after {
+    content: "new"; margin-left: 8px; font-size: 10px; letter-spacing: .14em;
+    background: #e8ff47; color: #0b0b0e; padding: 2px 6px; border-radius: 3px;
+  }
+  .col h2 { font-size: 15px; letter-spacing: 0.12em; text-transform: uppercase; margin: 0 0 4px; }
+  .col p { font-size: 13px; color: #a5a3ac; margin: 0 0 12px; min-height: 56px; }
+  .frame {
+    width: 100%; max-width: 390px; height: 720px; border: 0; display: block;
+    background: #fff; box-shadow: 0 0 0 1px #35353d, 0 18px 40px rgba(0,0,0,.45);
+    border-radius: 10px; max-width: 100%;
+  }
+  .open {
+    display: inline-block; margin-top: 12px; font-size: 13px;
+    color: #cfcdd6; text-decoration: none; border-bottom: 1px solid #55555f;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Increment #46D — four visual directions</h1>
+  <p class="sub">
+    Four directions. Each frame below is a genuine 390&nbsp;px viewport &mdash; scroll inside one
+    to walk the whole story. The quizzes and the diagrams are live, not pictures.
+  </p>
+  <p class="note" style="color:#e8ff47">
+    <a href="#d" style="color:#e8ff47;border-bottom:1px solid #6b7a12">
+      New in this round: Direction D &middot; Signal &times; Field Notes &rarr;</a>
+    &nbsp;(fourth frame, plus two companion studies)
+  </p>
+  <p class="note">
+    All four say exactly the same thing — every sentence comes from one shared
+    <code>content.js</code> so the comparison is about design, not copy. Static mockups for
+    review only: not wired to the application, not routed, not indexed, nothing committed.
+  </p>
+
+  <div class="grid">
+    <div class="col">
+      <h2>A · Broadsheet</h2>
+      <p>Paper, serif, rules and a drop cap. Credibility as the visual argument; type does the work.</p>
+      <iframe class="frame" src="direction-a-broadsheet.html" title="Direction A — Broadsheet"></iframe>
+      <a class="open" href="direction-a-broadsheet.html" target="_blank">Open full size &rarr;</a>
+    </div>
+    <div class="col">
+      <h2>B · Signal</h2>
+      <p>Full-bleed colour fields and poster type. Built to match the energy of the video that sent the reader.</p>
+      <iframe class="frame" src="direction-b-signal.html" title="Direction B — Signal"></iframe>
+      <a class="open" href="direction-b-signal.html" target="_blank">Open full size &rarr;</a>
+    </div>
+    <div class="col">
+      <h2>C · Field Notes</h2>
+      <p>Plotting paper and monospace. The diagram is the medium: the answer is drawn, not stated.</p>
+      <iframe class="frame" src="direction-c-fieldnotes.html" title="Direction C — Field Notes"></iframe>
+      <a class="open" href="direction-c-fieldnotes.html" target="_blank">Open full size &rarr;</a>
+    </div>
+    <div class="col rec" id="d">
+      <h2>D · Signal &times; Field Notes</h2>
+      <p>The hybrid. Signal&rsquo;s identity, Field Notes&rsquo; drawn answer, and a device of its
+         own: chips and traces. A connection that exists lights up; one that does not stops short.</p>
+      <iframe class="frame" src="direction-d-hybrid.html" title="Direction D — Signal × Field Notes"></iframe>
+      <a class="open" href="direction-d-hybrid.html" target="_blank">Open full size &rarr;</a>
+      <a class="open" href="direction-d-companion.html" target="_blank">Companion studies &rarr;</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>

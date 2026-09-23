@@ -1,0 +1,59 @@
+{
+  "_note": "SNAPSHOT, NOT LIVE. Captured from the local development API so the prototype can show a genuine data visual without inventing figures. Every value below came from the running product; none was authored by hand. A production implementation would fetch this, not read it.",
+  "_captured_at": "2026-09-22",
+  "methodology_id": "rates_v1.0",
+  "data_basis": "latest_published_data",
+  "provider": "TREASURY",
+  "attribution": "Source: U.S. Department of the Treasury (Daily Treasury Par Yield Curve Rates).",
+  "as_of_date": "2026-09-18",
+  "nominal_curve": [
+    {
+      "series_id": "UST_NOMINAL_2Y",
+      "title": "2-Year Treasury Par Yield (Nominal)",
+      "units": "Percent",
+      "latest_date": "2026-09-18",
+      "latest_value": 4.76,
+      "available": true
+    },
+    {
+      "series_id": "UST_NOMINAL_5Y",
+      "title": "5-Year Treasury Par Yield (Nominal)",
+      "units": "Percent",
+      "latest_date": "2026-09-18",
+      "latest_value": 4.86,
+      "available": true
+    },
+    {
+      "series_id": "UST_NOMINAL_10Y",
+      "title": "10-Year Treasury Par Yield (Nominal)",
+      "units": "Percent",
+      "latest_date": "2026-09-18",
+      "latest_value": 5.01,
+      "available": true
+    },
+    {
+      "series_id": "UST_NOMINAL_30Y",
+      "title": "30-Year Treasury Par Yield (Nominal)",
+      "units": "Percent",
+      "latest_date": "2026-09-18",
+      "latest_value": 5.34,
+      "available": true
+    }
+  ],
+  "curve_spreads": [
+    {
+      "spread_id": "2s10s",
+      "title": "10-Year minus 2-Year",
+      "observation_date": "2026-09-18",
+      "spread_basis_points": 25.0,
+      "available": true
+    },
+    {
+      "spread_id": "2s30s",
+      "title": "30-Year minus 2-Year",
+      "observation_date": "2026-09-18",
+      "spread_basis_points": 58.0,
+      "available": true
+    }
+  ]
+}

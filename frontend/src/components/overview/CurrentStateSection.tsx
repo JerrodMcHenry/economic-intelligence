@@ -40,14 +40,29 @@ export function CurrentStateSection({
         Current State
       </h2>
 
-      <div className="mt-3 space-y-6">
-        {inflation.status === "loading" && <LoadingSkeleton label="Loading Inflation current state" heightClassName="h-32" />}
-        {inflation.status === "error" && <ErrorMessage message={MONITOR_ERROR_MESSAGE} onRetry={inflation.reload} />}
-        {inflation.status === "success" && <InflationCurrentStateCard momentum={inflation.data.underlying_momentum} />}
+      {/*
+       * #48A: two peers, side by side from `md`, each in its own card.
+       * They were stacked in a `space-y-6` with no surface of their
+       * own, which on a page of glass cards read as loose text rather
+       * than as two readings.
+       *
+       * FAILURE ISOLATION IS UNCHANGED, and the grid is why this is
+       * stated: each domain keeps its own cell and its own
+       * loading/error/success branch, so Inflation failing still
+       * leaves Jobs rendered in place rather than collapsing the row.
+       */}
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="lx-card rounded-xl p-4 sm:p-5">
+          {inflation.status === "loading" && <LoadingSkeleton label="Loading Inflation current state" heightClassName="h-32" />}
+          {inflation.status === "error" && <ErrorMessage message={MONITOR_ERROR_MESSAGE} onRetry={inflation.reload} />}
+          {inflation.status === "success" && <InflationCurrentStateCard momentum={inflation.data.underlying_momentum} />}
+        </div>
 
-        {labor.status === "loading" && <LoadingSkeleton label="Loading Labor current state" heightClassName="h-32" />}
-        {labor.status === "error" && <ErrorMessage message={LABOR_ERROR_MESSAGE} onRetry={labor.reload} />}
-        {labor.status === "success" && <LaborCurrentStateCard result={labor.data} />}
+        <div className="lx-card rounded-xl p-4 sm:p-5">
+          {labor.status === "loading" && <LoadingSkeleton label="Loading Labor current state" heightClassName="h-32" />}
+          {labor.status === "error" && <ErrorMessage message={LABOR_ERROR_MESSAGE} onRetry={labor.reload} />}
+          {labor.status === "success" && <LaborCurrentStateCard result={labor.data} />}
+        </div>
       </div>
     </section>
   );

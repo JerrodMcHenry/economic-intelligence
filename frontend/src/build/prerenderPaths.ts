@@ -73,6 +73,13 @@ export const STATIC_PATHS = [
   // which is what makes them findable.
   "/explain",
   ...EXPLAINER_PATHS,
+  // The #46C story prototype. Static, data-free and therefore
+  // prerenderable with its real content, exactly like an explainer.
+  // It carries `robots: noindex` and a canonical pointing at
+  // `/explain/fed-and-mortgage-rates`, so prerendering it buys a
+  // reviewable page without creating a duplicate of the canonical
+  // one. Removed when the prototype is accepted or dropped.
+  "/story/fed-and-mortgage-rates",
 ];
 
 let cached: Promise<string[]> | null = null;

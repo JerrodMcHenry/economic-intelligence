@@ -89,14 +89,18 @@ describe("every explainer is reachable", () => {
 
 describe("the homepage reaches the whole product", () => {
   const home = source("pages/Home.tsx");
-  const orientation = source("components/homepage/WorldOrientation.tsx");
+  // #48: `WorldOrientation` was retired and the Living Economy hero
+  // took over its job. The assertion below is unchanged in substance --
+  // the four worlds still come from the registry rather than from a
+  // hand-written list -- and only the file that owns them moved.
+  const hero = source("components/homepage/LivingEconomyHero.tsx");
 
   it("links to all four worlds, derived from the registry rather than hardcoded", () => {
     // #45A: the homepage linked to Rates, Inflation, Jobs and Calendar
     // -- never Housing. Deriving from the registry is what makes that
     // impossible to regress: a fifth world would appear automatically.
-    expect(home).toContain("WorldOrientation");
-    expect(orientation).toContain("ECONOMIC_WORLDS.map");
+    expect(home).toContain("LivingEconomyHero");
+    expect(hero).toContain("ECONOMIC_WORLDS.map");
     expect(ECONOMIC_WORLDS).toHaveLength(4);
   });
 
@@ -227,7 +231,8 @@ describe("responsive layout, to the extent it is testable without a browser", ()
    * and is recorded as such.
    */
   const NEW_SURFACES = [
-    "components/homepage/WorldOrientation.tsx",
+    "components/homepage/LivingEconomyHero.tsx",
+    "components/homepage/FeaturedStory.tsx",
     "components/homepage/HomeQuestions.tsx",
     "components/revisions/RevisionsLink.tsx",
     "routes/explainerIndex.tsx",
@@ -238,15 +243,23 @@ describe("responsive layout, to the extent it is testable without a browser", ()
       const contents = code(file);
       expect(contents).not.toMatch(/\bw-\[\d+px\]/);
       expect(contents).not.toMatch(/\bmin-w-\[\d+px\]/);
-      expect(contents).not.toMatch(/width:\s*\d+px/);
+      // `(?<!-)` so that a MEDIA CONDITION is not mistaken for a
+      // layout width: `sizes="(min-width: 1024px) 22vw, 45vw"` is how
+      // a responsive image is told which breakpoint it is at, and it
+      // is the opposite of a fixed width.
+      expect(contents).not.toMatch(/(?<!-)width:\s*\d+px/);
     });
   }
 
-  it("lays the world grid out one column first, two only from the sm breakpoint", () => {
-    // Mobile-first: the base class is a single column, so a phone gets
-    // stacked cards without depending on any override.
-    const orientation = code("components/homepage/WorldOrientation.tsx");
-    expect(orientation).toContain("grid gap-3 sm:grid-cols-2");
+  it("lays the world grid out two-up on a phone and four across from md", () => {
+    // #48: the tiles are photographic frames rather than text cards, so
+    // two-up is the MOBILE layout -- measured at 390px, where two 167px
+    // frames and their captions are comfortably legible -- and they
+    // open to a single row from `md`. The panel is always below, never
+    // beside: a side column left two thirds of itself empty at 1440.
+    const hero = code("components/homepage/LivingEconomyHero.tsx");
+    expect(hero).toContain("grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-4");
+    expect(hero).not.toContain("lg:grid-cols-[");
   });
 
   it("keeps tap targets and prose readable rather than fixed", () => {

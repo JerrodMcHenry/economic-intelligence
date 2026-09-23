@@ -35,7 +35,9 @@ import { ECONOMIC_WORLDS, world as worldById } from "../worlds/registry";
 const SITE_NAME = "MacroChipz";
 
 /** The basis line, in words a reader can weigh. */
-const BASIS_COPY: Readonly<Record<Explainer["basis"], string>> = {
+/** Exported in #46C so the story prototype states the SAME basis
+ * sentence rather than a second copy of it that could drift. */
+export const BASIS_COPY: Readonly<Record<Explainer["basis"], string>> = {
   GENERAL_ECONOMICS:
     "This is general economics — the kind of definition a reference work would give. MacroChipz wrote and reviewed this explanation; it is not a claim about any particular month.",
   MACROCHIPZ_METHODOLOGY:

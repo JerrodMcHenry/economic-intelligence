@@ -45,8 +45,20 @@ import { explainerById } from "../../explainers/registry";
  * dead link, and a test asserts all three resolve — so a typo fails
  * the suite instead of shipping.
  */
+/*
+ * #48 REPLACED ONE ID, AND ONLY FOR DUPLICATION.
+ *
+ * `explain.fed-and-mortgage-rates` left this list because the
+ * interactive story built on it now has its own featured band directly
+ * above — the same question twice within one screen is exactly the
+ * repetition #48 set out to remove. It is not demoted: it moved up.
+ *
+ * `explain.why-the-10-year-matters` takes the slot because it is the
+ * question a reader has immediately AFTER the story answers the first
+ * one, which keeps this list a path rather than a menu.
+ */
 const FEATURED: ReadonlyArray<string> = [
-  "explain.fed-and-mortgage-rates",
+  "explain.why-the-10-year-matters",
   "explain.saar-housing",
   "explain.inflation-vs-prices",
 ];

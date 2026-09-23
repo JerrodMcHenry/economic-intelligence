@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en" data-direction="hybrid">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Direction D · Signal × Field Notes — MacroChipz #46D mockup</title>
+<!--
+  DIRECTION D — "SIGNAL × FIELD NOTES"
+  ====================================
+  The hybrid. It takes the one thing each parent direction was best at
+  and drops what each was worst at.
+
+  FROM SIGNAL: the acid-on-void identity, poster weight, colour fields
+  that turn like cards. What is NOT taken: Signal's opening, which ran
+  46px type over four lines and pushed the first tappable thing to
+  775px. Here the hook is compressed and the first interaction is
+  visible without scrolling.
+
+  FROM FIELD NOTES: the drawn answer — the correction arrives as a
+  CONNECTION BEING MADE, not as a colour change or a paragraph. What is
+  NOT taken: the plotting-paper grid and the monospace prose, which made
+  C read as an instrument rather than as media.
+
+  THE DEVICE THAT MAKES IT ITS OWN THING: chips and traces. Every
+  actor in the story is a chip; every relationship is a trace between
+  chips; a trace that is real lights up, and a trace that does not exist
+  stops short of its chip with a visible gap. It is legible at thumbnail
+  size, it survives being screenshotted, and it is the product's own
+  name rather than a borrowed metaphor.
+
+  DISCIPLINE. The identity is loud; the economics are not. Every
+  sentence is the same reviewed sentence the other three directions use,
+  from content.js. No quantified Fed-to-mortgage relationship appears —
+  no direction, no magnitude, no timescale. A trace means "reaches",
+  never "by this much".
+
+  Self-contained. No build step, no framework, no network request, no
+  web font, no dependency.
+-->
+<style>
+  :root {
+    --void:    #0b0b0e;
+    --void-2:  #15151b;
+    --void-3:  #1f1f27;
+    --line:    #5d5d6a;   /* 3.1:1 on void — the unlit rail carries meaning,
+                             and a chip outline is a UI component boundary */
+    --bone:    #f4f2ea;
+    --acid:    #e8ff47;   /* 17.8:1 on void */
+    --acid-dk: #4a5209;   /* for text ON acid */
+    --deep:    #2a2ad8;
+    --dim:     #a8a8b4;   /* 7.6:1 on void */
+    --sans: ui-sans-serif, -apple-system, "Segoe UI Variable Display", "Segoe UI",
+            Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--void); -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--void); color: var(--bone);
+    font-family: var(--sans); font-size: 17px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---- chrome ------------------------------------------------------- */
+  .bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 11px 20px; background: var(--void);
+    border-bottom: 2px solid var(--acid);
+    font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .bar .z { color: var(--acid); }
+  .bar .r { color: var(--dim); }
+
+  /* ---- fields -------------------------------------------------------- */
+  .field { padding: 26px 20px 34px; }
+  .field.void  { background: var(--void);  color: var(--bone); }
+  .field.bone  { background: var(--bone);  color: var(--void); }
+  .field.acid  { background: var(--acid);  color: var(--void); }
+  .field.deep  { background: var(--deep);  color: #fff; }
+  .inner { max-width: 560px; margin: 0 auto; }
+
+  .tag {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.2em;
+    text-transform: uppercase; margin: 0 0 12px;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .tag::after { content: ""; flex: 1; height: 2px; background: currentColor; opacity: .28; }
+  .void .tag { color: var(--acid); }
+  .bone .tag { color: var(--deep); }
+  .acid .tag { color: var(--void); }
+  .deep .tag { color: var(--acid); }
+
+  /* Progress: four chips, not a bar. The story's own visual language
+     applied to its own navigation. */
+  .steps { display: flex; gap: 6px; margin: 0 0 16px; }
+  .step { height: 6px; flex: 1; border-radius: 3px; background: currentColor; opacity: .2; }
+  .step.on { opacity: 1; }
+
+  /* ---- type ---------------------------------------------------------- */
+  h1 {
+    font-size: 36px; line-height: 0.99; font-weight: 800;
+    letter-spacing: -0.035em; margin: 0; text-wrap: balance;
+  }
+  h2 {
+    font-size: 29px; line-height: 1.03; font-weight: 800;
+    letter-spacing: -0.03em; margin: 0; text-wrap: balance;
+  }
+  .mega {
+    font-size: 42px; line-height: 0.96; font-weight: 800;
+    letter-spacing: -0.04em; margin: 0; text-wrap: balance;
+  }
+  .lede   { font-size: 16.5px; line-height: 1.42; margin: 12px 0 0; color: #c9c9d4; }
+  .body   { font-size: 17.5px; line-height: 1.5; margin: 16px 0 0; }
+  .void .body { color: #d4d4de; }
+  .bone .body { color: #2e2e38; }
+  .acid .body { color: #2b3006; }
+  .deep .body { color: #dde0ff; }
+  .small  { font-size: 14px; line-height: 1.5; color: var(--dim); margin: 16px 0 0; }
+
+  /* ---- the board (shared by both figures) ----------------------------- */
+  .board { display: block; width: 100%; height: auto; margin: 10px 0 0; overflow: visible; }
+
+  .chip      { fill: var(--void-2); stroke: var(--line); stroke-width: 2; cursor: pointer; }
+  .chip:hover{ stroke: var(--dim); }
+  .chip.lit  { fill: var(--acid); stroke: var(--acid); }
+  .chip.src  { fill: var(--bone); stroke: var(--bone); cursor: default; }
+  .chip.off  { stroke: var(--line); }
+  rect.chip:focus-visible, rect.chip:focus {
+    outline: none; stroke: var(--acid); stroke-width: 4;
+  }
+
+  .chip-l  { fill: var(--bone); font-weight: 800; font-size: 15px; pointer-events: none; }
+  .chip-l.on   { fill: var(--acid-dk); }
+  .chip-l.dark { fill: var(--void); }
+  .chip-a  { fill: var(--dim); font-size: 11.5px; font-weight: 700; letter-spacing: .06em;
+             pointer-events: none; opacity: 0; transition: opacity .3s ease .25s; }
+  .chip-a.on { fill: var(--acid-dk); }
+  .answered .chip-a { opacity: 1; }
+
+  /* traces */
+  .trace      { fill: none; stroke: var(--line); stroke-width: 4; stroke-linecap: round; }
+  .trace.live { stroke: var(--acid); }
+  .trace.draw { stroke-dasharray: var(--len); stroke-dashoffset: var(--len);
+                transition: stroke-dashoffset .75s cubic-bezier(.2,.7,.3,1); }
+  .answered .trace.draw { stroke-dashoffset: 0; }
+  .trace.stub { stroke: #7a7a88; stroke-width: 4; opacity: 0; transition: opacity .25s ease .5s; }
+  .answered .trace.stub { opacity: 1; }
+  .pad  { fill: var(--acid); opacity: 0; transition: opacity .2s ease .7s; }
+  .answered .pad { opacity: 1; }
+  .gapcap { fill: #7a7a88; opacity: 0; transition: opacity .2s ease .6s; }
+  .answered .gapcap { opacity: 1; }
+
+  /* ---- readouts -------------------------------------------------------- */
+  .verdict {
+    margin: 18px 0 0; min-height: 28px;
+    font-size: 21px; line-height: 1.22; font-weight: 800; letter-spacing: -0.02em;
+  }
+  .verdict .hl { background: var(--acid); color: var(--void); padding: 0 5px; }
+  .explain {
+    margin: 12px 0 0; min-height: 44px; font-size: 16px; line-height: 1.5;
+    color: #cdcdd8; border-left: 4px solid var(--acid); padding-left: 14px;
+  }
+  .again {
+    margin: 16px 0 0; min-height: 48px; padding: 0 18px;
+    background: transparent; border: 2px solid var(--dim); color: var(--bone);
+    font: inherit; font-size: 12.5px; font-weight: 800; letter-spacing: 0.14em;
+    text-transform: uppercase; cursor: pointer; border-radius: 6px;
+  }
+  .again:focus-visible { outline: 3px solid var(--acid); outline-offset: 2px; }
+
+  .readout {
+    margin: 14px 0 0; min-height: 96px;
+    background: var(--void-2); border-radius: 10px; padding: 14px 16px;
+    border-left: 4px solid var(--acid);
+  }
+  .readout .n {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--acid); margin: 0 0 5px;
+  }
+  .readout p { margin: 0; font-size: 16.5px; line-height: 1.45; color: #d4d4de; }
+
+  /* ---- verification ------------------------------------------------------ */
+  details { border-top: 2px solid rgba(255,255,255,.26); }
+  details summary {
+    min-height: 52px; display: flex; align-items: center; gap: 10px;
+    cursor: pointer; list-style: none;
+    font-size: 12px; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before {
+    content: ""; width: 14px; height: 14px; border-radius: 3px;
+    background: var(--acid); flex: none;
+  }
+  details[open] summary::before { background: transparent; box-shadow: inset 0 0 0 3px var(--acid); }
+  details .dbody { padding: 0 0 20px; }
+  .src { margin: 0 0 15px; font-size: 15px; line-height: 1.5; }
+  .src .org { font-weight: 800; }
+  .src .ttl { font-style: italic; }
+  .src .cav { display: block; margin-top: 4px; opacity: .78; font-size: 14px; }
+  .lims { margin: 0; padding-left: 18px; font-size: 15px; }
+  .lims li { margin: 0 0 8px; }
+
+  /* ---- onward -------------------------------------------------------------- */
+  .onward { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 9px; }
+  .onward a {
+    min-height: 60px; display: flex; flex-direction: column; justify-content: center;
+    padding: 12px 16px; text-decoration: none; color: #fff; border-radius: 10px;
+    background: rgba(255,255,255,.09); border: 2px solid rgba(255,255,255,.22);
+  }
+  .onward .l { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; }
+  .onward .n { font-size: 13px; color: #c9cbff; margin-top: 3px; }
+
+  /* ---- share card ------------------------------------------------------------ */
+  .cardzone { background: var(--void-2); padding: 32px 20px 20px; border-top: 2px solid var(--line); }
+  .cardzone h3 {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--dim); margin: 0 0 16px; text-align: center;
+  }
+  .card {
+    width: 270px; height: 480px; margin: 0 auto; background: var(--void);
+    border: 3px solid var(--acid); border-radius: 14px; padding: 20px 18px;
+    display: flex; flex-direction: column;
+  }
+  .card .top {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 10.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+  }
+  .card .top .z { color: var(--acid); }
+  .card .top .r { color: var(--dim); }
+  .card .mid { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .card svg { width: 100%; height: auto; margin: 0 0 16px; }
+  .card .c {
+    margin: 0; font-size: 25px; line-height: 1.02; font-weight: 800;
+    letter-spacing: -0.035em; color: var(--bone); text-wrap: balance;
+  }
+  .card .c .hl { background: var(--acid); color: var(--void); padding: 0 4px; }
+  .card .bot {
+    border-top: 2px solid var(--line); padding-top: 10px;
+    font-size: 8.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--dim); display: flex; justify-content: space-between; gap: 8px;
+    white-space: nowrap;
+  }
+  .cardnote { font-size: 12px; line-height: 1.55; color: var(--dim); margin: 16px auto 0; max-width: 340px; }
+
+  .companion {
+    background: var(--void); padding: 26px 20px 44px; border-top: 2px solid var(--line);
+  }
+  .companion h3 {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--acid); margin: 0 0 10px;
+  }
+  .companion p { font-size: 14px; line-height: 1.55; color: var(--dim); margin: 0 0 16px; }
+  .companion a {
+    display: inline-flex; align-items: center; min-height: 48px; padding: 0 18px;
+    border: 2px solid var(--acid); border-radius: 8px; color: var(--acid);
+    text-decoration: none; font-size: 12.5px; font-weight: 800;
+    letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .mockfoot { font-size: 11.5px; line-height: 1.6; color: var(--dim); margin: 22px 0 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+    .trace.draw { stroke-dashoffset: 0 !important; }
+    .pad, .gapcap, .chip-a { opacity: 1 !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar"><span>Macro<span class="z">Chipz</span></span><span class="r">Rates</span></div>
+
+<!-- ================= 1 · HOOK + THE INTERACTION, ONE SCREEN ============== -->
+<section class="field void" id="quiz">
+  <div class="inner">
+    <div class="steps" style="color:var(--acid)">
+      <span class="step on"></span><span class="step"></span><span class="step"></span><span class="step"></span>
+    </div>
+    <p class="tag">Wait, seriously?</p>
+    <h1 id="q"></h1>
+    <p class="lede" id="misconception"></p>
+
+    <p class="tag" style="margin-top:22px">Tap the one the Fed sets</p>
+
+    <svg class="board" id="fig1" viewBox="0 0 350 372" role="group"
+         aria-label="Four interest rates. Tap one to see which of them the Federal Open Market Committee actually sets; the connection is then drawn.">
+      <g id="traces1"></g>
+      <g id="chips1"></g>
+    </svg>
+
+    <p class="verdict" id="verdict" aria-live="polite"></p>
+    <p class="explain" id="explain"></p>
+    <button class="again" id="again" hidden>Try again</button>
+  </div>
+</section>
+
+<!-- ================= 2 · THE ANSWER, IN WORDS (hard flip) ================= -->
+<section class="field bone">
+  <div class="inner">
+    <div class="steps" style="color:var(--void)">
+      <span class="step on"></span><span class="step on"></span><span class="step"></span><span class="step"></span>
+    </div>
+    <p class="tag">So what does it control?</p>
+    <h2 id="answer"></h2>
+    <p class="body" id="whatItIs"></p>
+  </div>
+</section>
+
+<!-- ================= 3 · WHAT REACHES YOUR RATE ========================== -->
+<section class="field void" id="explorer">
+  <div class="inner">
+    <div class="steps" style="color:var(--acid)">
+      <span class="step on"></span><span class="step on"></span><span class="step on"></span><span class="step"></span>
+    </div>
+    <p class="tag">What reaches your rate</p>
+    <h2 id="influenceHeading"></h2>
+    <p class="lede">Four separate things feed the number a lender quotes you. Tap any chip.</p>
+
+    <svg class="board" id="fig2" viewBox="0 0 350 296" role="group"
+         aria-label="Fed policy, long-term Treasury yields, the market for bundled mortgages and lender costs and risks, all feeding the rate a lender quotes you.">
+      <g id="traces2"></g>
+      <g id="chips2"></g>
+    </svg>
+
+    <div class="readout" id="readout" aria-live="polite"></div>
+    <p class="small" id="influenceCaveat"></p>
+  </div>
+</section>
+
+<!-- ================= 4 · CONCLUSION ====================================== -->
+<section class="field acid">
+  <div class="inner">
+    <div class="steps" style="color:var(--void)">
+      <span class="step on"></span><span class="step on"></span><span class="step on"></span><span class="step on"></span>
+    </div>
+    <p class="tag">In one line</p>
+    <p class="mega" id="conclusion"></p>
+    <p class="body" id="conclusionSupport"></p>
+  </div>
+</section>
+
+<!-- ================= VERIFICATION + ONWARD =============================== -->
+<section class="field deep">
+  <div class="inner">
+    <p class="tag">How we know</p>
+    <p class="body" style="margin-top:0" id="basis"></p>
+    <details>
+      <summary>The sources behind this</summary>
+      <div class="dbody" id="sources"></div>
+    </details>
+    <details>
+      <summary id="limSummary">What this does not tell you</summary>
+      <div class="dbody"><ul class="lims" id="limitations"></ul></div>
+    </details>
+
+    <p class="tag" style="margin-top:32px">Keep going</p>
+    <ul class="onward" id="onward"></ul>
+  </div>
+</section>
+
+<!-- ================= 5 · VERTICAL SHARE CARD ============================= -->
+<div class="cardzone">
+  <h3>Share card &middot; 9:16</h3>
+  <div class="card">
+    <div class="top"><span class="z">MacroChipz</span><span class="r">Rates</span></div>
+    <div class="mid">
+      <svg viewBox="0 0 230 128" aria-hidden="true">
+        <path d="M 115 30 L 16 30 L 16 66 L 30 66" fill="none" stroke="#e8ff47" stroke-width="4" stroke-linecap="round"/>
+        <rect x="76" y="6" width="78" height="30" rx="8" fill="#f4f2ea"/>
+        <text x="115" y="26" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Arial" font-size="13" font-weight="800" fill="#0b0b0e">FOMC</text>
+        <rect x="30" y="48" width="170" height="36" rx="9" fill="#e8ff47"/>
+        <text x="115" y="71" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Arial" font-size="13" font-weight="800" fill="#0b0b0e">the federal funds rate</text>
+        <path d="M 16 100 L 22 100" stroke="#7a7a88" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="30" cy="100" r="3.5" fill="#7a7a88"/>
+        <rect x="42" y="84" width="158" height="32" rx="9" fill="none" stroke="#5d5d6a" stroke-width="2"/>
+        <text x="121" y="105" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Arial" font-size="12" font-weight="800" fill="#a8a8b4">your mortgage rate</text>
+      </svg>
+      <p class="c">The one rate the Fed sets is <span class="hl">the one you never pay.</span></p>
+    </div>
+    <div class="bot"><span>Fannie Mae &middot; NY Fed &middot; CFPB</span><span>macrochipz</span></div>
+  </div>
+  <p class="cardnote" id="cardNote"></p>
+</div>
+
+<!-- ================= COMPANION STUDIES ================================== -->
+<div class="companion">
+  <h3>Cross-product fit</h3>
+  <p>
+    How the chip-and-trace identity behaves where the job is reference rather than story —
+    the homepage and one economic world, at reference type sizes with tabular figures.
+    Visual studies only, and every number is a redacted placeholder.
+  </p>
+  <a href="direction-d-companion.html">Open the companion studies &rarr;</a>
+  <p class="mockfoot">
+    Direction D &middot; Signal &times; Field Notes. Static mockup for #46D review — not wired to
+    the application, not routed, not indexed, nothing committed. Every sentence from the
+    reviewed explainer registry via <code>content.js</code>.
+  </p>
+</div>
+
+<script src="content.js"></script>
+<script>
+(function () {
+  const S = window.STORY;
+  const NS = "http://www.w3.org/2000/svg";
+  const $ = (id) => document.getElementById(id);
+  const text = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+
+  text("q", S.question);
+  text("misconception", S.misconception);
+  text("answer", S.answer);
+  text("whatItIs", S.whatItIs);
+  text("influenceHeading", S.influenceHeading);
+  text("influenceCaveat", S.influenceCaveat);
+  text("conclusion", S.conclusion);
+  text("conclusionSupport", S.conclusionSupport);
+  text("basis", S.basis);
+  text("cardNote",
+    "The card carries the conclusion, the MacroChipz mark and the three institutions the " +
+    "page cites. It makes no claim the page does not make, and it names no number.");
+
+  function el(tag, attrs, parent) {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  /* ==================================================================
+     FIGURE 1 — the drawn answer
+     ==================================================================
+     Geometry note, learned the hard way in Direction C: an SVG scaled
+     to fit a column means USER UNITS ARE NOT PIXELS. This board's
+     viewBox is 350 wide and its container at 390px is 350 wide, so the
+     scale is 1:1 and a 58-unit chip is a 58px tap target. A
+     `verifyTapTargets()` call at the bottom asserts it at runtime
+     rather than trusting the arithmetic.
+  */
+  const C1 = { x: 38, w: 308, h: 58, gap: 12, y0: 92 };
+  const RAIL = 14;                 // the left-hand trace rail
+  const chips1 = $("chips1"), traces1 = $("traces1");
+  const quiz = $("quiz");
+
+  // The source chip: the committee itself.
+  el("rect", { class: "chip src", x: 95, y: 6, width: 160, height: 46, rx: 11 }, chips1);
+  el("text", { class: "chip-l dark", x: 175, y: 35, "text-anchor": "middle" }, chips1)
+    .textContent = "FOMC";
+
+  const fedIdx = S.options.findIndex((o) => o.isFed);
+  const lastCy = C1.y0 + 3 * (C1.h + C1.gap) + C1.h / 2;
+
+  // THE RAIL, always visible and always unbranched.
+  //
+  // Without it the indent before the chips is just dead space, and the
+  // figure reads as a misalignment rather than as a board waiting for a
+  // connection. With it, the committee's line runs PAST all four rates
+  // and touches none of them — which is the question the page is
+  // asking, drawn. Branching it before the reader answers would give
+  // the answer away; branching it to all four would assert something
+  // false.
+  el("path", { class: "trace", id: "rail",
+    d: "M 175 52 L 175 70 L " + RAIL + " 70 L " + RAIL + " " + lastCy }, traces1);
+
+  S.options.forEach((o, i) => {
+    const y = C1.y0 + i * (C1.h + C1.gap);
+    const cy = y + C1.h / 2;
+
+    // Each option owns a trace that is drawn only if it is the one the
+    // committee actually reaches.
+    const path = "M 175 52 L 175 70 L " + RAIL + " 70 L " + RAIL + " " + cy + " L " + (C1.x - 4) + " " + cy;
+    const t = el("path", { class: "trace draw live", id: "t-" + o.id, d: path }, traces1);
+    t.style.setProperty("--len", Math.ceil(t.getTotalLength()) + "");
+    t.style.display = "none";
+
+    // ...and a stub that stops short, for a connection that is not there.
+    const stubEnd = RAIL + 26;
+    el("path", { class: "trace stub", id: "s-" + o.id,
+                 d: "M " + RAIL + " " + cy + " L " + stubEnd + " " + cy }, traces1)
+      .style.display = "none";
+    el("circle", { class: "gapcap", id: "g-" + o.id, cx: C1.x - 10, cy: cy, r: 4 }, traces1)
+      .style.display = "none";
+
+    el("circle", { class: "pad", id: "p-" + o.id, cx: C1.x - 4, cy: cy, r: 5 }, traces1)
+      .style.display = "none";
+
+    const r = el("rect", {
+      class: "chip", id: "c-" + o.id, x: C1.x, y: y, width: C1.w, height: C1.h, rx: 12,
+      tabindex: "0", role: "button", "aria-pressed": "false",
+      "aria-label": o.label,
+    }, chips1);
+    r.addEventListener("click", () => choose(o.id));
+    r.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(o.id); }
+    });
+
+    el("text", { class: "chip-l", id: "cl-" + o.id, x: C1.x + 16, y: y + 25 }, chips1)
+      .textContent = o.label;
+    el("text", { class: "chip-a", id: "ca-" + o.id, x: C1.x + 16, y: y + 44 }, chips1)
+      .textContent = "set by " + o.authority;
+  });
+
+  const verdict = $("verdict"), explain = $("explain"), again = $("again");
+
+  function choose(id) {
+    const picked = S.options.find((o) => o.id === id);
+    const fed = S.options[fedIdx];
+    quiz.classList.add("answered");
+
+    S.options.forEach((o) => {
+      const chip = $("c-" + o.id), lab = $("cl-" + o.id), auth = $("ca-" + o.id);
+      chip.setAttribute("aria-pressed", o.id === id ? "true" : "false");
+      chip.classList.toggle("lit", o.isFed);
+      lab.classList.toggle("on", o.isFed);
+      auth.classList.toggle("on", o.isFed);
+      // The real connection is drawn. The chosen-but-wrong one gets a
+      // stub that visibly fails to reach — which is the claim the page
+      // is making, drawn rather than asserted.
+      $("t-" + o.id).style.display = o.isFed ? "" : "none";
+      $("p-" + o.id).style.display = o.isFed ? "" : "none";
+      const showStub = o.id === id && !o.isFed;
+      $("s-" + o.id).style.display = showStub ? "" : "none";
+      $("g-" + o.id).style.display = showStub ? "" : "none";
+    });
+
+    verdict.innerHTML = "";
+    if (picked.isFed) {
+      verdict.append("Right — the one rate the Fed sets is ");
+      const hl = document.createElement("span");
+      hl.className = "hl";
+      hl.textContent = "the one you never pay.";
+      verdict.appendChild(hl);
+      explain.textContent = fed.reveal;
+    } else {
+      verdict.textContent = "Most people pick that one.";
+      // Both halves of the correction: what the chosen rate really is,
+      // and what the Fed really sets.
+      explain.textContent = picked.reveal + " " + fed.reveal;
+    }
+    again.hidden = false;
+  }
+
+  again.addEventListener("click", () => {
+    quiz.classList.remove("answered");
+    S.options.forEach((o) => {
+      const chip = $("c-" + o.id);
+      chip.setAttribute("aria-pressed", "false");
+      chip.classList.remove("lit");
+      $("cl-" + o.id).classList.remove("on");
+      $("ca-" + o.id).classList.remove("on");
+      ["t-", "p-", "s-", "g-"].forEach((k) => { $(k + o.id).style.display = "none"; });
+    });
+    verdict.textContent = "";
+    explain.textContent = "";
+    again.hidden = true;
+    $("c-" + S.options[0].id).focus();
+  });
+
+  /* ==================================================================
+     FIGURE 2 — four separate things, one destination
+     ==================================================================
+     Deliberately NOT a chain and NOT a formula. Four chips sit at the
+     same level as each other, each with its own trace to a shared bus.
+     Nothing is weighted, nothing is ordered, no trace is thicker than
+     another. The caveat under the figure is the registry's own.
+  */
+  const C2 = { x: 30, w: 142, h: 72, gapX: 16, gapY: 12, y0: 8 };
+  const BUS_Y = 212, SINK_Y = 234, SINK_H = 50;
+  const RAIL_L = 14, RAIL_R = 336;
+  const chips2 = $("chips2"), traces2 = $("traces2");
+
+  el("path", { class: "trace", id: "bus", d: "M " + RAIL_L + " " + BUS_Y + " L " + RAIL_R + " " + BUS_Y }, traces2);
+  el("path", { class: "trace", d: "M 175 " + BUS_Y + " L 175 " + SINK_Y }, traces2);
+
+  S.influences.forEach((inf, i) => {
+    const col = i % 2, row = (i / 2) | 0;
+    const x = C2.x + col * (C2.w + C2.gapX);
+    const y = C2.y0 + row * (C2.h + C2.gapY);
+    const cx = x + C2.w / 2;
+
+    // ROUTING RULE: the top row leaves sideways and runs down the outer
+    // rails; the bottom row drops straight from its own centre. Nothing
+    // crosses anything. A first version distributed entry points evenly
+    // along the bus and produced a tangle, which made the figure look
+    // like it was asserting an ordering it is not.
+    const d = row === 0
+      ? (col === 0
+          ? "M " + x + " " + (y + C2.h / 2) + " L " + RAIL_L + " " + (y + C2.h / 2) + " L " + RAIL_L + " " + BUS_Y
+          : "M " + (x + C2.w) + " " + (y + C2.h / 2) + " L " + RAIL_R + " " + (y + C2.h / 2) + " L " + RAIL_R + " " + BUS_Y)
+      : "M " + cx + " " + (y + C2.h) + " L " + cx + " " + BUS_Y;
+
+    el("path", { class: "trace", id: "it-" + inf.id, d: d }, traces2);
+
+    const r = el("rect", { class: "chip", id: "ic-" + inf.id, x: x, y: y,
+      width: C2.w, height: C2.h, rx: 12,
+      tabindex: "0", role: "button", "aria-pressed": "false", "aria-label": inf.label }, chips2);
+    r.addEventListener("click", () => select(inf.id));
+    r.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(inf.id); }
+    });
+
+    const words = inf.label.split(" ");
+    const lines = []; let cur = "";
+    words.forEach((w) => {
+      if ((cur + " " + w).trim().length > 13) { lines.push(cur.trim()); cur = w; }
+      else cur = (cur + " " + w).trim();
+    });
+    lines.push(cur);
+    const t = el("text", { class: "chip-l", id: "il-" + inf.id, "text-anchor": "middle",
+                           "font-size": "14" }, chips2);
+    lines.forEach((l, li) => {
+      el("tspan", { x: cx, y: y + C2.h / 2 - (lines.length - 1) * 8 + li * 17 + 5 }, t)
+        .textContent = l;
+    });
+  });
+
+  el("rect", { class: "chip src", x: 22, y: SINK_Y, width: 306, height: SINK_H, rx: 12 }, chips2);
+  el("text", { class: "chip-l dark", x: 175, y: SINK_Y + 31, "text-anchor": "middle",
+               "font-size": "16" }, chips2)
+    .textContent = S.convergenceLabel;
+
+  const readout = $("readout");
+  function select(id) {
+    const inf = S.influences.find((i) => i.id === id);
+    S.influences.forEach((i) => {
+      const on = i.id === id;
+      $("ic-" + i.id).classList.toggle("lit", on);
+      $("ic-" + i.id).setAttribute("aria-pressed", on ? "true" : "false");
+      $("il-" + i.id).classList.toggle("on", on);
+      $("it-" + i.id).classList.toggle("live", on);
+    });
+    readout.innerHTML = '<p class="n"></p><p class="d"></p>';
+    readout.querySelector(".n").textContent = inf.label;
+    readout.querySelector(".d").textContent = inf.detail;
+  }
+  // Open on the first so the pattern is legible with no interaction at
+  // all, and so nothing essential is hidden behind a tap.
+  select(S.influences[0].id);
+
+  /* ---- verification + onward ------------------------------------------ */
+  const src = $("sources");
+  S.sources.forEach((s) => {
+    const d = document.createElement("div");
+    d.className = "src";
+    d.innerHTML = '<span class="org"></span>, <span class="ttl"></span> — <span class="nt"></span>';
+    d.querySelector(".org").textContent = s.org;
+    d.querySelector(".ttl").textContent = s.title;
+    d.querySelector(".nt").textContent = s.note;
+    if (s.caveat) {
+      const c = document.createElement("span");
+      c.className = "cav";
+      c.textContent = s.caveat;
+      d.appendChild(c);
+    }
+    src.appendChild(d);
+  });
+
+  text("limSummary", "What this does not tell you (" + S.limitations.length + ")");
+  S.limitations.forEach((l) => {
+    const li = document.createElement("li");
+    li.textContent = l;
+    $("limitations").appendChild(li);
+  });
+
+  const onward = $("onward");
+  S.onward.forEach((o) => {
+    const li = document.createElement("li");
+    li.innerHTML = '<a href="#"><span class="l"></span><span class="n"></span></a>';
+    li.querySelector(".l").textContent = o.label;
+    li.querySelector(".n").textContent = o.note;
+    onward.appendChild(li);
+  });
+
+  /* ==================================================================
+     RUNTIME TAP-TARGET ASSERTION
+     ==================================================================
+     Direction C shipped 41px controls because 48 SVG units looked like
+     48 pixels. Rather than repeat the arithmetic in a comment and hope,
+     this measures the RENDERED geometry of every control on the page
+     and shouts in the console if any is under 44 CSS px. If this
+     direction is chosen, this becomes a real test.
+  */
+  window.verifyTapTargets = function () {
+    const bad = [];
+    document.querySelectorAll('a,button,summary,[role="button"]').forEach((node) => {
+      const r = node.getBoundingClientRect();
+      if (r.height > 2 && (r.height < 44 || r.width < 44)) {
+        bad.push((node.getAttribute("aria-label") || node.textContent || "").trim().slice(0, 30) +
+                 " " + Math.round(r.width) + "x" + Math.round(r.height));
+      }
+    });
+    if (bad.length) console.warn("[tap-targets] under 44px:", bad);
+    return bad;
+  };
+  window.verifyTapTargets();
+})();
+</script>
+</body>
+</html>

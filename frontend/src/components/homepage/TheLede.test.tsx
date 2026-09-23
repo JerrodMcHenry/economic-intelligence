@@ -135,6 +135,57 @@ describe("ACTIVE lede", () => {
   });
 });
 
+/** A second reading for the same period, from the existing fixture. */
+function otherReading(id: string, value: number, title: string): IntelligenceObject {
+  return {
+    ...RATES,
+    id,
+    payload: { ...(RATES as { payload: Record<string, unknown> }).payload, latest_value: value, series_title: title },
+  } as unknown as IntelligenceObject;
+}
+
+describe("the readings composition (#48A)", () => {
+  it("renders the other readings INSIDE the lede rather than as a second section", () => {
+    const other = otherReading("rates:UST_NOMINAL_2Y:2026-09-18", 4.76, "2-Year Treasury Par Yield (Nominal)");
+    const { container } = render(
+      <MemoryRouter>
+        <TheLede object={RATES} status="resolved" alsoRecorded={[other]} />
+      </MemoryRouter>,
+    );
+
+    const lede = container.querySelector("section");
+    expect(lede).not.toBeNull();
+    // One card, and the readings are within it.
+    expect(within(lede as HTMLElement).getByRole("heading", { name: "Also recorded" })).toBeInTheDocument();
+    // Demoted to h3: it is now inside the lede's h2, and it is still a
+    // DIFFERENT selection, so it keeps a heading of its own.
+    expect(within(lede as HTMLElement).getByRole("heading", { name: "Also recorded" }).tagName).toBe("H3");
+    expect(screen.getByText("4.76%")).toBeInTheDocument();
+  });
+
+  it("renders no rail, and no empty divider, when there is nothing else on file", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <TheLede object={RATES} status="resolved" alsoRecorded={[]} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("heading", { name: "Also recorded" })).not.toBeInTheDocument();
+    expect(container.querySelector(".border-t")).toBeNull();
+  });
+
+  it("keeps every value, its world and its as-of date", () => {
+    const other = otherReading("rates:UST_NOMINAL_30Y:2026-09-18", 5.34, "30-Year Treasury Par Yield (Nominal)");
+    render(
+      <MemoryRouter>
+        <TheLede object={RATES} status="resolved" alsoRecorded={[other]} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("5.34%")).toBeInTheDocument();
+    expect(screen.getAllByText(/Rates/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2026-09-18").length).toBeGreaterThan(0);
+  });
+});
+
 describe("UNKNOWN lede (before the answer is in)", () => {
   it("does not assert the quiet state before MacroChipz has checked", () => {
     // This is what the PRERENDERED html contains, since the homepage
@@ -142,12 +193,20 @@ describe("UNKNOWN lede (before the answer is in)", () => {
     // static HTML would publish a claim nobody verified.
     const { container } = renderLede(null, "unknown");
     expect(container.textContent).not.toContain("No new tracked change");
-    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("The economy right now");
+    // #48: "The economy right now" was the old page h1, reused here as
+    // a holding heading. The state now names itself, which is the point
+    // of it being distinct from quiet at all.
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("Not yet known");
   });
 
-  it("still opens every world while it waits", () => {
+  it("offers something to do while it waits, without claiming an answer", () => {
+    // #48: the four-world grid left this component -- the Living
+    // Economy hero renders it directly above, and twice within one
+    // screen was the duplication the increment set out to remove. What
+    // replaced it is two real routes.
     renderLede(null, "unknown");
-    expect(screen.getByRole("link", { name: /Inflation/ })).toHaveAttribute("href", "/inflation");
+    expect(screen.getByRole("link", { name: /next data is scheduled/ })).toHaveAttribute("href", "/calendar");
+    expect(screen.getByRole("link", { name: /How every figure is produced/ })).toHaveAttribute("href", "/explain");
   });
 });
 
@@ -166,16 +225,13 @@ describe("QUIET lede", () => {
     expect(screen.getByText(/not a claim that the economy is quiet/)).toBeInTheDocument();
   });
 
-  it("still opens every world", () => {
+  it("offers two real routes, weighted rather than footnoted", () => {
+    // #48: quiet is the MAJORITY state -- roughly two thirds of
+    // business days carry no scheduled release -- so its actions are
+    // buttons rather than a trailing link, and both routes exist.
     renderLede(null);
-    const worlds: ReadonlyArray<readonly [string, string]> = [
-      ["Inflation", "/inflation"],
-      ["Jobs", "/jobs"],
-      ["Rates", "/rates"],
-    ];
-    for (const [name, href] of worlds) {
-      expect(screen.getByRole("link", { name: new RegExp(name) })).toHaveAttribute("href", href);
-    }
+    expect(screen.getByRole("link", { name: /next data is scheduled/ })).toHaveAttribute("href", "/calendar");
+    expect(screen.getByRole("link", { name: /How every figure is produced/ })).toHaveAttribute("href", "/explain");
   });
 
   it("points at the calendar rather than at a fabricated event", () => {
@@ -193,20 +249,14 @@ describe("QUIET lede", () => {
     }
   });
 
-  it("names every active world, and only worlds that have data", () => {
-    // Derived from the registry rather than hardcoded, which is the
-    // property #45 relied on: Housing appeared here through one registry
-    // entry, with no change to `homepage_presentation_v1.0` and no
-    // Housing-specific code on the homepage.
+  it("no longer repeats the world grid the hero already renders", () => {
+    // #48. The worlds are still derived from the registry -- that
+    // property moved to `LivingEconomyHero`, where its own test asserts
+    // it. What is asserted HERE is that they are not listed twice.
     const { container } = renderLede(null);
-    const items = within(container).getAllByRole("listitem");
-    expect(items).toHaveLength(ECONOMIC_WORLDS.length);
+    expect(within(container).queryAllByRole("listitem")).toHaveLength(0);
     for (const world of ECONOMIC_WORLDS) {
-      expect(container.textContent, world.label).toContain(world.label);
-    }
-    // A world with no data still gets no slot.
-    for (const absent of ["Consumer", "Growth"]) {
-      expect(container.textContent, absent).not.toMatch(new RegExp(absent, "i"));
+      expect(container.textContent, world.label).not.toContain(world.label);
     }
   });
 });

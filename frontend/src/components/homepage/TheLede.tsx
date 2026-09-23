@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
 import type { IntelligenceObject } from "../../api/intelligence.types";
+import { RecentIntelligence } from "./RecentIntelligence";
 import { VisualEvidenceChart } from "../intelligence/VisualEvidenceChart";
 import { isRatesMovement } from "../../homepage/presentationPolicy";
 import {
@@ -42,8 +43,20 @@ import { ECONOMIC_WORLDS } from "../../worlds/registry";
 export function TheLede({
   object,
   status,
+  alsoRecorded = [],
 }: {
   object: IntelligenceObject | null;
+  /**
+   * What `selection.whatChanged` returned -- a DIFFERENT selection
+   * from the one that chose `object`, rendered beside it rather than
+   * in a section of its own (#48A). On this data both are the same
+   * world and the same period, so two headings and a rule between
+   * them was splitting one reading in half.
+   *
+   * It is passed in rather than fetched: this component still issues
+   * no request of its own.
+   */
+  alsoRecorded?: IntelligenceObject[];
   /**
    * `"unknown"` is NOT the quiet state. Before the request resolves --
    * which includes the whole of the prerendered HTML, since this page
@@ -56,60 +69,68 @@ export function TheLede({
 }) {
   if (status === "unknown") return <UnknownLede />;
   if (object === null) return <QuietLede />;
-  return <ActiveLede object={object} />;
+  return <ActiveLede object={object} alsoRecorded={alsoRecorded} />;
 }
 
 /** Before the answer is known. States nothing about the economy. */
 function UnknownLede() {
   return (
-    <section aria-labelledby="lede-heading" className="pb-2">
-      <p className="type-label text-fg-muted">The economy</p>
-      <h2 id="lede-heading" className="type-page-title mt-2">
-        The economy right now
-      </h2>
-      <p className="mt-3 max-w-prose text-fg-secondary">
-        Loading the latest readings MacroChipz has on file.
-      </p>
-      <ul className="mt-5 grid gap-3 sm:grid-cols-3">
-        {ECONOMIC_WORLDS.map((world) => (
-          <li key={world.id} className="rounded-lg border border-line bg-surface p-4">
-            <Link to={world.route} className="text-sm font-semibold text-fg underline-offset-4 hover:underline">
-              {world.label} →
-            </Link>
-            <p className="mt-1 text-sm text-fg-secondary">{world.description}</p>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <LedeShell
+      heading="Not yet known"
+      body="MacroChipz has not finished checking whether anything new has arrived. This is deliberately not the quiet state — saying nothing happened before asking would be a claim rather than a fact."
+      note="Shown while the request is unresolved, and if it fails."
+    />
   );
 }
 
-function ActiveLede({ object }: { object: IntelligenceObject }) {
+function ActiveLede({
+  object,
+  alsoRecorded,
+}: {
+  object: IntelligenceObject;
+  alsoRecorded: IntelligenceObject[];
+}) {
   const world = ECONOMIC_WORLDS.find((entry) => entry.analyticsWorld === object.world);
   const permanent = intelligencePath(object.id);
+  const hasRail = alsoRecorded.length > 0;
 
   return (
-    <section aria-labelledby="lede-heading" className="pb-2">
-      <p className="type-label text-fg-muted">
-        {worldLabel(object.world)} · <time dateTime={object.effective_period}>{object.effective_period}</time>
-      </p>
+    /* #48: the same glass card the two non-development states use, so
+       the slot keeps one shape whichever state fills it. The content,
+       the policy that chose the object and the figures are unchanged.
+       #48A: and the other readings for the same period now sit inside
+       it, as a rail at `lg` and beneath the chart below that. */
+    <section aria-labelledby="lede-heading" className="lx-card rounded-xl p-5 sm:p-6">
+      <div className={hasRail ? "lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,16rem)] lg:gap-8" : undefined}>
+        <div className="min-w-0">
+          <p className="type-label text-fg-muted">
+            {worldLabel(object.world)} · <time dateTime={object.effective_period}>{object.effective_period}</time>
+          </p>
 
-      {isRatesMovement(object) ? <RatesLede object={object} /> : <GenericLede object={object} />}
+          {isRatesMovement(object) ? <RatesLede object={object} /> : <GenericLede object={object} />}
 
-      <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
-        <Link
-          to={permanent}
-          className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
-        >
-          See the evidence →
-        </Link>
-        {world && (
-          <Link
-            to={world.route}
-            className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
-          >
-            Explore {world.label} →
-          </Link>
+          <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
+            <Link
+              to={permanent}
+              className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
+            >
+              See the evidence →
+            </Link>
+            {world && (
+              <Link
+                to={world.route}
+                className="text-sm font-medium text-fg-secondary underline-offset-4 hover:text-fg hover:underline"
+              >
+                Explore {world.label} →
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {hasRail && (
+          <div className="mt-6 border-t border-line-subtle pt-5 lg:mt-0 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+            <RecentIntelligence objects={alsoRecorded} />
+          </div>
         )}
       </div>
     </section>
@@ -199,34 +220,62 @@ function GenericLede({ object }: { object: IntelligenceObject }) {
  */
 function QuietLede() {
   return (
-    <section aria-labelledby="lede-heading" className="pb-2">
+    <LedeShell
+      heading="No new tracked change"
+      body="MacroChipz has not recorded a new change in the parts of the economy it tracks. That is not a claim that the economy is quiet — the economy is always operating. It means nothing new has arrived here."
+      note="Roughly two thirds of business days have no scheduled release. This is the normal state, not a failure."
+    />
+  );
+}
+
+/**
+ * The shell the two non-development states share (Increment #48).
+ *
+ * ================================================================
+ * WHAT #48 REMOVED, AND WHY
+ * ================================================================
+ *
+ * Both states used to render their own four-world grid. With the
+ * Living Economy hero directly above — four worlds, photographed,
+ * selectable — that grid was the same four links a second time within
+ * one screen. It is gone, and the space it used goes to the two
+ * actions, which are now buttons rather than a footnote.
+ *
+ * Quiet is the MAJORITY state: roughly two thirds of business days
+ * carry no scheduled release. A state that common gets design
+ * attention rather than an apology, and that is the whole reason this
+ * component is compact instead of large and empty.
+ *
+ * Both routes are real and already exist. Nothing here fetches, so
+ * this renders identically during an API outage.
+ */
+function LedeShell({ heading, body, note }: { heading: string; body: string; note: string }) {
+  return (
+    <section aria-labelledby="lede-heading" className="lx-card rounded-xl p-5 sm:p-6">
       <p className="type-label text-fg-muted">The economy</p>
 
-      <h2 id="lede-heading" className="type-page-title mt-2">
-        No new tracked change
+      <h2 id="lede-heading" className="mt-2 text-xl font-semibold tracking-tight text-fg sm:text-2xl">
+        {heading}
       </h2>
 
-      <p className="mt-3 max-w-prose text-fg-secondary">
-        MacroChipz has not recorded a new change in the parts of the economy it tracks. That is not a claim that the
-        economy is quiet — only that nothing new has arrived here. Where things stand:
-      </p>
+      <p className="mt-2 max-w-prose text-sm text-fg-secondary sm:text-base">{body}</p>
 
-      <ul className="mt-5 grid gap-3 sm:grid-cols-3">
-        {ECONOMIC_WORLDS.map((world) => (
-          <li key={world.id} className="rounded-lg border border-line bg-surface p-4">
-            <Link to={world.route} className="text-sm font-semibold text-fg underline-offset-4 hover:underline">
-              {world.label} →
-            </Link>
-            <p className="mt-1 text-sm text-fg-secondary">{world.description}</p>
-          </li>
-        ))}
-      </ul>
-
-      <p className="mt-4 text-sm text-fg-muted">
-        <Link to="/calendar" className="font-medium underline-offset-4 hover:text-fg hover:underline">
-          See when the next data is scheduled →
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link
+          to="/calendar"
+          className="inline-flex min-h-11 items-center rounded-lg border border-[color:var(--lx-card-hi)] bg-[color:var(--lx-selected)] px-4 text-sm font-semibold text-fg transition-colors hover:bg-[color:var(--lx-selected-hover)] motion-reduce:transition-none"
+        >
+          See when the next data is scheduled
         </Link>
-      </p>
+        <Link
+          to="/explain"
+          className="inline-flex min-h-11 items-center rounded-lg border border-line px-4 text-sm font-medium text-fg-secondary transition-colors hover:text-fg motion-reduce:transition-none"
+        >
+          How every figure is produced
+        </Link>
+      </div>
+
+      <p className="mt-3 type-meta text-fg-muted">{note}</p>
     </section>
   );
 }

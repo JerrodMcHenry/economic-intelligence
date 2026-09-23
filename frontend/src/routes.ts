@@ -48,6 +48,12 @@ export default [
   // navigation -- see the module docstring for why.
   route("explain", "routes/explainerIndex.tsx"),
   route("explain/:slug", "routes/explainer.tsx"),
+  // #46C PROTOTYPE. An ADDITIONAL route at its own URL — the
+  // explainer above is untouched, still prerendered and still
+  // canonical. Deleting this line and the module removes the
+  // prototype completely, which is the point of putting it here
+  // rather than inside `explainer.tsx` behind a flag.
+  route("story/fed-and-mortgage-rates", "routes/story.fedMortgage.tsx"),
   route("intelligence/:intelligenceId", intelligenceModule),
   route("*?", "routes/catchall.tsx"),
 ] satisfies RouteConfig;

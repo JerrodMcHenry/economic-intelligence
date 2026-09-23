@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 
-import { getHousing } from "../api/housing";
 import { getInflationMonitor } from "../api/inflation";
 import { getLaborMonitor } from "../api/labor";
 import { listHomepageIntelligence } from "../api/intelligence";
@@ -12,12 +11,13 @@ import { CurrentStateSection } from "../components/overview/CurrentStateSection"
 import { HowTheyRelate } from "../components/overview/HowTheyRelate";
 import { RecentReleasePreview } from "../components/overview/RecentReleasePreview";
 import { UpcomingReleasesPreview } from "../components/overview/UpcomingReleasesPreview";
-import { PageHeader } from "../components/PageHeader";
+import { FeaturedStory } from "../components/homepage/FeaturedStory";
 import { HomeQuestions } from "../components/homepage/HomeQuestions";
-import { RecentIntelligence } from "../components/homepage/RecentIntelligence";
+import { LivingEconomyHero } from "../components/homepage/LivingEconomyHero";
+import { StoryTeaser } from "../components/homepage/StoryTeaser";
 import { TheLede } from "../components/homepage/TheLede";
-import { WorldOrientation } from "../components/homepage/WorldOrientation";
 import { RevisionsLink } from "../components/revisions/RevisionsLink";
+import { IMAGE_CREDITS } from "../components/homepage/worldImagery";
 import { selectHomepage } from "../homepage/presentationPolicy";
 import { ReleaseScheduleDisclosure } from "../components/releases/ReleaseScheduleDisclosure";
 
@@ -117,11 +117,6 @@ export function HomePage() {
   // endpoint is bounded and paged; the page does not walk the
   // intelligence history to show a handful of things.
   const intelligence = useApiResource(listHomepageIntelligence);
-  // #45B: one additional INDEPENDENT resource, for the world
-  // orientation section's Housing line only. Failure-isolated like
-  // every other resource on this page -- a Housing outage removes one
-  // line of metadata and touches nothing else.
-  const housing = useApiResource(getHousing);
 
   // THE LEDE is chosen by `homepage_presentation_v1.0` -- a
   // deterministic PRESENTATION policy, never a claim about economic
@@ -131,68 +126,139 @@ export function HomePage() {
 
   return (
     <div>
-      <PageHeader title="The economy right now" description="Know what changed in the economy — and prove why." />
+      {/* ORIENTATION FIRST (#48). On most days there is no eligible
+          development, and a page whose first section is frequently
+          empty teaches people it is empty. The hero fetches nothing,
+          so it is complete before any request resolves, survives an
+          outage, and prerenders with its real content. */}
+      <LivingEconomyHero />
 
-      <div className="mt-8 divide-y divide-line [&>*]:py-8 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
-        <TheLede object={selection.lede} status={intelligence.status === "success" ? "resolved" : "unknown"} />
+      <div className="mt-6 space-y-6 sm:mt-8 sm:space-y-8">
+        {/*
+         * #48B: ON A PHONE THE STORY COMES FIRST, BEFORE THE CHART.
+         *
+         * Measured at 390x844: the featured section began 1,637px down,
+         * behind a full screen of chart. This renders below `lg` only,
+         * and `FeaturedStory` renders from `lg` only, so the story is
+         * offered exactly once at every width -- here on a phone, in
+         * its existing editorial position on a desktop.
+         */}
+        <StoryTeaser />
 
-        <RecentIntelligence objects={selection.whatChanged} />
-
-        {/* ORIENTATION (#45B). A DIFFERENT CLAIM from THE LEDE's: the
-            lede says "this changed" under `homepage_presentation_v1.0`;
-            this says "these exist, and here is the latest data on
-            file". #45A found the homepage could only ever show Treasury
-            yields, because 6 of 1,899 objects are eligible and all six
-            are rates. The eligibility policy is correct and untouched;
-            what was missing was a second, clearly separated layer. */}
-        <WorldOrientation
-          inflation={monitor}
-          labor={laborMonitor}
-          housing={housing}
-          intelligence={intelligence.status === "success" ? intelligence.data.items : []}
+        {/* #48A: ONE data composition. The lede and the other
+            readings for the same period were two sections with two
+            headings and a rule between them, showing five Treasury
+            maturities for one date. They are now one card -- and still
+            two clearly labelled claims, because they come from two
+            different selections. */}
+        <TheLede
+          object={selection.lede}
+          status={intelligence.status === "success" ? "resolved" : "unknown"}
+          alsoRecorded={selection.whatChanged}
         />
 
-        {/* Curated educational entry points (#45B). Fixes the weakest
-            stage of the loop -- #45A found the surprising questions
-            MacroChipz has written were unreachable from the entrance. */}
-        <HomeQuestions />
-
-        {/* Current State -- Inflation and Labor as independent peers */}
-        <CurrentStateSection inflation={monitor} labor={laborMonitor} />
-
-        {/* How They Relate (Increment #23C) -- Relate V1, deterministic
-            COMPOSITION only over the same two already-fetched monitor
-            resources above; see docs/product/relate-composition-v1.md */}
-        <HowTheyRelate inflation={monitor} labor={laborMonitor} />
-
-        {/* Releases -- one section, two independently-loading parts */}
-        <section aria-labelledby="overview-releases-heading">
-          <h2 id="overview-releases-heading" className="text-sm font-medium text-fg-muted">
-            Releases
-          </h2>
-
-          {upcoming.status === "loading" && <LoadingSkeleton label="Loading upcoming releases" heightClassName="h-24" />}
-          {upcoming.status === "error" && <ErrorMessage message={UPCOMING_ERROR_MESSAGE} onRetry={upcoming.reload} />}
-          {upcoming.status === "success" && <UpcomingReleasesPreview releases={upcoming.data.releases} />}
-
-          {recent.status === "loading" && <LoadingSkeleton label="Loading recent releases" heightClassName="h-8" />}
-          {recent.status === "error" && <ErrorMessage message={RECENT_ERROR_MESSAGE} onRetry={recent.reload} />}
-          {recent.status === "success" && <RecentReleasePreview releases={recent.data.releases} />}
-
-          <div className="mt-4">
-            <ReleaseScheduleDisclosure />
-          </div>
-
-          <Link to="/calendar" className="mt-3 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
-            View release calendar →
-          </Link>
-        </section>
-
-        {/* Revision Intelligence (#45B). #45A measured exactly two
-            inbound links to `/revisions`, neither from here. The copy
-            is forward-looking by design -- see RevisionsLink. */}
-        <RevisionsLink />
+        {/* The acquisition wedge, promoted from a list item to its own
+            band (#48). Its diagram is the reviewed `rateNetwork`
+            registry, never a decorative redraw. From `lg` only -- see
+            `StoryTeaser` above for why. */}
+        <div className="hidden lg:block">
+          <FeaturedStory />
+        </div>
       </div>
+
+      {/*
+       * THE EDITORIAL LOWER PAGE (#48A).
+       *
+       * Five sections used to stack full-width with 64px of padding
+       * between each, so the page below the story was a column of
+       * headings separated by empty space. They are now two columns
+       * with a different job each:
+       *
+       *   MAIN  what the economy currently reads, plus the questions
+       *         that explain it
+       *   RAIL  when the next data lands, and what happens when a
+       *         figure changes -- schedule and provenance
+       *
+       * Every section keeps its own heading, its own copy, its own
+       * links and its own failure isolation. Nothing was merged and
+       * nothing was dropped.
+       */}
+      <div className="mt-10 grid gap-10 border-t border-line pt-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,21.5rem)]">
+        <div className="space-y-8">
+          {/* Current State -- Inflation and Labor as independent peers */}
+          <CurrentStateSection inflation={monitor} labor={laborMonitor} />
+
+          {/* How They Relate (Increment #23C) -- Relate V1, deterministic
+              COMPOSITION only over the same two already-fetched monitor
+              resources above; see docs/product/relate-composition-v1.md.
+              This is the ONE defended cross-world relationship, and it is
+              stated in words -- which is why the hero above is allowed to
+              draw no line between any two worlds.
+
+              ITS TWO CTAs ARE LEFT ALONE. They do duplicate the cards'
+              own "Open Inflation"/"Open Jobs" links, and #48A was asked
+              to remove repetition -- but the frozen contract says this
+              component renders the composed sentence "plus the two
+              existing CTAs -- nothing else", and a layout pass is not
+              the place to reopen a frozen contract. */}
+          <HowTheyRelate inflation={monitor} labor={laborMonitor} />
+
+          {/* Curated educational entry points (#45B). Fixes the weakest
+              stage of the loop -- #45A found the surprising questions
+              MacroChipz has written were unreachable from the entrance. */}
+          <HomeQuestions />
+        </div>
+
+        {/*
+         * #48B: 21.5rem, not 19. Measured at 1440 with the narrower
+         * rail, a release row gave its name 169px and "Personal Income
+         * and Outlays" broke across two lines under a one-line date
+         * badge. The row is a shared component that `/releases` also
+         * renders, so the fix is the column it sits in rather than its
+         * own type -- widening here changes nothing anywhere else.
+         */}
+        <aside className="space-y-8 lg:border-l lg:border-line-subtle lg:pl-8">
+          {/* Releases -- one section, two independently-loading parts */}
+          <section aria-labelledby="overview-releases-heading">
+            <h2 id="overview-releases-heading" className="text-sm font-medium text-fg-muted">
+              Releases
+            </h2>
+
+            {upcoming.status === "loading" && (
+              <LoadingSkeleton label="Loading upcoming releases" heightClassName="h-24" />
+            )}
+            {upcoming.status === "error" && <ErrorMessage message={UPCOMING_ERROR_MESSAGE} onRetry={upcoming.reload} />}
+            {upcoming.status === "success" && <UpcomingReleasesPreview releases={upcoming.data.releases} />}
+
+            {recent.status === "loading" && <LoadingSkeleton label="Loading recent releases" heightClassName="h-8" />}
+            {recent.status === "error" && <ErrorMessage message={RECENT_ERROR_MESSAGE} onRetry={recent.reload} />}
+            {recent.status === "success" && <RecentReleasePreview releases={recent.data.releases} />}
+
+            <div className="mt-4">
+              <ReleaseScheduleDisclosure />
+            </div>
+
+            <Link to="/calendar" className="mt-3 inline-block text-sm font-medium text-fg-secondary hover:text-fg">
+              View release calendar →
+            </Link>
+          </section>
+
+          {/* Revision Intelligence (#45B). #45A measured exactly two
+              inbound links to `/revisions`, neither from here. The copy
+              is forward-looking by design -- see RevisionsLink. */}
+          <RevisionsLink />
+        </aside>
+      </div>
+
+      {/* THE REQUIRED IMAGE NOTICE (#48), verbatim and rendered, not
+          collapsed behind a disclosure -- the same standard #45 applied
+          to the Census sentence. It sits on this page rather than in
+          the shell because this is the only page that carries a
+          photograph; a notice on pages with no images would be noise,
+          and one missing from the page with an image would be a
+          breach. It also names the three worlds that have no
+          photograph, so the gradients are never mistaken for one. */}
+      <p className="mt-8 border-t border-line pt-4 type-meta text-fg-muted">{IMAGE_CREDITS}</p>
     </div>
   );
 }

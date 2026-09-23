@@ -34,20 +34,25 @@ function check(condition, message) {
   if (!condition) failures.push(message);
 }
 
-if (!existsSync(INTELLIGENCE_DIR)) {
-  // Not a failure by itself: a build with no VITE_API_BASE_URL
-  // legitimately prerenders no objects. Say so plainly rather than
-  // passing silently.
-  console.warn("[verify] No prerendered intelligence pages — nothing to verify.");
-  process.exit(0);
+// A build with no VITE_API_BASE_URL legitimately prerenders no
+// intelligence objects. That is not a failure — but it is also not a
+// reason to stop, which is what this step used to do (#46C): the
+// explainer and story checks below verify STATIC pages that every
+// build produces, and skipping them meant the most common local build
+// verified nothing at all.
+const hasIntelligence = existsSync(INTELLIGENCE_DIR);
+if (!hasIntelligence) {
+  console.warn("[verify] No prerendered intelligence pages — verifying static pages only.");
 }
 
-const pages = readdirSync(INTELLIGENCE_DIR, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => join(INTELLIGENCE_DIR, entry.name, "index.html"))
-  .filter((path) => existsSync(path));
+const pages = hasIntelligence
+  ? readdirSync(INTELLIGENCE_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => join(INTELLIGENCE_DIR, entry.name, "index.html"))
+      .filter((path) => existsSync(path))
+  : [];
 
-check(pages.length > 0, "build/client/intelligence exists but contains no index.html.");
+check(!hasIntelligence || pages.length > 0, "build/client/intelligence exists but contains no index.html.");
 
 const siteUrl = (process.env.VITE_SITE_URL ?? "").trim().replace(/\/$/, "");
 
@@ -122,10 +127,49 @@ if (existsSync(EXPLAIN_DIR)) {
   }
 }
 
+// #46C: the story prototype is prerendered like an explainer, so the
+// two properties that keep it from damaging the canonical page have to
+// hold IN THE SHIPPED HTML, not merely in the source a unit test reads.
+const STORY_DIR = join(CLIENT_DIR, "story");
+if (existsSync(STORY_DIR)) {
+  const stories = readdirSync(STORY_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(STORY_DIR, entry.name, "index.html"))
+    .filter((path) => existsSync(path));
+
+  for (const path of stories) {
+    const where = path.replace(`${process.cwd()}/`, "");
+    const html = readFileSync(path, "utf8");
+    const scriptless = html.replace(/<script[\s\S]*?<\/script>/g, "");
+    const text = scriptless.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+
+    // Substance without JavaScript: a reader who taps nothing, and a
+    // crawler that runs nothing, still get the whole argument.
+    check(/<h1[^>]*>[^<]/.test(scriptless), `${where}: no prerendered <h1>.`);
+    check(text.length > 1200, `${where}: only ${text.length} chars of text without JavaScript.`);
+    check(/How we know/.test(text), `${where}: missing the verification beat.`);
+
+    // It must not compete with the page it is a prototype of.
+    check(
+      /<meta[^>]+name="robots"[^>]+content="[^"]*noindex/i.test(html),
+      `${where}: a prototype route shipped without robots noindex.`,
+    );
+    if (siteUrl) {
+      check(
+        html.includes(`rel="canonical"`) && !/rel="canonical"[^>]+href="[^"]*\/story\//.test(html),
+        `${where}: canonical is missing or points at the prototype rather than the permanent page.`,
+      );
+    }
+  }
+}
+
 if (failures.length > 0) {
   console.error(`[verify] ${failures.length} problem(s) in the build output:`);
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
 
-console.log(`[verify] ${pages.length} prerendered intelligence page(s) + explainers: metadata present, charts drawn, content present, no secrets.`);
+console.log(
+  `[verify] ${pages.length} prerendered intelligence page(s) + explainers + stories: metadata present, ` +
+    `charts drawn, content present, no secrets.`,
+);

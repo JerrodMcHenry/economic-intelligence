@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en" data-direction="broadsheet">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Direction A · Broadsheet — MacroChipz #46D mockup</title>
+<!--
+  DIRECTION A — "BROADSHEET"
+  ==========================
+  The thesis: MacroChipz's credibility is its product, so the surface
+  should look like the thing people already trust for careful economic
+  explanation — a printed newspaper's explainer page — rather than like
+  another dark fintech dashboard.
+
+  Type does the work. Paper canvas, one serif for everything that
+  argues, one ink accent used sparingly and never decoratively, rules
+  instead of boxes, and a drop cap where the answer lands. Scene numbers
+  sit in the margin like a printed figure reference.
+
+  Motion: almost none, and typographic where it exists. Nothing slides.
+  The only movement is a reveal that unrolls, and it is disabled under
+  prefers-reduced-motion.
+
+  Self-contained. No build step, no framework, no network request, no
+  web font. Every claim comes from content.js.
+-->
+<style>
+  /* ---- tokens -------------------------------------------------- */
+  :root {
+    --paper:        #faf7f1;
+    --paper-deep:   #f2ece0;
+    --paper-card:   #fffdf9;
+    --ink:          #16130f;
+    --ink-2:        #443d34;
+    --ink-3:        #6d6458;
+    --rule:         #ddd4c3;
+    --rule-strong:  #8d8270;   /* 3.5:1 on paper — these draw meaning, not decoration */
+    --accent:       #9d2b12;   /* oxblood. 7.4:1 on paper */
+    --accent-wash:  #f6e7e1;
+
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, "Times New Roman", serif;
+    --sans:  ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { background: var(--paper-deep); -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 640px; margin: 0 auto; padding: 0 20px 64px; }
+
+  /* ---- masthead ------------------------------------------------- */
+  .masthead {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px;
+    padding: 14px 0 10px;
+    border-bottom: 3px double var(--ink);
+    font-family: var(--sans);
+  }
+  .wordmark {
+    font-family: var(--serif);
+    font-size: 19px; font-weight: 700; letter-spacing: 0.02em;
+  }
+  .wordmark em { font-style: normal; color: var(--accent); }
+  .masthead .section {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+
+  /* ---- scene scaffolding ---------------------------------------- */
+  .scene { padding: 34px 0; border-top: 1px solid var(--rule); }
+  .scene:first-of-type { border-top: 0; }
+
+  .figref {
+    font-family: var(--sans);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--ink-3);
+    display: flex; align-items: center; gap: 10px;
+    margin: 0 0 14px;
+  }
+  .figref::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+
+  /* ---- 1. story opening ------------------------------------------ */
+  .kicker {
+    font-family: var(--sans);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--accent);
+    margin: 26px 0 10px;
+  }
+  h1 {
+    font-size: 40px; line-height: 1.04; font-weight: 700;
+    letter-spacing: -0.02em; margin: 0; text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 19px; line-height: 1.5; color: var(--ink-2);
+    margin: 18px 0 0; border-left: 3px solid var(--accent); padding-left: 16px;
+  }
+  .byline {
+    font-family: var(--sans); font-size: 11px; letter-spacing: 0.06em;
+    color: var(--ink-3); margin: 22px 0 0;
+    padding-top: 10px; border-top: 1px solid var(--rule);
+  }
+
+  /* ---- 2. the quiz ------------------------------------------------ */
+  h2 {
+    font-size: 27px; line-height: 1.15; font-weight: 700;
+    letter-spacing: -0.015em; margin: 0 0 8px; text-wrap: balance;
+  }
+  .hint { color: var(--ink-3); font-size: 16px; margin: 0 0 18px; font-style: italic; }
+
+  .options { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+  .options li { border-bottom: 1px solid var(--rule); }
+
+  .opt {
+    width: 100%; min-height: 56px;
+    display: block; text-align: left;
+    background: transparent; border: 0;
+    border-left: 3px solid transparent;
+    padding: 14px 8px 14px 13px;
+    font: inherit; color: var(--ink); cursor: pointer;
+    transition: background-color .18s ease, border-color .18s ease;
+  }
+  .opt:hover { background: var(--paper-card); }
+  .opt:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  /* At phone width the authority moves BELOW the label. Measured at
+     390px, the two-column row squeezed "The federal funds rate" onto two
+     lines to make space for "THE FEDERAL RESERVE" beside it. */
+  .opt .row { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  @media (min-width: 480px) {
+    .opt .row { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 12px; }
+  }
+  .opt .label { font-size: 19px; line-height: 1.3; }
+  .opt .authority {
+    font-family: var(--sans); font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-3); white-space: nowrap;
+    opacity: 0; transition: opacity .2s ease;
+  }
+  .answered .opt .authority { opacity: 1; }
+
+  .answered .opt[data-fed="true"] { border-left-color: var(--accent); background: var(--accent-wash); }
+  .answered .opt[aria-pressed="true"][data-fed="false"] { border-left-color: var(--rule-strong); }
+
+  .reveal {
+    display: grid; grid-template-rows: 0fr;
+    transition: grid-template-rows .28s ease;
+  }
+  .reveal > div { overflow: hidden; }
+  .opt[data-show="1"] .reveal { grid-template-rows: 1fr; }
+  .reveal p {
+    margin: 10px 0 0; font-size: 16px; line-height: 1.5;
+    color: var(--ink-2); font-style: italic;
+    padding-left: 14px; border-left: 1px solid var(--rule-strong);
+  }
+
+  .verdict {
+    margin: 20px 0 0; min-height: 28px;
+    font-size: 19px; line-height: 1.45;
+  }
+  .verdict strong { color: var(--accent); font-weight: 700; }
+  .again {
+    margin: 14px 0 0; min-height: 44px;
+    display: inline-flex; align-items: center;
+    background: none; border: 0; padding: 0;
+    font-family: var(--sans); font-size: 13px; letter-spacing: 0.06em;
+    color: var(--ink-3); text-decoration: underline; text-underline-offset: 4px;
+    cursor: pointer;
+  }
+
+  /* ---- 3. the diagram --------------------------------------------- */
+  .diagram { margin: 4px 0 0; width: 100%; height: auto; display: block; }
+  .diagram text { font-family: var(--sans); fill: var(--ink); }
+  .dbox { fill: var(--paper-card); stroke: var(--ink); stroke-width: 1.2; }
+  .dbox.on { fill: var(--accent-wash); stroke: var(--accent); stroke-width: 2; }
+  .dflow { fill: none; stroke: var(--rule-strong); stroke-width: 1.4; }
+  .dflow.on { stroke: var(--accent); stroke-width: 2.2; }
+  .dhit { fill: transparent; cursor: pointer; }
+  .dhit:focus-visible { outline: 2px solid var(--accent); }
+
+  .detail {
+    margin: 12px 0 0; min-height: 76px;
+    border-top: 1px solid var(--rule); padding-top: 12px;
+  }
+  .detail .name {
+    font-family: var(--sans); font-size: 11px; font-weight: 700;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent);
+    margin: 0 0 4px;
+  }
+  .detail p { margin: 0; font-size: 17px; color: var(--ink-2); }
+  .caveat {
+    font-family: var(--sans); font-size: 13px; line-height: 1.5;
+    color: var(--ink-3); margin: 16px 0 0;
+  }
+
+  /* ---- 4. conclusion ---------------------------------------------- */
+  .pullquote {
+    margin: 0; padding: 30px 0;
+    border-top: 3px double var(--ink); border-bottom: 3px double var(--ink);
+    text-align: center;
+  }
+  .pullquote p {
+    margin: 0; font-size: 31px; line-height: 1.16; font-weight: 700;
+    letter-spacing: -0.02em; text-wrap: balance;
+  }
+  .pullquote .dc::first-letter { color: var(--accent); }
+  .pullquote .sup {
+    margin: 16px 0 0; font-size: 16px; line-height: 1.5;
+    color: var(--ink-2); font-style: italic; text-wrap: pretty;
+  }
+
+  /* ---- verification ------------------------------------------------ */
+  details { border-top: 1px solid var(--rule); }
+  details summary {
+    min-height: 48px; display: flex; align-items: center; gap: 8px;
+    cursor: pointer; list-style: none;
+    font-family: var(--sans); font-size: 12px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2);
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before {
+    content: "+"; color: var(--accent); font-size: 16px; width: 14px;
+  }
+  details[open] summary::before { content: "–"; }
+  details .body { padding: 0 0 18px; }
+  .src { margin: 0 0 16px; }
+  .src .org { font-weight: 700; }
+  .src .ttl { font-style: italic; }
+  .src p { margin: 4px 0 0; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+  .src .cav { color: var(--ink-3); font-size: 14px; }
+  .lims { margin: 0; padding-left: 18px; font-size: 15px; color: var(--ink-2); }
+  .lims li { margin: 0 0 6px; }
+
+  /* ---- onward ------------------------------------------------------ */
+  .onward { list-style: none; margin: 18px 0 0; padding: 0; }
+  .onward li { border-top: 1px solid var(--rule); }
+  .onward a {
+    min-height: 56px; display: flex; flex-direction: column; justify-content: center;
+    padding: 12px 0; text-decoration: none; color: var(--ink);
+  }
+  .onward .l { font-size: 18px; }
+  .onward .n { font-family: var(--sans); font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+
+  /* ---- share card -------------------------------------------------- */
+  .cardzone { background: var(--paper-deep); padding: 30px 20px 44px; border-top: 1px solid var(--rule-strong); }
+  .cardzone h3 {
+    font-family: var(--sans); font-size: 11px; font-weight: 700;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3);
+    margin: 0 0 16px; text-align: center;
+  }
+  .card {
+    width: 270px; height: 480px; margin: 0 auto;
+    background: var(--paper); color: var(--ink);
+    border: 1px solid var(--rule-strong);
+    display: flex; flex-direction: column;
+    padding: 22px 20px;
+  }
+  .card .top { border-bottom: 3px double var(--ink); padding-bottom: 8px; }
+  .card .top .wm { font-size: 15px; font-weight: 700; }
+  .card .top .wm em { font-style: normal; color: var(--accent); }
+  .card .mid { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .card .q {
+    font-family: var(--sans); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent);
+    margin: 0 0 10px;
+  }
+  .card .big {
+    font-size: 27px; line-height: 1.1; font-weight: 700;
+    letter-spacing: -0.02em; margin: 0; text-wrap: balance;
+  }
+  .card .sub {
+    font-size: 13px; line-height: 1.45; color: var(--ink-2);
+    margin: 14px 0 0; font-style: italic;
+  }
+  .card .bot {
+    border-top: 1px solid var(--rule); padding-top: 10px;
+    font-family: var(--sans); font-size: 9px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--ink-3);
+    display: flex; justify-content: space-between;
+  }
+
+  .mockfoot {
+    font-family: var(--sans); font-size: 11px; line-height: 1.5;
+    color: var(--ink-3); text-align: center; padding: 22px 20px 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+    .reveal { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header class="masthead">
+    <div class="wordmark">Macro<em>Chipz</em></div>
+    <div class="section">Rates &middot; Explained</div>
+  </header>
+
+  <!-- ============ 1 · STORY OPENING ============ -->
+  <section class="opening">
+    <p class="kicker">Wait, seriously?</p>
+    <h1 id="q"></h1>
+    <p class="standfirst" id="misconception"></p>
+    <p class="byline">MacroChipz &middot; Six parts &middot; Sources at the end</p>
+  </section>
+
+  <!-- ============ 2 · THE QUIZ ============ -->
+  <section class="scene" id="quiz">
+    <p class="figref">Fig. 1 — Who sets what</p>
+    <h2 id="quizPrompt"></h2>
+    <p class="hint" id="quizHint"></p>
+    <ul class="options" id="options"></ul>
+    <p class="verdict" id="verdict" aria-live="polite"></p>
+    <button class="again" id="again" hidden>Try again</button>
+  </section>
+
+  <!-- ============ 3 · THE DIAGRAM ============ -->
+  <section class="scene">
+    <p class="figref">Fig. 2 — What reaches your rate</p>
+    <h2 id="influenceHeading"></h2>
+    <p class="hint">Tap a box.</p>
+
+    <svg class="diagram" viewBox="0 0 350 300" role="img"
+         aria-label="Four influences — Fed policy, long-term Treasury yields, the market for bundled mortgages, and lender costs and risks — converging on the rate a lender quotes you.">
+      <defs>
+        <pattern id="hatch" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+          <line x1="0" y1="0" x2="0" y2="6" stroke="#c9bfab" stroke-width="1.6"/>
+        </pattern>
+      </defs>
+      <g id="flows"></g>
+      <g id="boxes"></g>
+      <rect x="70" y="238" width="210" height="46" fill="url(#hatch)" stroke="#16130f" stroke-width="1.6"/>
+      <rect x="70" y="238" width="210" height="46" fill="#faf7f1" opacity="0.86"/>
+      <rect x="70" y="238" width="210" height="46" fill="none" stroke="#16130f" stroke-width="1.6"/>
+      <text x="175" y="266" text-anchor="middle" font-size="13" font-weight="700" id="convLabel"></text>
+    </svg>
+
+    <div class="detail" id="detail" aria-live="polite"></div>
+    <p class="caveat" id="influenceCaveat"></p>
+  </section>
+
+  <!-- ============ 4 · CONCLUSION ============ -->
+  <section class="scene">
+    <p class="figref">In short</p>
+    <blockquote class="pullquote">
+      <p class="dc" id="conclusion"></p>
+      <p class="sup" id="conclusionSupport"></p>
+    </blockquote>
+  </section>
+
+  <!-- ============ VERIFICATION ============ -->
+  <section class="scene">
+    <p class="figref">How we know</p>
+    <p style="margin:0 0 14px;color:var(--ink-2);font-size:16px" id="basis"></p>
+    <details>
+      <summary>The sources behind this</summary>
+      <div class="body" id="sources"></div>
+    </details>
+    <details>
+      <summary id="limSummary">What this does not tell you</summary>
+      <div class="body"><ul class="lims" id="limitations"></ul></div>
+    </details>
+  </section>
+
+  <!-- ============ ONWARD ============ -->
+  <section class="scene">
+    <p class="figref">Keep going</p>
+    <ul class="onward" id="onward"></ul>
+  </section>
+</div>
+
+<!-- ============ 5 · VERTICAL SHARE CARD ============ -->
+<div class="cardzone">
+  <h3>Share card &middot; 9:16</h3>
+  <div class="card">
+    <div class="top"><div class="wm">Macro<em>Chipz</em></div></div>
+    <div class="mid">
+      <p class="q">Wait, seriously?</p>
+      <p class="big" id="cardBig"></p>
+      <p class="sub" id="cardSub"></p>
+    </div>
+    <div class="bot"><span>Sources cited</span><span>macrochipz</span></div>
+  </div>
+  <p class="mockfoot">
+    Direction A &middot; Broadsheet. Static mockup for #46D review — not wired to the application,
+    not routed, not indexed. All text from the reviewed explainer registry.
+  </p>
+</div>
+
+<script src="content.js"></script>
+<script>
+(function () {
+  const S = window.STORY;
+  const $ = (id) => document.getElementById(id);
+  const text = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+
+  // ---- 1 · opening --------------------------------------------------
+  text("q", S.question);
+  text("misconception", S.misconception);
+
+  // ---- 2 · quiz -----------------------------------------------------
+  text("quizPrompt", S.quizPrompt);
+  text("quizHint", S.quizHint);
+
+  const list = $("options");
+  S.options.forEach((o) => {
+    const li = document.createElement("li");
+    li.innerHTML =
+      '<button class="opt" type="button" aria-pressed="false" data-id="' + o.id + '" data-fed="' + o.isFed + '">' +
+        '<span class="row"><span class="label"></span><span class="authority"></span></span>' +
+        '<span class="reveal"><div><p></p></div></span>' +
+      '</button>';
+    li.querySelector(".label").textContent = o.label;
+    li.querySelector(".authority").textContent = o.authority;
+    li.querySelector(".reveal p").textContent = o.reveal;
+    list.appendChild(li);
+  });
+
+  const quiz = $("quiz");
+  const verdict = $("verdict");
+  const again = $("again");
+
+  function choose(id) {
+    quiz.classList.add("answered");
+    document.querySelectorAll(".opt").forEach((b) => {
+      const picked = b.dataset.id === id;
+      const isFed = b.dataset.fed === "true";
+      b.setAttribute("aria-pressed", picked ? "true" : "false");
+      // The correction appears on the option the reader committed to,
+      // and on the right answer. Not on all four.
+      b.dataset.show = (picked || isFed) ? "1" : "0";
+    });
+    verdict.innerHTML = "";
+    if (id === "fed-funds") {
+      verdict.innerHTML = "<strong>Right</strong> — and notice what that means: the one rate the Fed sets is the one you never pay.";
+    } else {
+      verdict.textContent = S.verdictWrong;
+    }
+    again.hidden = false;
+  }
+
+  function reset() {
+    quiz.classList.remove("answered");
+    document.querySelectorAll(".opt").forEach((b) => {
+      b.setAttribute("aria-pressed", "false");
+      b.dataset.show = "0";
+    });
+    verdict.textContent = "";
+    again.hidden = true;
+  }
+
+  list.addEventListener("click", (e) => {
+    const b = e.target.closest(".opt");
+    if (b) choose(b.dataset.id);
+  });
+  again.addEventListener("click", reset);
+
+  // ---- 3 · diagram --------------------------------------------------
+  text("influenceHeading", S.influenceHeading);
+  text("influenceCaveat", S.influenceCaveat);
+  text("convLabel", S.convergenceLabel);
+
+  const POS = [
+    { x: 10,  y: 24 },
+    { x: 185, y: 24 },
+    { x: 10,  y: 116 },
+    { x: 185, y: 116 },
+  ];
+  const BW = 155, BH = 70;
+  const boxes = $("boxes"), flows = $("flows");
+  const NS = "http://www.w3.org/2000/svg";
+
+  S.influences.forEach((inf, i) => {
+    const p = POS[i];
+    const cx = p.x + BW / 2, cy = p.y + BH;
+
+    const flow = document.createElementNS(NS, "path");
+    flow.setAttribute("class", "dflow");
+    flow.setAttribute("id", "flow-" + inf.id);
+    flow.setAttribute("d", "M " + cx + " " + cy + " C " + cx + " " + (cy + 40) + ", 175 " + (cy + 30) + ", 175 238");
+    flows.appendChild(flow);
+
+    const g = document.createElementNS(NS, "g");
+    const rect = document.createElementNS(NS, "rect");
+    rect.setAttribute("class", "dbox");
+    rect.setAttribute("id", "box-" + inf.id);
+    rect.setAttribute("x", p.x); rect.setAttribute("y", p.y);
+    rect.setAttribute("width", BW); rect.setAttribute("height", BH);
+    g.appendChild(rect);
+
+    const words = inf.label.split(" ");
+    const lines = [];
+    let line = "";
+    words.forEach((w) => {
+      if ((line + " " + w).trim().length > 17) { lines.push(line.trim()); line = w; }
+      else line = (line + " " + w).trim();
+    });
+    lines.push(line);
+    const t = document.createElementNS(NS, "text");
+    t.setAttribute("x", p.x + BW / 2);
+    t.setAttribute("y", p.y + BH / 2 - (lines.length - 1) * 8 + 5);
+    t.setAttribute("text-anchor", "middle");
+    t.setAttribute("font-size", "13");
+    lines.forEach((l, li) => {
+      const ts = document.createElementNS(NS, "tspan");
+      ts.setAttribute("x", p.x + BW / 2);
+      ts.setAttribute("dy", li === 0 ? 0 : 16);
+      ts.textContent = l;
+      t.appendChild(ts);
+    });
+    g.appendChild(t);
+
+    // A full-size transparent hit area: the label must never be the
+    // only tappable part, and 155x70 is far above any target minimum.
+    const hit = document.createElementNS(NS, "rect");
+    hit.setAttribute("class", "dhit");
+    hit.setAttribute("x", p.x); hit.setAttribute("y", p.y);
+    hit.setAttribute("width", BW); hit.setAttribute("height", BH);
+    hit.setAttribute("tabindex", "0");
+    hit.setAttribute("role", "button");
+    hit.setAttribute("aria-label", inf.label);
+    hit.addEventListener("click", () => select(inf.id));
+    hit.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(inf.id); }
+    });
+    g.appendChild(hit);
+
+    boxes.appendChild(g);
+  });
+
+  const detail = $("detail");
+  function select(id) {
+    const inf = S.influences.find((i) => i.id === id);
+    S.influences.forEach((i) => {
+      document.getElementById("box-" + i.id).classList.toggle("on", i.id === id);
+      document.getElementById("flow-" + i.id).classList.toggle("on", i.id === id);
+    });
+    detail.innerHTML = '<p class="name"></p><p class="txt"></p>';
+    detail.querySelector(".name").textContent = inf.label;
+    detail.querySelector(".txt").textContent = inf.detail;
+  }
+  // Open on the first influence so the pattern is legible without a tap,
+  // and so nothing essential is hidden behind an interaction.
+  select(S.influences[0].id);
+
+  // ---- 4 · conclusion ------------------------------------------------
+  text("conclusion", S.conclusion);
+  text("conclusionSupport", S.conclusionSupport);
+
+  // ---- verification --------------------------------------------------
+  text("basis", S.basis);
+  const src = $("sources");
+  S.sources.forEach((s) => {
+    const d = document.createElement("div");
+    d.className = "src";
+    d.innerHTML = '<span class="org"></span>, <span class="ttl"></span><p class="note"></p>';
+    d.querySelector(".org").textContent = s.org;
+    d.querySelector(".ttl").textContent = s.title;
+    d.querySelector(".note").textContent = s.note;
+    if (s.caveat) {
+      const c = document.createElement("p");
+      c.className = "cav";
+      c.textContent = s.caveat;
+      d.appendChild(c);
+    }
+    src.appendChild(d);
+  });
+
+  text("limSummary", "What this does not tell you (" + S.limitations.length + ")");
+  const lims = $("limitations");
+  S.limitations.forEach((l) => {
+    const li = document.createElement("li");
+    li.textContent = l;
+    lims.appendChild(li);
+  });
+
+  // ---- onward ---------------------------------------------------------
+  const onward = $("onward");
+  S.onward.forEach((o) => {
+    const li = document.createElement("li");
+    li.innerHTML = '<a href="#"><span class="l"></span><span class="n"></span></a>';
+    li.querySelector(".l").textContent = o.label;
+    li.querySelector(".n").textContent = o.note;
+    onward.appendChild(li);
+  });
+
+  // ---- 5 · share card --------------------------------------------------
+  text("cardBig", S.question);
+  text("cardSub", S.conclusion);
+})();
+</script>
+</body>
+</html>

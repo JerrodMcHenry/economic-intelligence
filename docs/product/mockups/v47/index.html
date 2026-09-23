@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>The Living Economy — MacroChipz #47 prototype</title>
+<!--
+  THE LIVING ECONOMY — homepage prototype (#47 phase 1)
+  =====================================================
+  Standalone. Modifies no production route, imports no application code,
+  adds no dependency. Served statically; the world links point at the
+  running dev server so they are genuinely working routes into the
+  existing pages (see LINK_BASE).
+
+  ---------------------------------------------------------------
+  THE ONE RULE THAT SHAPES THE HERO
+  ---------------------------------------------------------------
+  IT DRAWS NO EDGES. The mortgage story's diagram is a model whose
+  edges mean "reaches" and are defended by named sources. These four
+  worlds are NAVIGATION CATEGORIES. A line between Inflation and Jobs
+  would assert a relationship nobody wrote down.
+
+  So this borrows the lighting — violet depth, lavender glow, glass,
+  restrained starfield — and none of the topology. Worlds are grouped by
+  proximity in a shared field and never joined.
+
+  `HowTheyRelate` already states the one defended cross-world
+  relationship, in words, lower on the page. That is where it stays.
+
+  ---------------------------------------------------------------
+  AND THE ONE RULE THAT SHAPES THE LEDE
+  ---------------------------------------------------------------
+  It ships QUIET. No headline is invented to make a prototype look
+  busy. The development layout is shown with figures redacted so the
+  composition can be reviewed without a fabricated claim standing in
+  for a real one, and `unknown` is visibly distinct from `quiet`
+  because "we have not checked" is not "nothing happened".
+
+  Colours are the shipped MacroChipz dark theme resolved to sRGB
+  (`--mc-brand` #9facf1, `--mc-focus` #a2b0ff, `--mc-fg` #e9ebef) plus
+  the `[data-surface="luminous"]` extension from #46E. No cyan: it
+  would collide with `--mc-state-cool`, which carries economic meaning.
+-->
+<style>
+  :root {
+    /* shipped tokens, resolved */
+    --mc-brand: #9facf1;
+    --mc-focus: #a2b0ff;
+    --mc-fg: #e9ebef;
+    --mc-fg-secondary: #bdc1c8;
+    --mc-fg-muted: #979ca3;
+
+    /* #46E luminous extension */
+    --lx-void: #07050e;
+    --lx-deep: #0f0a1e;
+    --lx-raise: #171130;
+    --lx-bloom-a: rgba(124, 96, 240, .34);
+    --lx-bloom-b: rgba(186, 122, 240, .26);
+    --lx-card-hi: rgba(255,255,255,.13);
+    --lx-card-lo: rgba(255,255,255,.07);
+
+    --sans: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Roboto,
+            "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--lx-void); -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; color: var(--mc-fg); font-family: var(--sans);
+    font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+
+  /* header: its own bar, so the field below starts at a deliberate
+     boundary rather than bleeding up behind it (#46F). */
+  header.bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    height: 56px; padding: 0 16px;
+    background: #15171c; border-bottom: 1px solid #2b2e33;
+  }
+  .wordmark { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+  .wordmark span { color: var(--mc-brand); }
+  .bar nav { display: flex; gap: 4px; }
+  .bar nav a {
+    display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px;
+    font-size: 13px; color: var(--mc-fg-secondary); text-decoration: none; border-radius: 8px;
+  }
+  .bar nav a:hover { color: var(--mc-fg); background: rgba(255,255,255,.05); }
+
+  main {
+    position: relative;
+    background:
+      radial-gradient(120% 56% at 86% -4%, var(--lx-bloom-a) 0%, transparent 62%),
+      radial-gradient(100% 50% at 2% 64%, var(--lx-bloom-b) 0%, transparent 66%),
+      linear-gradient(174deg, var(--lx-deep) 0%, #0b0817 52%, var(--lx-void) 100%);
+    background-attachment: fixed;
+  }
+  #stars { position: absolute; inset: 0; pointer-events: none; }
+  .wrap { position: relative; max-width: 1216px; margin: 0 auto; padding: 0 16px; }
+  @media (min-width: 640px) { .wrap { padding: 0 24px; } }
+  @media (min-width: 1024px) { .wrap { padding: 0 32px; } }
+
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--mc-focus); margin: 0;
+  }
+  h1 {
+    margin: 8px 0 0; font-size: 26px; line-height: 1.07; font-weight: 700;
+    letter-spacing: -.03em; text-wrap: balance;
+  }
+  @media (min-width: 640px) { h1 { font-size: 32px; } }
+  @media (min-width: 768px) { h1 { font-size: 40px; } }
+  .lede-in { margin: 6px 0 0; max-width: 46ch; font-size: 14.5px; line-height: 1.45; color: var(--mc-fg-secondary); }
+
+  h2.sec {
+    margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--mc-focus);
+  }
+
+  /* ---------- 1 · THE LIVING ECONOMY ---------- */
+  /* padding-block only: the `padding` shorthand here used to reset
+     `.wrap`'s side gutters to zero, and every section sat flush
+     against the viewport edge. */
+  .hero { padding-top: 12px; padding-bottom: 6px; }
+  .heroGrid { margin-top: 12px; display: grid; gap: 10px; }
+  @media (min-width: 1024px) {
+    .heroGrid { grid-template-columns: minmax(0,1fr) minmax(0,25rem); gap: 36px; align-items: start; }
+  }
+
+  .orbs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (min-width: 768px) { .orbs { grid-template-columns: repeat(4, 1fr); } }
+  @media (min-width: 1024px) { .orbs { grid-template-columns: 1fr 1fr; gap: 14px; } }
+
+  .orb {
+    position: relative; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: flex-end; gap: 6px;
+    min-height: 96px; padding: 12px; border-radius: 18px; text-align: left;
+    background: linear-gradient(180deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,.025) 100%), rgba(23,17,48,.5);
+    border: 1px solid var(--lx-card-lo); color: var(--mc-fg);
+    font: inherit; cursor: pointer;
+    transition: border-color .2s ease, background-color .2s ease, transform .2s ease;
+  }
+  .orb:hover { border-color: rgba(196,204,255,.32); }
+  .orb:focus-visible { outline: 2px solid var(--mc-focus); outline-offset: 2px; }
+  .orb[aria-pressed="true"] {
+    border-color: rgba(196,204,255,.5);
+    background: linear-gradient(180deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,.035) 100%), rgba(40,30,86,.72);
+    box-shadow: inset 0 1px 0 0 rgba(255,255,255,.18), 0 0 38px -12px rgba(124,96,240,.75);
+  }
+  /* The glow is the world's own light. No line leaves it: proximity in a
+     shared field, never a drawn relationship. */
+  .orb .halo {
+    position: absolute; width: 150px; height: 150px; right: -46px; top: -56px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(162,176,255,.34) 0%, rgba(124,96,240,.12) 46%, transparent 72%);
+    transition: opacity .3s ease; opacity: .55; pointer-events: none;
+  }
+  .orb[aria-pressed="true"] .halo { opacity: 1; }
+  .orb .dot {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--mc-brand);
+    box-shadow: 0 0 12px 2px rgba(159,172,241,.7);
+  }
+  .orb[aria-pressed="true"] .dot { background: #fff; box-shadow: 0 0 14px 3px rgba(212,217,255,.9); }
+  .orb .name { font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+  .orb .sub { display: none; font-size: 12.5px; line-height: 1.35; color: var(--mc-fg-muted); }
+  @media (min-width: 480px) { .orb .sub { display: block; } }
+
+  .panel {
+    /* A floor sized for the LONGEST world (Rates, which is also the
+       default), so the page does not jump as a reader compares them. */
+    min-height: 416px;
+    border-radius: 20px; padding: 14px;
+    background: linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.028) 100%), rgba(23,17,48,.55);
+    border: 1px solid rgba(162,176,255,.3);
+    box-shadow: inset 0 1px 0 0 var(--lx-card-hi), 0 20px 44px -26px rgba(0,0,0,.95);
+  }
+  @media (min-width: 640px) { .panel { padding: 20px; } }
+  .panel h3 { margin: 6px 0 0; font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+  .panel .desc { margin: 7px 0 0; font-size: 14px; line-height: 1.45; color: var(--mc-fg-secondary); }
+  .panel dl { margin: 12px 0 0; display: grid; gap: 8px; }
+  .panel dt {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--mc-focus);
+  }
+  .panel dd { margin: 3px 0 0; font-size: 13px; line-height: 1.4; color: var(--mc-fg-secondary); }
+  .panel dd.not { color: var(--mc-fg-muted); }
+  .enter {
+    margin-top: 14px; display: inline-flex; align-items: center; gap: 8px;
+    min-height: 44px; padding: 0 16px; border-radius: 10px;
+    background: rgba(124,96,240,.3); border: 1px solid rgba(162,176,255,.45);
+    color: #eef0ff; text-decoration: none; font-size: 14px; font-weight: 600;
+    transition: background-color .2s ease;
+  }
+  .enter:hover { background: rgba(124,96,240,.45); }
+  .enter:focus-visible { outline: 2px solid var(--mc-focus); outline-offset: 2px; }
+
+  /* ---------- 2 · THE LEDE ---------- */
+  .lede { padding-top: 26px; }
+  .ledeCard {
+    margin-top: 12px; border-radius: 20px; padding: 18px;
+    background: linear-gradient(180deg, rgba(255,255,255,.055) 0%, rgba(255,255,255,.02) 100%), rgba(15,10,30,.6);
+    border: 1px solid var(--lx-card-lo);
+  }
+  @media (min-width: 640px) { .ledeCard { padding: 22px; } }
+  .ledeCard .k { font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--mc-fg-muted); }
+  .ledeCard h3 { margin: 8px 0 0; font-size: 24px; line-height: 1.15; font-weight: 700; letter-spacing: -.025em; }
+  .ledeCard p.b { margin: 10px 0 0; max-width: 62ch; font-size: 14.5px; line-height: 1.55; color: var(--mc-fg-secondary); }
+  .ledeCard p.n { margin: 10px 0 0; font-size: 12.5px; color: var(--mc-fg-muted); }
+  .redact {
+    display: inline-block; height: 15px; width: 64px; border-radius: 3px; vertical-align: -2px;
+    background: repeating-linear-gradient(115deg, #2b2b35 0 6px, #22222b 6px 12px);
+  }
+  .redact.tall { height: 26px; width: 110px; }
+  .stateSwitch { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+  .stateSwitch button {
+    min-height: 44px; padding: 0 12px; border-radius: 9px; cursor: pointer;
+    background: transparent; border: 1px solid var(--lx-card-lo); color: var(--mc-fg-secondary);
+    font: inherit; font-size: 12.5px;
+    transition: border-color .2s ease, color .2s ease;
+  }
+  .stateSwitch button[aria-pressed="true"] { border-color: rgba(196,204,255,.5); color: var(--mc-fg); }
+  .stateSwitch button:focus-visible { outline: 2px solid var(--mc-focus); outline-offset: 2px; }
+  .switchNote { margin: 8px 0 0; font-size: 11.5px; color: var(--mc-fg-muted); }
+
+  /* ---------- 3/4 · lists ---------- */
+  .sec-block { padding-top: 28px; }
+  .cards { margin-top: 12px; display: grid; gap: 10px; }
+  @media (min-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1024px) { .cards.three { grid-template-columns: repeat(3, 1fr); } }
+  .card {
+    display: flex; flex-direction: column; gap: 4px; min-height: 44px;
+    padding: 14px 16px; border-radius: 16px; text-decoration: none; color: var(--mc-fg);
+    background: rgba(255,255,255,.035); border: 1px solid var(--lx-card-lo);
+    transition: border-color .2s ease, background-color .2s ease;
+  }
+  .card:hover { border-color: rgba(196,204,255,.3); background: rgba(255,255,255,.055); }
+  .card:focus-visible { outline: 2px solid var(--mc-focus); outline-offset: 2px; }
+  .card .tag { font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--mc-focus); }
+  .card .t { font-size: 15px; font-weight: 600; line-height: 1.3; }
+  .card .s { font-size: 12.5px; color: var(--mc-fg-muted); line-height: 1.4; }
+
+  /* ---------- 5 · trust ---------- */
+  .trust { margin-top: 12px; display: grid; gap: 8px; }
+  @media (min-width: 640px) { .trust { grid-template-columns: repeat(3, 1fr); } }
+
+  footer {
+    margin-top: 40px; border-top: 1px solid #2b2e33; background: #0b0a11;
+  }
+  footer .inner { padding: 20px 0 28px; display: grid; gap: 8px; }
+  @media (min-width: 640px) { footer .inner { grid-template-columns: auto 1fr; align-items: start; gap: 24px; } }
+  footer .m { font-size: 13px; color: var(--mc-fg-secondary); }
+  footer .m b { color: var(--mc-fg); font-weight: 600; }
+  footer .c { font-size: 12px; line-height: 1.55; color: var(--mc-fg-muted); }
+
+  .protoNote {
+    margin: 22px 0 0; padding: 12px 14px; border-radius: 12px;
+    background: rgba(255,255,255,.03); border: 1px dashed rgba(255,255,255,.14);
+    font-size: 12px; line-height: 1.55; color: var(--mc-fg-muted);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <span class="wordmark">Macro<span>Chipz</span></span>
+  <nav id="nav" aria-label="Economic worlds"></nav>
+</header>
+
+<main>
+  <svg id="stars" aria-hidden="true"></svg>
+
+  <!-- ============ 1 · THE LIVING ECONOMY ============ -->
+  <section class="wrap hero" aria-labelledby="hero-h">
+    <p class="eyebrow">The living economy</p>
+    <h1 id="hero-h">Four parts of the economy, tracked and checkable.</h1>
+    <p class="lede-in">
+      Pick a part to see what MacroChipz holds there — and what it deliberately does not.
+    </p>
+
+    <div class="heroGrid">
+      <div class="orbs" id="orbs" role="group" aria-label="Economic worlds"></div>
+      <div class="panel" id="panel" aria-live="polite" aria-label="Selected world"></div>
+    </div>
+  </section>
+
+  <!-- ============ 2 · WHAT'S HAPPENING ============ -->
+  <section class="wrap lede" aria-labelledby="lede-h">
+    <h2 class="sec" id="lede-h">What&rsquo;s happening</h2>
+    <div class="ledeCard" id="ledeCard" aria-live="polite"></div>
+
+    <div class="stateSwitch" id="stateSwitch" role="group" aria-label="Lede state (prototype control)"></div>
+    <p class="switchNote">
+      Prototype control only &mdash; not a production affordance. The real page renders whichever
+      state the eligibility policy returns. It ships showing <strong>quiet</strong>.
+    </p>
+  </section>
+
+  <!-- ============ 3 · START EXPLORING ============ -->
+  <section class="wrap sec-block" aria-labelledby="explore-h">
+    <h2 class="sec" id="explore-h">Start exploring</h2>
+    <div class="cards" id="explore"></div>
+  </section>
+
+  <!-- ============ 4 · DISCOVERY PATHS ============ -->
+  <section class="wrap sec-block" aria-labelledby="disc-h">
+    <h2 class="sec" id="disc-h">Questions people actually ask</h2>
+    <div class="cards three" id="discovery"></div>
+  </section>
+
+  <!-- ============ 5 · TRUST ============ -->
+  <section class="wrap sec-block" aria-labelledby="trust-h">
+    <h2 class="sec" id="trust-h">How you can check it</h2>
+    <div class="trust" id="trust"></div>
+
+    <p class="protoNote" id="protoNote"></p>
+  </section>
+
+  <footer>
+    <div class="wrap inner">
+      <p class="m"><b>MacroChipz</b> &middot; Economic Intelligence</p>
+      <p class="c" id="census"></p>
+    </div>
+  </footer>
+</main>
+
+<!-- The query is a cache-buster: without it a browser keeps serving a
+     stale content.js while index.html reloads, and a prototype appears
+     not to respond to edits. -->
+<script>document.write('<script src="content.js?v=' + Date.now() + '"><\/script>');</script>
+<script>
+(function () {
+  const H = window.HOME;
+  const $ = (id) => document.getElementById(id);
+
+  /**
+   * Where the world links point.
+   *
+   * This prototype is served statically from the mockups directory, so a
+   * relative "/rates" would 404. Pointing at the running dev server makes
+   * every route GENUINELY WORKING — the brief asks for no inert controls.
+   * In production these are ordinary relative paths.
+   */
+  const LINK_BASE = "http://localhost:5193";
+  const href = (route) => LINK_BASE + route;
+
+  /* ---------- starfield: decorative, sparse, deterministic ---------- */
+  const stars = $("stars");
+  stars.setAttribute("viewBox", "0 0 1000 1400");
+  stars.setAttribute("preserveAspectRatio", "xMidYMid slice");
+  let seed = 4711;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < 90; i++) {
+    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    c.setAttribute("cx", (rnd() * 1000).toFixed(1));
+    c.setAttribute("cy", (rnd() * 1400).toFixed(1));
+    c.setAttribute("r", rnd() < 0.2 ? 1.5 : rnd() < 0.5 ? 1.1 : 0.8);
+    c.setAttribute("fill", "#e9ebef");
+    c.setAttribute("opacity", (0.1 + rnd() * 0.36).toFixed(2));
+    stars.appendChild(c);
+  }
+
+  /* ---------- header nav ---------- */
+  const nav = $("nav");
+  H.worlds.forEach((w) => {
+    const a = document.createElement("a");
+    a.href = href(w.route);
+    a.textContent = w.label;
+    nav.appendChild(a);
+  });
+
+  /* ---------- 1 · the four worlds ----------
+     Buttons, not links: selecting is not navigating. The explicit
+     "Open" link in the panel is how you enter a world, so a reader can
+     compare all four without leaving the page. */
+  const orbs = $("orbs");
+  let selected = "RATES"; // the acquisition wedge; see spec §3.3
+
+  H.worlds.forEach((w) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "orb";
+    b.dataset.world = w.id;
+    b.setAttribute("aria-pressed", String(w.id === selected));
+    b.innerHTML =
+      '<span class="halo" aria-hidden="true"></span>' +
+      '<span class="dot" aria-hidden="true"></span>' +
+      '<span class="name"></span><span class="sub"></span>';
+    b.querySelector(".name").textContent = w.label;
+    b.querySelector(".sub").textContent = w.description;
+    b.addEventListener("click", () => select(w.id));
+    orbs.appendChild(b);
+  });
+
+  const panel = $("panel");
+  function select(id) {
+    selected = id;
+    const w = H.worlds.find((x) => x.id === id);
+    orbs.querySelectorAll(".orb").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b.dataset.world === id)),
+    );
+    panel.innerHTML =
+      '<p class="eyebrow">Selected world</p>' +
+      '<h3></h3><p class="desc"></p>' +
+      '<dl>' +
+        '<div><dt>Why it matters</dt><dd class="why"></dd></div>' +
+        '<div><dt>What MacroChipz has</dt><dd class="has"></dd></div>' +
+        '<div><dt>What it does not have</dt><dd class="not hasnot"></dd></div>' +
+      '</dl>' +
+      '<a class="enter"><span></span><span aria-hidden="true">&rarr;</span></a>';
+    panel.querySelector("h3").textContent = w.label;
+    panel.querySelector(".desc").textContent = w.description;
+    panel.querySelector(".why").textContent = w.why;
+    panel.querySelector(".has").textContent = w.has;
+    panel.querySelector(".hasnot").textContent = w.hasNot;
+    const link = panel.querySelector(".enter");
+    link.href = href(w.route);
+    link.querySelector("span").textContent = "Open " + w.label;
+  }
+  select(selected);
+
+  /* ---------- 2 · THE LEDE ---------- */
+  const STATES = [
+    ["quiet", "Quiet"],
+    ["unknown", "Unknown"],
+    ["development", "Development (layout)"],
+  ];
+  const ledeCard = $("ledeCard");
+  const switcher = $("stateSwitch");
+  let ledeState = "quiet";
+
+  function renderLede() {
+    const s = H.ledeStates[ledeState];
+    ledeCard.innerHTML =
+      '<p class="k"></p><h3></h3><p class="b"></p><p class="n"></p>';
+    ledeCard.querySelector(".k").textContent = s.kicker;
+    ledeCard.querySelector("h3").textContent = s.heading;
+    ledeCard.querySelector(".b").textContent = s.body;
+    ledeCard.querySelector(".n").textContent = s.note;
+
+    if (ledeState === "development") {
+      // The composition, with every figure redacted. A prototype that
+      // invents a headline teaches the reviewer the wrong thing.
+      const slot = document.createElement("p");
+      slot.className = "b";
+      slot.innerHTML =
+        '<span class="redact tall"></span> &nbsp;<span class="redact"></span> ' +
+        '&middot; <span class="redact"></span>';
+      ledeCard.appendChild(slot);
+    }
+    if (ledeState === "quiet") {
+      const list = document.createElement("div");
+      list.className = "cards";
+      list.style.marginTop = "14px";
+      H.worlds.forEach((w) => {
+        const a = document.createElement("a");
+        a.className = "card";
+        a.href = href(w.route);
+        a.innerHTML = '<span class="t"></span><span class="s"></span>';
+        a.querySelector(".t").textContent = w.label + " →";
+        a.querySelector(".s").textContent = w.description;
+        list.appendChild(a);
+      });
+      ledeCard.appendChild(list);
+    }
+    switcher.querySelectorAll("button").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b.dataset.state === ledeState)),
+    );
+  }
+
+  STATES.forEach(([key, label]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.state = key;
+    b.textContent = label;
+    b.addEventListener("click", () => { ledeState = key; renderLede(); });
+    switcher.appendChild(b);
+  });
+  renderLede();
+
+  /* ---------- 3 · start exploring ---------- */
+  const explore = $("explore");
+  H.worlds.forEach((w) => {
+    const a = document.createElement("a");
+    a.className = "card";
+    a.href = href(w.route);
+    a.innerHTML = '<span class="tag"></span><span class="t"></span><span class="s"></span>';
+    a.querySelector(".tag").textContent = w.label;
+    a.querySelector(".t").textContent = w.description;
+    a.querySelector(".s").textContent = w.hasNot;
+    explore.appendChild(a);
+  });
+
+  /* ---------- 4 · discovery ---------- */
+  const disc = $("discovery");
+  H.discovery.forEach((d) => {
+    const a = document.createElement("a");
+    a.className = "card";
+    a.href = href(d.route);
+    a.innerHTML = '<span class="tag"></span><span class="t"></span><span class="s"></span>';
+    a.querySelector(".tag").textContent = d.label;
+    a.querySelector(".t").textContent = d.question;
+    a.querySelector(".s").textContent = d.blurb;
+    disc.appendChild(a);
+  });
+
+  /* ---------- 5 · trust ---------- */
+  const trust = $("trust");
+  H.trust.forEach((t) => {
+    const a = document.createElement("a");
+    a.className = "card";
+    a.href = href(t.route);
+    a.innerHTML = '<span class="t"></span><span class="s"></span>';
+    a.querySelector(".t").textContent = t.label;
+    a.querySelector(".s").textContent = t.note;
+    trust.appendChild(a);
+  });
+
+  $("census").textContent = H.censusNotice;
+  $("protoNote").textContent =
+    "Prototype (#47 phase 1). No production route is modified. World and story links open the " +
+    "running dev server at " + LINK_BASE + "; in production they are relative paths. No figure, " +
+    "date or count appears anywhere on this page — the hero renders from a static registry, which " +
+    "is why it survives an API outage.";
+
+  /* ---------- runtime guard, same discipline as #46E ---------- */
+  window.verifyTapTargets = function () {
+    const bad = [];
+    document.querySelectorAll("a,button,summary").forEach((n) => {
+      const r = n.getBoundingClientRect();
+      if (r.height > 2 && (r.height < 44 || r.width < 44)) {
+        bad.push((n.textContent || "").trim().slice(0, 28) + " " + Math.round(r.width) + "x" + Math.round(r.height));
+      }
+    });
+    if (bad.length) console.warn("[tap-targets] under 44px:", bad);
+    return bad;
+  };
+  window.verifyTapTargets();
+})();
+</script>
+</body>
+</html>

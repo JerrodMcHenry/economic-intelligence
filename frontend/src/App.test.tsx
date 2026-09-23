@@ -144,14 +144,14 @@ describe("App", () => {
     // page's own data loading and rendering behavior in full.
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/");
-    expect(screen.getByRole("heading", { level: 1, name: "The economy right now" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Explore the living economy." })).toBeInTheDocument();
   });
 
   describe("old URLs keep working (#41)", () => {
     // Links shared before #41 are not the reader's mistake. Each old
     // path lands on its successor's content rather than a 404.
     it.each([
-      ["/overview", "The economy right now"],
+      ["/overview", "Explore the living economy."],
       ["/labor", "Jobs"],
       ["/releases", "Release calendar"],
     ])("redirects %s to its successor", (from, heading) => {

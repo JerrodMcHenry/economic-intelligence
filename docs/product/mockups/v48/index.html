@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>The Living Economy v2 — MacroChipz #48 prototype</title>
+<!--
+  THE LIVING ECONOMY v2 — "documentary" (#48, phase 1)
+  ====================================================
+  Standalone. No production route, no application import, no dependency.
+
+  ---------------------------------------------------------------
+  WHAT CHANGED FROM v47, AND WHY
+  ---------------------------------------------------------------
+  v47 was four purple cards and a big description panel that repeated
+  what the cards already said. The hero ate the whole first screen at
+  390px, so THE LEDE — the one part of the page that carries actual
+  news — was never seen.
+
+  v2 keeps violet and lavender as the brand signature and puts them on
+  a CHARCOAL / MIDNIGHT ground, so the violet reads as light falling on
+  something rather than as the colour of everything. Worlds become
+  photographic frames. The panel shrinks to ONE discovery line and a
+  link. The lede moves up.
+
+  ---------------------------------------------------------------
+  THREE THINGS THIS PROTOTYPE REFUSES TO DO
+  ---------------------------------------------------------------
+  1. NO STOCK PHOTOGRAPHY IS COPIED. Every image slot is a clearly
+     marked placeholder with a licence line. Lifting search results into
+     a commercial product is how a company acquires a legal problem, and
+     a placeholder that admits what it is beats an image nobody can
+     ship.
+  2. NO INVENTED FIGURE. The one data visual reads a SNAPSHOT captured
+     from the running local API — real values, real as-of date, real
+     Treasury attribution — and says on its face that it is a snapshot
+     and not live. The alternative was inventing a curve, which is the
+     single worst thing a product like this could do.
+  3. NO CAUSAL LINES BETWEEN WORLDS. The four worlds are navigation
+     categories. Only the mortgage-story preview draws edges, and those
+     are the story's own reviewed semantics: solid = sets, dashed =
+     influences.
+
+  ---------------------------------------------------------------
+  THE WARM ACCENT, AND THE ONE RULE ON IT
+  ---------------------------------------------------------------
+  `--ed-amber` is editorial only: section rules, the featured marker,
+  the placeholder chips. It NEVER touches a data element, because
+  `--mc-state-warm` and `--mc-state-caution` are warm tones that carry
+  economic classification under the #27B rule. A warm colour on a
+  number would read as a verdict.
+-->
+<style>
+  :root {
+    /* shipped brand tokens, resolved from the dark theme */
+    --mc-brand: #9facf1;
+    --mc-focus: #a2b0ff;
+    --mc-fg: #e9ebef;
+    --mc-fg-secondary: #bdc1c8;
+    --mc-fg-muted: #979ca3;
+
+    /* v2 ground: charcoal and midnight, so violet becomes light */
+    --ed-char: #121317;
+    --ed-char-2: #191b21;
+    --ed-mid: #0e1422;
+    --ed-mid-2: #131b2d;
+    --ed-line: #2a2d35;
+    --ed-line-2: #363a45;
+
+    /* violet, kept as the signature */
+    --ed-violet: rgba(124, 96, 240, .34);
+    --ed-lav: rgba(162, 176, 255, .30);
+
+    /* editorial warm accent — never on data (see header note) */
+    --ed-amber: #c9954a;
+
+    --sans: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Roboto,
+            "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--ed-char); -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--ed-char); color: var(--mc-fg);
+    font-family: var(--sans); font-size: 16px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+  @media (min-width: 640px) { .wrap { padding-left: 28px; padding-right: 28px; } }
+  @media (min-width: 1024px) { .wrap { padding-left: 40px; padding-right: 40px; } }
+
+  /* ---------- chrome ---------- */
+  .bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    height: 54px; padding: 0 16px; background: #0d0e11; border-bottom: 1px solid var(--ed-line);
+    position: relative; z-index: 3;
+  }
+  .wm { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+  .wm span { color: var(--mc-brand); }
+  .bar nav { display: flex; gap: 2px; }
+  .bar nav a {
+    display: inline-flex; align-items: center; min-height: 44px; padding: 0 9px; border-radius: 8px;
+    font-size: 13px; color: var(--mc-fg-secondary); text-decoration: none;
+  }
+  .bar nav a:hover { color: var(--mc-fg); background: rgba(255,255,255,.05); }
+  .bar nav a:focus-visible, a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--mc-focus); outline-offset: 2px;
+  }
+
+  /* ---------- 1 · cinematic hero ---------- */
+  .hero {
+    position: relative; overflow: hidden;
+    background:
+      radial-gradient(90% 120% at 82% -20%, var(--ed-violet) 0%, transparent 58%),
+      radial-gradient(70% 90% at 6% 110%, var(--ed-lav) 0%, transparent 60%),
+      linear-gradient(168deg, var(--ed-mid) 0%, var(--ed-char) 72%);
+  }
+  .hero .inner { padding-top: 20px; padding-bottom: 18px; }
+  .kicker {
+    margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--ed-amber);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .kicker::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(201,149,74,.5), transparent); }
+  h1 {
+    margin: 10px 0 0; font-size: 27px; line-height: 1.08; font-weight: 700;
+    letter-spacing: -.032em; text-wrap: balance; max-width: 18ch;
+  }
+  @media (min-width: 640px) { h1 { font-size: 36px; max-width: 20ch; } }
+  @media (min-width: 1024px) { h1 { font-size: 46px; } }
+  .sub { margin: 8px 0 0; max-width: 44ch; font-size: 14.5px; line-height: 1.45; color: var(--mc-fg-secondary); }
+  @media (min-width: 1024px) { .sub { font-size: 16px; max-width: 52ch; } }
+
+  /* world selectors — photographic frames */
+  .worlds { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (min-width: 768px) { .worlds { grid-template-columns: repeat(4, 1fr); gap: 12px; } }
+
+  .world {
+    position: relative; overflow: hidden; display: block; width: 100%;
+    padding: 0; border: 1px solid var(--ed-line); border-radius: 12px;
+    background: var(--ed-char-2); color: var(--mc-fg); font: inherit; cursor: pointer;
+    transition: border-color .2s ease, transform .2s ease;
+  }
+  .world:hover { border-color: var(--ed-line-2); }
+  .world[aria-pressed="true"] { border-color: rgba(162,176,255,.6); }
+  .world .frame { position: relative; aspect-ratio: 3 / 2; display: block; }
+  @media (min-width: 768px) { .world .frame { aspect-ratio: 4 / 3; } }
+  .world .frame svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  /* A verified asset replaces the placeholder art entirely. `cover` with
+     a centred focal point keeps the pediment in frame at both the 3:2
+     mobile and 4:3 desktop crops. */
+  .world .frame img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; object-position: 50% 58%;
+  }
+  .world .frame .tint {
+    /* Light at the top so the subject stays visible, heavy only at the
+       bottom where the world name sits. A tile that reads as a black
+       box is not a photograph. */
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(10,8,20,0) 0%, rgba(10,8,20,.12) 48%, rgba(8,9,12,.78) 100%);
+  }
+  /* The Library asks for a credit line. It belongs on the frame, but out
+     of the subject: one line, bottom-right, above the name. */
+  .credit {
+    /* Top-right: the world name owns the bottom-left, and `bottom` put
+       this under the caption gradient where it slid out of the frame. */
+    position: absolute; right: 6px; top: 6px; z-index: 2; max-width: calc(100% - 12px);
+    /* 7.5px with `nowrap` + `ellipsis` silently CUT the credit at 440px
+       ("...Library of Congre..."). A truncated attribution is not an
+       attribution, so this wraps rather than clips, and the full
+       required notice is also carried verbatim in the footer. */
+    font-size: 9px; line-height: 1.35; font-weight: 600; letter-spacing: .02em;
+    text-align: right; text-wrap: balance;
+    color: rgba(233,235,239,.88); text-shadow: 0 1px 2px rgba(0,0,0,.95);
+  }
+  .world .cap {
+    position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 10px; text-align: left;
+    background: linear-gradient(180deg, transparent, rgba(8,9,12,.88) 62%);
+  }
+  .world .nm { display: block; font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
+  @media (min-width: 768px) { .world .nm { font-size: 15.5px; } }
+  .world[aria-pressed="true"] .nm { color: #eef0ff; }
+  .ph {
+    position: absolute; top: 7px; left: 7px; z-index: 2;
+    font-size: 8.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    color: #0d0e11; background: var(--ed-amber); padding: 2px 5px; border-radius: 3px;
+  }
+
+  /* the one discovery line — not a duplicated panel */
+  .discovery {
+    margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+    padding: 12px 14px; border-radius: 12px;
+    background: rgba(255,255,255,.04); border: 1px solid var(--ed-line);
+  }
+  .discovery p { margin: 0; flex: 1 1 16rem; font-size: 14px; line-height: 1.45; color: var(--mc-fg-secondary); }
+  .discovery p b { color: var(--mc-fg); font-weight: 600; }
+  .go {
+    display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 14px;
+    border-radius: 9px; text-decoration: none; font-size: 13.5px; font-weight: 600;
+    color: #eef0ff; background: rgba(124,96,240,.32); border: 1px solid rgba(162,176,255,.42);
+    transition: background-color .2s ease;
+  }
+  .go:hover { background: rgba(124,96,240,.46); }
+
+  /* ---------- shared section furniture ---------- */
+  section.band { padding-top: 30px; }
+  @media (min-width: 1024px) { section.band { padding-top: 44px; } }
+  h2.sec {
+    margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--ed-amber); display: flex; align-items: center; gap: 10px;
+  }
+  h2.sec::after { content: ""; flex: 1; height: 1px; background: var(--ed-line); }
+
+  .card {
+    display: flex; flex-direction: column; gap: 5px; padding: 14px 16px;
+    border-radius: 12px; text-decoration: none; color: var(--mc-fg);
+    background: var(--ed-char-2); border: 1px solid var(--ed-line);
+    transition: border-color .2s ease, background-color .2s ease;
+  }
+  .card:hover { border-color: var(--ed-line-2); background: #1d1f26; }
+  .card .t { font-size: 15px; font-weight: 600; line-height: 1.3; }
+  .card .s { font-size: 12.5px; line-height: 1.4; color: var(--mc-fg-muted); }
+  .card .tag { font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--mc-brand); }
+
+  /* ---------- 2 · the lede ---------- */
+  .lede {
+    margin-top: 12px; border-radius: 14px; padding: 16px;
+    background: linear-gradient(170deg, var(--ed-mid-2) 0%, var(--ed-char-2) 70%);
+    border: 1px solid var(--ed-line);
+  }
+  @media (min-width: 640px) { .lede { padding: 20px 22px; } }
+  .lede .k { font-size: 10.5px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--mc-fg-muted); }
+  .lede h3 { margin: 6px 0 0; font-size: 20px; line-height: 1.16; font-weight: 700; letter-spacing: -.025em; }
+  @media (min-width: 1024px) { .lede h3 { font-size: 24px; } }
+  .lede .b { margin: 7px 0 0; max-width: 62ch; font-size: 13.5px; line-height: 1.5; color: var(--mc-fg-secondary); }
+  .lede .n { margin: 7px 0 0; font-size: 12px; color: var(--mc-fg-muted); }
+  /* The two actions are the useful part of a quiet state, so they get
+     button weight rather than footnote weight. The panel itself is
+     tighter: a state that appears on most days should not be the
+     tallest card on the page. */
+  .lede .row { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .lede .row a {
+    display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 15px;
+    border-radius: 9px; font-size: 13.5px; font-weight: 600; text-decoration: none;
+    color: #eef0ff; background: rgba(124,96,240,.30); border: 1px solid rgba(162,176,255,.42);
+    transition: background-color .2s ease;
+  }
+  .lede .row a:hover { background: rgba(124,96,240,.44); }
+  .lede .row a.secondary {
+    color: var(--mc-fg-secondary); background: rgba(255,255,255,.04);
+    border-color: var(--ed-line); font-weight: 500;
+  }
+  .lede .row a.secondary:hover { color: var(--mc-fg); background: rgba(255,255,255,.07); }
+  .switch { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .switch button {
+    min-height: 44px; padding: 0 12px; border-radius: 9px; cursor: pointer; font: inherit; font-size: 12.5px;
+    background: transparent; border: 1px solid var(--ed-line); color: var(--mc-fg-muted);
+  }
+  .switch button[aria-pressed="true"] { border-color: rgba(162,176,255,.55); color: var(--mc-fg); }
+  .switchnote { margin: 7px 0 0; font-size: 11.5px; color: var(--mc-fg-muted); }
+  .redact {
+    display: inline-block; height: 22px; width: 104px; border-radius: 3px; vertical-align: -5px;
+    background: repeating-linear-gradient(115deg, #2b2d36 0 6px, #22242c 6px 12px);
+  }
+
+  /* ---------- 3 · featured discovery ---------- */
+  .feature {
+    margin-top: 12px; border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--ed-line);
+    background: linear-gradient(168deg, #140f26 0%, #0d0b16 60%, var(--ed-char) 100%);
+    display: grid;
+  }
+  @media (min-width: 900px) { .feature { grid-template-columns: minmax(0,1.05fr) minmax(0,1fr); align-items: center; } }
+  .feature .txt { padding: 18px; }
+  @media (min-width: 640px) { .feature .txt { padding: 26px; } }
+  .feature .tag { font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--ed-amber); }
+  .feature h3 { margin: 9px 0 0; font-size: 21px; line-height: 1.14; font-weight: 700; letter-spacing: -.025em; }
+  @media (min-width: 1024px) { .feature h3 { font-size: 28px; } }
+  .feature p { margin: 9px 0 0; max-width: 46ch; font-size: 14px; line-height: 1.5; color: var(--mc-fg-secondary); }
+  .feature .viz { padding: 4px 18px 20px; }
+  @media (min-width: 900px) { .feature .viz { padding: 22px 26px; } }
+  .netLegend { display: flex; gap: 14px; margin-top: 8px; font-size: 11px; color: var(--mc-fg-muted); }
+  .netLegend i { display: inline-block; width: 18px; vertical-align: 2px; margin-right: 6px; }
+  .netLegend i.s { border-top: 2px solid var(--mc-focus); }
+  .netLegend i.d { border-top: 2px dashed rgba(159,172,241,.6); }
+
+  /* ---------- 4 · explore + real measure ---------- */
+  .grid3 { margin-top: 12px; display: grid; gap: 10px; }
+  @media (min-width: 640px) { .grid3 { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1024px) { .grid3 { grid-template-columns: repeat(3, 1fr); } }
+
+  .measure {
+    margin-top: 12px; border-radius: 14px; border: 1px solid var(--ed-line);
+    background: var(--ed-char-2); padding: 16px; display: grid; gap: 14px;
+  }
+  @media (min-width: 900px) { .measure { grid-template-columns: minmax(0,1fr) minmax(0,19rem); align-items: center; padding: 22px; } }
+  .measure h3 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+  .measure .snap {
+    margin: 8px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--mc-fg-muted);
+    border-left: 2px solid var(--ed-amber); padding-left: 9px;
+  }
+  .curveWrap { position: relative; }
+  .curve { display: block; width: 100%; height: auto; }
+  .pt { cursor: pointer; }
+  .pt:focus-visible { outline: 2px solid var(--mc-focus); }
+  .readout { margin-top: 10px; min-height: 44px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .readout .v { font-size: 26px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .readout .l { font-size: 12.5px; color: var(--mc-fg-muted); }
+  .mchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .mchips button {
+    /* min-width too: "2Y" and "5Y" are short enough that padding alone
+       left them 41px wide, which is a 44px rule failing on the shortest
+       labels rather than the longest. */
+    min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 9px; cursor: pointer; font: inherit; font-size: 12.5px;
+    background: transparent; border: 1px solid var(--ed-line); color: var(--mc-fg-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .mchips button[aria-pressed="true"] { border-color: rgba(162,176,255,.55); color: var(--mc-fg); }
+
+  /* ---------- 5 · trust ---------- */
+  .trust { margin-top: 12px; display: grid; gap: 8px; }
+  @media (min-width: 640px) { .trust { grid-template-columns: repeat(3, 1fr); } }
+  footer { margin-top: 40px; border-top: 1px solid var(--ed-line); background: #0b0c0f; }
+  footer .in { padding-top: 20px; padding-bottom: 28px; display: grid; gap: 10px; }
+  @media (min-width: 768px) { footer .in { grid-template-columns: auto 1fr; gap: 28px; align-items: start; } }
+  footer .m { font-size: 13px; color: var(--mc-fg-secondary); }
+  footer .m b { color: var(--mc-fg); font-weight: 600; }
+  footer .c { font-size: 11.5px; line-height: 1.6; color: var(--mc-fg-muted); }
+
+  .note {
+    margin-top: 20px; padding: 12px 14px; border-radius: 11px;
+    background: rgba(255,255,255,.028); border: 1px dashed rgba(255,255,255,.14);
+    font-size: 11.5px; line-height: 1.6; color: var(--mc-fg-muted);
+  }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <span class="wm">Macro<span>Chipz</span></span>
+  <nav id="nav" aria-label="Economic worlds"></nav>
+</header>
+
+<!-- ============ 1 · COMPACT CINEMATIC HERO ============ -->
+<section class="hero" aria-labelledby="h1">
+  <div class="wrap inner">
+    <p class="kicker">The living economy</p>
+    <h1 id="h1">Explore the living economy.</h1>
+    <p class="sub">
+      Four parts of the U.S. economy. Every figure traces back to the agency that
+      published it, with the date it was published.
+    </p>
+
+    <div class="worlds" id="worlds" role="group" aria-label="Economic worlds"></div>
+
+    <div class="discovery" aria-live="polite" id="discovery"></div>
+  </div>
+</section>
+
+<!-- ============ 2 · THE LATEST ============ -->
+<section class="wrap band" aria-labelledby="lede-h">
+  <h2 class="sec" id="lede-h">The latest from the economy</h2>
+  <div class="lede" id="lede" aria-live="polite"></div>
+  <div class="switch" id="switch" role="group" aria-label="Lede state (prototype control)"></div>
+  <p class="switchnote">
+    Prototype control only. The real page renders whichever state the eligibility policy
+    returns; it ships showing <strong>quiet</strong>.
+  </p>
+</section>
+
+<!-- ============ 3 · FEATURED DISCOVERY ============ -->
+<section class="wrap band" aria-labelledby="feat-h">
+  <h2 class="sec" id="feat-h">Featured discovery</h2>
+  <div class="feature">
+    <div class="txt">
+      <p class="tag">Interactive story</p>
+      <h3>Wait, the Fed doesn&rsquo;t set mortgage rates?</h3>
+      <p>
+        Six actors sit between a Federal Reserve decision and the rate a lender quotes you.
+        Only two of them are set by anyone at all. Tap through the network and see which.
+      </p>
+      <p style="margin-top:16px">
+        <a class="go" id="storyLink"><span>Open the story</span><span aria-hidden="true">&rarr;</span></a>
+      </p>
+    </div>
+    <div class="viz">
+      <svg class="curve" id="netPreview" viewBox="0 0 320 210" role="img"
+           aria-label="Preview of the rate network: six actors, two of them directly set by someone, the rest connected by influence.">
+      </svg>
+      <div class="netLegend">
+        <span><i class="s"></i>Sets it directly</span>
+        <span><i class="d"></i>Influences it</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 · EXPLORE FURTHER ============ -->
+<section class="wrap band" aria-labelledby="exp-h">
+  <h2 class="sec" id="exp-h">Explore further</h2>
+  <div class="grid3" id="explore"></div>
+
+  <div class="measure">
+    <div>
+      <h3>What a MacroChipz measure actually looks like</h3>
+      <p class="snap" id="snapNote"></p>
+      <div class="mchips" id="mchips" role="group" aria-label="Maturity"></div>
+      <div class="readout" id="readout"></div>
+    </div>
+    <div class="curveWrap">
+      <svg class="curve" id="curve" viewBox="0 0 300 150" role="img" aria-label="Treasury par yield curve"></svg>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 · SOURCES AND TRUST ============ -->
+<section class="wrap band" aria-labelledby="trust-h">
+  <h2 class="sec" id="trust-h">Sources and limits</h2>
+  <div class="trust" id="trust"></div>
+  <p class="note" id="protoNote"></p>
+</section>
+
+<footer>
+  <div class="wrap in">
+    <p class="m"><b>MacroChipz</b> &middot; Economic Intelligence</p>
+    <div>
+      <p class="c" id="census"></p>
+      <p class="c" id="imageCredits" style="margin-top:8px"></p>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const NS = "http://www.w3.org/2000/svg";
+  const LINK_BASE = "http://localhost:5193";
+  const href = (r) => LINK_BASE + r;
+  const el = (t, a, p) => { const n = document.createElementNS(NS, t);
+    for (const k in a) n.setAttribute(k, a[k]); if (p) p.appendChild(n); return n; };
+
+  /* =================================================================
+     CONTENT. `description` is verbatim from worlds/registry.ts.
+     `discovery` is one concise line per world — the v47 panel repeated
+     the card text back at the reader, which is what the brief called a
+     large duplicated description panel.
+     ================================================================= */
+  const WORLDS = [
+    { id: "INFLATION", label: "Inflation", route: "/inflation", hue: "#8f7bff",
+      art: "shelf",
+      discovery: "Falling inflation does not mean falling prices — it means they are rising more slowly.",
+      shot: "A supermarket aisle, shelf-level, shallow depth of field. No readable brands." },
+    { id: "JOBS", label: "Jobs", route: "/jobs", hue: "#7c8cf0",
+      art: "people",
+      discovery: "Two different surveys measure the job market, and they can disagree in the same month.",
+      shot: "People at work — a trade, a kitchen, a depot. Faces incidental, model release required." },
+    { id: "RATES", label: "Rates", route: "/rates", hue: "#9facf1",
+      art: "columns",
+      // VERIFIED. Carol M. Highsmith Archive, Library of Congress,
+      // LC-DIG-highsm-16870. Rights advisory: "No known restrictions on
+      // publication"; the photographer dedicated the archive to the
+      // American people for copyright-free access. Credit line is
+      // required by the Library and is rendered on the frame.
+      img: "img/rates-treasury-highsm-16870.jpg",
+      credit: "Carol M. Highsmith Archive, Library of Congress",
+      discovery: "Treasury yields are what it costs the government to borrow — and the reference other borrowing is priced against.",
+      shot: "Institutional architecture at dusk, long lens, no identifiable signage." },
+    { id: "HOUSING", label: "Housing", route: "/housing", hue: "#a88cf0",
+      art: "roofs",
+      discovery: "Permits, starts and completions are three stages of one pipeline, and they move at different times.",
+      shot: "Residential framing under construction, golden hour, wide. No worker faces." },
+  ];
+
+  const LEDE = {
+    quiet: {
+      k: "The economy", h: "No new tracked change",
+      b: "MacroChipz has not recorded a new change in the parts of the economy it tracks. That is not a claim that the economy is quiet — the economy is always operating. It means nothing new has arrived here.",
+      n: "Roughly two thirds of business days have no scheduled release. This is the normal state, not a failure.",
+    },
+    unknown: {
+      k: "The economy", h: "Not yet known",
+      b: "MacroChipz has not finished checking whether anything new has arrived. This is deliberately not the quiet state: saying 'nothing happened' before asking would be a claim rather than a fact.",
+      n: "Shown while the request is unresolved, and if it fails.",
+    },
+    development: {
+      k: "The economy", h: "A tracked change, when one exists",
+      b: "The layout an eligible development uses. Its figures are redacted here — inventing one to make a prototype look busy is precisely the failure the eligibility policy exists to prevent.",
+      n: "Only objects the policy admits reach this slot. Coverage records and first observations never do.",
+      redact: true,
+    },
+  };
+
+  const EXPLORE = [
+    { tag: "Explainer", t: "Wait, inflation falling doesn't mean prices are falling?", s: "Inflation vs prices", r: "/explain/inflation-vs-prices" },
+    { tag: "Explainer", t: "Why does everyone watch the 10-year Treasury?", s: "Why the 10-year matters", r: "/explain/why-the-10-year-matters" },
+    { tag: "Explainer", t: "What is a Treasury yield, really?", s: "Treasury yields", r: "/explain/what-is-a-treasury-yield" },
+  ];
+
+  const TRUST = [
+    { t: "Sources & methodology", s: "Every figure names the agency that published it", r: "/explain" },
+    { t: "What changed", s: "Revisions shown, never silently overwritten", r: "/revisions" },
+    { t: "Release calendar", s: "When the next data is scheduled", r: "/calendar" },
+  ];
+
+  /* The Library of Congress's required credit line for the Carol M.
+     Highsmith Archive, VERBATIM. The on-frame chip is a short form; this
+     is the notice itself, and it is why the footer carries it in full.
+     See docs/product/mockups/v48/ASSETS.md. */
+  const IMAGE_CREDITS =
+    "Rates: U.S. Treasury Department Building, Washington, D.C. " +
+    "Photographs in the Carol M. Highsmith Archive, Library of Congress, " +
+    "Prints and Photographs Division (LC-DIG-highsm-16870). " +
+    "Inflation, Jobs and Housing use marked placeholder artwork \u2014 no photograph is licensed for them yet.";
+
+  const CENSUS =
+    "Source data: U.S. Department of the Treasury; FRED®, Federal Reserve Bank of St. Louis; " +
+    "U.S. Census Bureau and U.S. Department of Housing and Urban Development. This product uses the " +
+    "Census Bureau Data API but is not endorsed or certified by the Census Bureau.";
+
+  /* ---------- nav ---------- */
+  WORLDS.forEach((w) => {
+    const a = document.createElement("a");
+    a.href = href(w.route); a.textContent = w.label;
+    $("nav").appendChild(a);
+  });
+
+  /* =================================================================
+     PLACEHOLDER ART.
+     Deliberately abstract line work, not a photograph and not
+     pretending to be one. Each carries a PLACEHOLDER chip and the shot
+     brief travels with it in the asset inventory. Copying a search
+     result into a commercial product is how a company acquires a legal
+     problem; a placeholder that admits what it is cannot.
+     ================================================================= */
+  function art(kind, hue) {
+    const svg = el("svg", { viewBox: "0 0 120 80", preserveAspectRatio: "xMidYMid slice" });
+    svg.setAttribute("aria-hidden", "true");
+    const g = el("linearGradient", { id: "g" + kind, x1: "0", y1: "0", x2: "0.6", y2: "1" }, svg);
+    el("stop", { offset: "0%", "stop-color": hue, "stop-opacity": ".30" }, g);
+    el("stop", { offset: "100%", "stop-color": "#0b0c10", "stop-opacity": "1" }, g);
+    el("rect", { x: 0, y: 0, width: 120, height: 80, fill: "url(#g" + kind + ")" }, svg);
+    const s = { stroke: hue, "stroke-width": ".9", fill: "none", opacity: ".55" };
+    if (kind === "shelf") {
+      [22, 40, 58].forEach((y) => el("line", { x1: 14, y1: y, x2: 106, y2: y, ...s }, svg));
+      for (let i = 0; i < 9; i++) el("rect", { x: 18 + i * 10, y: 26, width: 6, height: 12, ...s }, svg);
+      for (let i = 0; i < 7; i++) el("rect", { x: 24 + i * 11, y: 44, width: 7, height: 12, ...s }, svg);
+    } else if (kind === "people") {
+      [30, 54, 78].forEach((x, i) => {
+        el("circle", { cx: x, cy: 38 - i % 2 * 5, r: 6, ...s }, svg);
+        el("path", { d: `M ${x - 11} ${64 - i % 2 * 5} q 11 -16 22 0`, ...s }, svg);
+      });
+      el("line", { x1: 8, y1: 68, x2: 112, y2: 68, ...s }, svg);
+    } else if (kind === "columns") {
+      el("path", { d: "M 18 30 L 60 14 L 102 30", ...s }, svg);
+      [26, 40, 54, 68, 82, 94].forEach((x) => el("line", { x1: x, y1: 32, x2: x, y2: 64, ...s }, svg));
+      el("line", { x1: 16, y1: 66, x2: 104, y2: 66, ...s }, svg);
+    } else {
+      [[16, 44], [50, 36], [84, 46]].forEach(([x, y]) => {
+        el("path", { d: `M ${x} ${y} L ${x + 16} ${y - 13} L ${x + 32} ${y}`, ...s }, svg);
+        el("rect", { x: x + 4, y: y, width: 24, height: 22, ...s }, svg);
+      });
+      el("line", { x1: 8, y1: 70, x2: 112, y2: 70, ...s }, svg);
+    }
+    return svg;
+  }
+
+  /* ---------- 1 · hero world selectors ---------- */
+  let selected = "RATES";
+  const worldsEl = $("worlds");
+  WORLDS.forEach((w) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "world"; b.dataset.world = w.id;
+    b.setAttribute("aria-pressed", String(w.id === selected));
+    b.setAttribute("aria-label", w.label);
+    const frame = document.createElement("span");
+    frame.className = "frame";
+    const chip = document.createElement("span");
+    if (w.img) {
+      // A verified asset: real photograph, a tint so the caption stays
+      // legible, and the Library's required credit line ON the frame
+      // rather than buried in a colophon.
+      const im = document.createElement("img");
+      im.src = w.img; im.alt = ""; im.setAttribute("aria-hidden", "true");
+      // EAGER, not lazy. These sit in the hero, above the fold, and are
+      // LCP candidates — deferring them delays the largest paint and,
+      // in a resized frame, can stop them loading at all.
+      im.loading = "eager"; im.fetchPriority = "high"; im.decoding = "async";
+      frame.appendChild(im);
+      const tint = document.createElement("span");
+      tint.className = "tint"; frame.appendChild(tint);
+      chip.className = "credit"; chip.textContent = w.credit;
+    } else {
+      frame.appendChild(art(w.art, w.hue));
+      chip.className = "ph"; chip.textContent = "Placeholder";
+    }
+    const cap = document.createElement("span");
+    cap.className = "cap";
+    cap.innerHTML = '<span class="nm"></span>';
+    cap.querySelector(".nm").textContent = w.label;
+    frame.appendChild(chip); frame.appendChild(cap);
+    b.appendChild(frame);
+    b.addEventListener("click", () => select(w.id));
+    worldsEl.appendChild(b);
+  });
+
+  function select(id) {
+    selected = id;
+    const w = WORLDS.find((x) => x.id === id);
+    worldsEl.querySelectorAll(".world").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b.dataset.world === id)));
+    const d = $("discovery");
+    d.innerHTML = '<p><b></b> <span class="dx"></span></p><a class="go"><span></span><span aria-hidden="true">&rarr;</span></a>';
+    d.querySelector("b").textContent = w.label + " —";
+    d.querySelector(".dx").textContent = w.discovery;
+    const a = d.querySelector("a");
+    a.href = href(w.route);
+    a.querySelector("span").textContent = "Open " + w.label;
+  }
+  select(selected);
+
+  /* ---------- 2 · the lede ---------- */
+  let state = "quiet";
+  function renderLede() {
+    const s = LEDE[state];
+    const n = $("lede");
+    n.innerHTML = '<p class="k"></p><h3></h3><p class="b"></p><p class="n"></p><div class="row"></div>';
+    n.querySelector(".k").textContent = s.k;
+    n.querySelector("h3").textContent = s.h;
+    n.querySelector(".b").textContent = s.b;
+    n.querySelector(".n").textContent = s.n;
+    if (s.redact) {
+      const r = document.createElement("p");
+      r.className = "b";
+      r.innerHTML = '<span class="redact"></span>';
+      n.insertBefore(r, n.querySelector(".n"));
+    }
+    const row = n.querySelector(".row");
+    [["See where things stand", "/rates", false],
+     ["When the next data lands", "/calendar", true]].forEach(([t, r, secondary]) => {
+      const a = document.createElement("a");
+      a.href = href(r); a.textContent = t;
+      if (secondary) a.className = "secondary";
+      row.appendChild(a);
+    });
+    $("switch").querySelectorAll("button").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b.dataset.s === state)));
+  }
+  [["quiet", "Quiet"], ["unknown", "Unknown"], ["development", "Development (layout)"]].forEach(([k, l]) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.dataset.s = k; b.textContent = l;
+    b.addEventListener("click", () => { state = k; renderLede(); });
+    $("switch").appendChild(b);
+  });
+  renderLede();
+
+  /* =================================================================
+     3 · NETWORK PREVIEW — the real graph, at preview size.
+     Same six actors, same two `sets` edges, same four `influences`
+     edges as the shipped story. A decorative diagram that got the
+     semantics wrong would be worse than no diagram.
+     ================================================================= */
+  const N = {
+    fed:  { x: 42,  y: 24,  t: "Fed" },
+    ffr:  { x: 42,  y: 74,  t: "Fed funds" },
+    ust:  { x: 240, y: 52,  t: "Treasury" },
+    mbs:  { x: 248, y: 112, t: "MBS" },
+    len:  { x: 68,  y: 140, t: "Lenders" },
+    rate: { x: 208, y: 180, t: "Your rate" },
+  };
+  const E = [
+    ["fed", "ffr", "sets"], ["fed", "ust", "inf"], ["ust", "mbs", "inf"],
+    ["ust", "len", "inf"], ["mbs", "len", "inf"], ["len", "rate", "sets"],
+  ];
+  const net = $("netPreview");
+  el("linearGradient", { id: "ng", gradientUnits: "userSpaceOnUse", x1: 20, y1: 10, x2: 280, y2: 190 }, net);
+  const ng = net.querySelector("#ng");
+  el("stop", { offset: "0%", "stop-color": "#c2caff" }, ng);
+  el("stop", { offset: "100%", "stop-color": "#ba7af0" }, ng);
+  E.forEach(([a, b, k]) => {
+    const A = N[a], B = N[b];
+    const d = `M ${A.x} ${A.y} L ${B.x} ${B.y}`;
+    if (k === "sets") {
+      el("path", { d, stroke: "url(#ng)", "stroke-width": 5, "stroke-linecap": "round", fill: "none", opacity: ".25" }, net);
+      el("path", { d, stroke: "url(#ng)", "stroke-width": 1.6, "stroke-linecap": "round", fill: "none" }, net);
+    } else {
+      el("path", { d, stroke: "rgba(159,172,241,.42)", "stroke-width": 1, "stroke-dasharray": "2 5", "stroke-linecap": "round", fill: "none" }, net);
+    }
+  });
+  Object.values(N).forEach((n) => {
+    el("circle", { cx: n.x, cy: n.y, r: 13, fill: "rgba(162,176,255,.12)" }, net);
+    el("circle", { cx: n.x, cy: n.y, r: 4.6, fill: "#140e28", stroke: "#9facf1", "stroke-width": 1.4 }, net);
+    el("circle", { cx: n.x, cy: n.y, r: 1.7, fill: "#e4e8ff" }, net);
+    const t = el("text", { x: n.x + 10, y: n.y + 4, fill: "#cfd3e6", "font-size": 9.5,
+      "font-family": "ui-sans-serif,-apple-system,system-ui,sans-serif", "font-weight": 600 }, net);
+    t.textContent = n.t;
+  });
+  $("storyLink").href = href("/story/fed-and-mortgage-rates");
+
+  /* ---------- 4 · explore ---------- */
+  EXPLORE.forEach((e) => {
+    const a = document.createElement("a");
+    a.className = "card"; a.href = href(e.r);
+    a.innerHTML = '<span class="tag"></span><span class="t"></span><span class="s"></span>';
+    a.querySelector(".tag").textContent = e.tag;
+    a.querySelector(".t").textContent = e.t;
+    a.querySelector(".s").textContent = e.s;
+    $("explore").appendChild(a);
+  });
+
+  /* =================================================================
+     THE ONE DATA VISUAL.
+     Reads a snapshot captured from the running local API — real values,
+     real as-of date, real Treasury attribution. It says so on its face.
+     If the snapshot cannot be loaded it says THAT, rather than drawing
+     a plausible curve from nothing.
+     ================================================================= */
+  fetch("rates-snapshot.json")
+    .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+    .then(renderCurve)
+    .catch(() => {
+      $("snapNote").textContent =
+        "The data snapshot could not be loaded, so no curve is drawn. A plausible-looking curve from no data would be worse than an empty panel.";
+    });
+
+  function renderCurve(snap) {
+    const pts = snap.nominal_curve.filter((s) => s.available);
+    $("snapNote").textContent =
+      "SNAPSHOT, NOT LIVE — captured " + snap._captured_at + " from the local API. As of " +
+      snap.as_of_date + ". " + snap.attribution + " Methodology " + snap.methodology_id + ".";
+
+    const W = 300, H = 150, padL = 34, padR = 12, padT = 16, padB = 28;
+    const vals = pts.map((p) => p.latest_value);
+    const lo = Math.min(...vals) - 0.15, hi = Math.max(...vals) + 0.15;
+    const X = (i) => padL + (i * (W - padL - padR)) / (pts.length - 1);
+    const Y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+    const svg = $("curve");
+
+    [lo, (lo + hi) / 2, hi].forEach((v) => {
+      el("line", { x1: padL, y1: Y(v), x2: W - padR, y2: Y(v), stroke: "#262932", "stroke-width": 1 }, svg);
+      const t = el("text", { x: 4, y: Y(v) + 3.5, fill: "#7c818c", "font-size": 8.5,
+        "font-family": "ui-sans-serif,-apple-system,sans-serif" }, svg);
+      t.textContent = v.toFixed(2);
+    });
+    el("path", {
+      d: pts.map((p, i) => `${i ? "L" : "M"} ${X(i)} ${Y(p.latest_value)}`).join(" "),
+      stroke: "#a2b0ff", "stroke-width": 2, fill: "none", "stroke-linejoin": "round",
+    }, svg);
+
+    const chips = $("mchips");
+    pts.forEach((p, i) => {
+      const short = p.series_id.replace("UST_NOMINAL_", "");
+      const c = el("circle", { class: "pt", cx: X(i), cy: Y(p.latest_value), r: 4.5,
+        fill: "#0f1117", stroke: "#a2b0ff", "stroke-width": 2, tabindex: "0",
+        role: "img", "aria-label": `${short}: ${p.latest_value} ${p.units}` }, svg);
+      c.addEventListener("click", () => pick(i));
+      const lab = el("text", { x: X(i), y: H - 8, fill: "#7c818c", "font-size": 9,
+        "text-anchor": "middle", "font-family": "ui-sans-serif,-apple-system,sans-serif" }, svg);
+      lab.textContent = short;
+
+      const b = document.createElement("button");
+      b.type = "button"; b.dataset.i = String(i); b.textContent = short;
+      b.setAttribute("aria-pressed", String(i === pts.length - 2));
+      b.addEventListener("click", () => pick(i));
+      chips.appendChild(b);
+    });
+
+    function pick(i) {
+      const p = pts[i];
+      chips.querySelectorAll("button").forEach((b) =>
+        b.setAttribute("aria-pressed", String(Number(b.dataset.i) === i)));
+      svg.querySelectorAll(".pt").forEach((c, j) =>
+        c.setAttribute("r", j === i ? 6.5 : 4.5));
+      const r = $("readout");
+      r.innerHTML = '<span class="v"></span><span class="l"></span>';
+      r.querySelector(".v").textContent = p.latest_value + "%";
+      r.querySelector(".l").textContent = p.title + " · " + p.latest_date;
+    }
+    pick(pts.length - 2);
+  }
+
+  /* ---------- 5 · trust ---------- */
+  TRUST.forEach((t) => {
+    const a = document.createElement("a");
+    a.className = "card"; a.href = href(t.r);
+    a.innerHTML = '<span class="t"></span><span class="s"></span>';
+    a.querySelector(".t").textContent = t.t;
+    a.querySelector(".s").textContent = t.s;
+    $("trust").appendChild(a);
+  });
+
+  $("census").textContent = CENSUS;
+  $("imageCredits").textContent = IMAGE_CREDITS;
+  $("protoNote").textContent =
+    "Prototype (#48 phase 1). No production route is modified. Every image is a marked placeholder — " +
+    "no stock photography is used or copied. The one chart reads a snapshot captured from the local " +
+    "API and labels itself as such; no figure on this page was authored by hand. Links open the dev " +
+    "server at " + LINK_BASE + "; in production they are relative paths.";
+
+  window.verifyTapTargets = function () {
+    const bad = [];
+    document.querySelectorAll("a,button").forEach((n) => {
+      const r = n.getBoundingClientRect();
+      if (r.height > 2 && (r.height < 44 || r.width < 44)) {
+        bad.push((n.getAttribute("aria-label") || n.textContent || "").trim().slice(0, 26) +
+                 " " + Math.round(r.width) + "x" + Math.round(r.height));
+      }
+    });
+    if (bad.length) console.warn("[tap-targets]", bad);
+    return bad;
+  };
+})();
+</script>
+</body>
+</html>

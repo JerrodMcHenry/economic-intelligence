@@ -1,10 +1,11 @@
 import { useState, type KeyboardEvent } from "react";
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { usePageViewed } from "../analytics";
 import { ECONOMIC_WORLDS } from "../worlds/registry";
 import { PageContainer } from "../components/PageContainer";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { surfaceForPath } from "./pageSurface";
 
 /**
  * The shared MacroChipz application shell (Increment #27B): skip link,
@@ -54,6 +55,11 @@ function navLinkClassName({ isActive }: { isActive: boolean }): string {
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // #48: a page-level surface, owned by `<main>` because `<main>` is
+  // the only full-width element a page sits inside. See
+  // `layouts/pageSurface.ts` for why this is the shell's decision.
+  const surface = surfaceForPath(useLocation().pathname);
+
   // Route-level measurement (Increment #37). Mounted once here rather
   // than in each page, so the pages stay unaware of analytics and a
   // future route is instrumented by existing here at all. Emits
@@ -78,12 +84,39 @@ export function AppShell() {
 
       <header className="sticky top-0 z-40 border-b border-line bg-surface" onKeyDown={onHeaderKeyDown}>
         <PageContainer>
-          <div className="flex flex-wrap items-center gap-x-6 py-3 md:h-16 md:flex-nowrap md:py-0">
+          {/*
+           * #48A: THE HEADER OVERFLOWED HORIZONTALLY AT 768px, ON
+           * EVERY PAGE.
+           *
+           * Measured at a 768px viewport: the row has 705px of usable
+           * width and its three children need 762px -- brand 171,
+           * navigation 441, theme-and-menu 102, plus two 24px gaps.
+           * All three have `flex-shrink: 1`, so the obvious question
+           * is why nothing shrank. Because `min-width: auto` is the
+           * default on a flex item, and none of them can go below
+           * their min-content size: six nav links in a row do not
+           * compress.
+           *
+           * Fixed three ways, because one of them alone is a number
+           * that goes stale the day a fifth world is added:
+           *   1. `lg:inline` on the wordmark tagline (it is duplicated
+           *      verbatim in the footer, so nothing is lost) -- frees
+           *      75px.
+           *   2. `md:gap-x-4` instead of 6 -- frees a further 16px.
+           *      Needed is now 671 against 705.
+           *   3. The row WRAPS again at `md`. This is the part that
+           *      matters: with `flex-nowrap` an over-long row becomes
+           *      document overflow, and without it the navigation
+           *      moves to a second line and the header grows. A future
+           *      world makes the header taller instead of making the
+           *      page scroll sideways.
+           */}
+          <div className="flex flex-wrap items-center gap-x-6 py-3 md:min-h-16 md:gap-x-4 md:py-0">
             <Link to="/" className="group flex items-baseline gap-2 rounded-sm">
               <span className="text-lg font-semibold tracking-tight text-fg">
                 Macro<span className="text-brand">Chipz</span>
               </span>
-              <span className="hidden text-xs font-medium text-fg-muted sm:inline">Economic Intelligence</span>
+              <span className="hidden text-xs font-medium text-fg-muted lg:inline">Economic Intelligence</span>
             </Link>
 
             <div className="ml-auto flex items-center gap-2 md:order-last md:ml-0">
@@ -121,7 +154,7 @@ export function AppShell() {
         </PageContainer>
       </header>
 
-      <main id="main-content" className="flex-1">
+      <main id="main-content" data-surface={surface} className="flex-1">
         <PageContainer>
           <div className="py-8 sm:py-10">
             <Outlet />

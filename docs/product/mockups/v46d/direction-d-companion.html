@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en" data-direction="hybrid-companion">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Direction D · companion studies — MacroChipz #46D mockup</title>
+<!--
+  DIRECTION D — COMPANION STUDIES
+  ===============================
+  Two reference surfaces in the hybrid's identity: the homepage and one
+  economic world. They exist to answer one question and no other — does
+  the chip-and-trace language survive on pages whose job is REFERENCE
+  rather than story?
+
+  THE RULE THESE STUDIES ARE BUILT TO DEMONSTRATE: the identity travels,
+  the STORY TYPOGRAPHY DOES NOT. Nothing here is set above 24px. The
+  chip is still the unit and acid is still the accent, but a world page
+  is read by someone who wants a number, so the type is reference-sized,
+  the figures are tabular, and the acid appears only on the surface the
+  reader is currently in.
+
+  EVERY FIGURE IS A REDACTED PLACEHOLDER, and deliberately so. Inventing
+  plausible economic values for a mockup is exactly how a fabricated
+  number ends up in a screenshot, in a deck, and then in someone's head.
+  The layout can be judged without them.
+
+  Visual study only. Not a production redesign, not routed, not wired to
+  anything.
+-->
+<style>
+  :root {
+    --void:   #0b0b0e;
+    --void-2: #15151b;
+    --void-3: #1f1f27;
+    --line:   #5d5d6a;   /* 3.1:1 on void */
+    --bone:   #f4f2ea;
+    --acid:   #e8ff47;
+    --dim:    #a8a8b4;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI Variable Display", "Segoe UI",
+            Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--void); -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--void); color: var(--bone);
+    font-family: var(--sans); font-size: 16px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 0 20px 48px; }
+
+  .bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 11px 20px; border-bottom: 2px solid var(--acid);
+    font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .bar .z { color: var(--acid); }
+  .bar .r { color: var(--dim); }
+
+  .studyhead {
+    border-bottom: 2px solid var(--line); padding: 22px 20px 16px; margin: 0 0 4px;
+  }
+  .studyhead .k {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--acid); margin: 0 0 8px;
+  }
+  .studyhead h2 { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+  .studyhead p { font-size: 13.5px; line-height: 1.55; color: var(--dim); margin: 8px 0 0; }
+
+  /* ---- reference type scale: nothing above 24px ---------------------- */
+  h1.page { font-size: 24px; line-height: 1.16; font-weight: 800; letter-spacing: -0.025em; margin: 22px 0 0; }
+  .sub { font-size: 14.5px; line-height: 1.5; color: var(--dim); margin: 8px 0 0; }
+  .lab {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--acid); margin: 28px 0 10px;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .lab::after { content: ""; flex: 1; height: 2px; background: var(--line); }
+
+  /* ---- world chips --------------------------------------------------- */
+  .worlds { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+  .worlds a {
+    display: flex; align-items: center; gap: 12px; min-height: 60px;
+    padding: 12px 14px; text-decoration: none; color: var(--bone);
+    background: var(--void-2); border: 2px solid var(--line); border-radius: 11px;
+  }
+  .worlds a.here { border-color: var(--acid); }
+  .worlds .nub { width: 10px; height: 26px; border-radius: 3px; background: var(--line); flex: none; }
+  .worlds a.here .nub { background: var(--acid); }
+  .worlds .t { display: block; font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
+  .worlds .d { display: block; font-size: 13px; color: var(--dim); margin-top: 2px; }
+  .worlds .v { margin-left: auto; }
+
+  /* ---- redacted figure placeholder ------------------------------------ */
+  .redact {
+    display: inline-block; height: 15px; border-radius: 3px;
+    background: repeating-linear-gradient(115deg, #2b2b35 0 6px, #22222b 6px 12px);
+    vertical-align: -2px;
+  }
+  .redact.w1 { width: 54px; }
+  .redact.w2 { width: 74px; }
+  .redact.w3 { width: 40px; }
+  .redact.tall { height: 22px; }
+
+  /* ---- table ----------------------------------------------------------- */
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 13px 4px; border-bottom: 1px solid var(--line); }
+  th {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--dim); border-bottom: 2px solid var(--line);
+  }
+  td.n { text-align: right; }
+  td .m { font-size: 15.5px; font-weight: 700; }
+  .rowlab { font-size: 15px; font-weight: 700; }
+  .rowsub { font-size: 12.5px; color: var(--dim); margin-top: 1px; }
+
+  /* ---- chart placeholder ------------------------------------------------ */
+  .chartbox {
+    margin: 12px 0 0; background: var(--void-2); border: 2px solid var(--line);
+    border-radius: 11px; padding: 14px;
+  }
+  .chartbox svg { display: block; width: 100%; height: auto; }
+  .chartnote { font-size: 12.5px; line-height: 1.5; color: var(--dim); margin: 10px 0 0; }
+
+  /* ---- question chips ---------------------------------------------------- */
+  .qs { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+  .qs a {
+    display: flex; align-items: center; gap: 11px; min-height: 60px;
+    padding: 12px 14px; text-decoration: none; color: var(--bone);
+    background: transparent; border: 2px solid var(--line); border-radius: 11px;
+    font-size: 15.5px; font-weight: 700; line-height: 1.25;
+  }
+  .qs .dot { width: 9px; height: 9px; border-radius: 2px; background: var(--acid); flex: none; }
+
+  /* ---- evidence row ------------------------------------------------------- */
+  .ev {
+    margin: 12px 0 0; display: flex; align-items: center; min-height: 52px; gap: 10px;
+    border-top: 2px solid var(--line); padding-top: 12px;
+    font-size: 12.5px; color: var(--dim);
+  }
+  .ev b { color: var(--bone); font-weight: 800; }
+
+  .note {
+    margin: 26px 0 0; padding: 14px 16px; border-radius: 11px;
+    background: var(--void-2); border-left: 4px solid var(--acid);
+    font-size: 13.5px; line-height: 1.6; color: var(--dim);
+  }
+  .note b { color: var(--bone); }
+
+  .foot { font-size: 11.5px; line-height: 1.6; color: var(--dim); padding: 26px 20px 0; }
+  .back {
+    display: inline-flex; align-items: center; min-height: 48px; padding: 0 18px;
+    margin: 22px 20px 0; border: 2px solid var(--acid); border-radius: 8px;
+    color: var(--acid); text-decoration: none;
+    font-size: 12.5px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+  }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="bar"><span>Macro<span class="z">Chipz</span></span><span class="r">Companion studies</span></div>
+
+<!-- ==================== STUDY 1 — HOMEPAGE ==================== -->
+<div class="studyhead">
+  <p class="k">Study 1 of 2</p>
+  <h2>Homepage</h2>
+  <p>The chip is still the unit and acid is still the accent — but nothing is set above 24px,
+     because this page is scanned, not read.</p>
+</div>
+
+<div class="wrap">
+  <h1 class="page">Four parts of the economy, tracked and explained.</h1>
+  <p class="sub">Every figure here comes from a named public source, with its methodology and
+     its revision history attached.</p>
+
+  <p class="lab">The worlds</p>
+  <ul class="worlds">
+    <li><a href="#"><span class="nub"></span><span><span class="t">Inflation</span>
+      <span class="d">Latest CPI and PCE</span></span>
+      <span class="v"><span class="redact w1"></span></span></a></li>
+    <li><a href="#"><span class="nub"></span><span><span class="t">Jobs</span>
+      <span class="d">Two surveys, one month</span></span>
+      <span class="v"><span class="redact w3"></span></span></a></li>
+    <li><a href="#"><span class="nub"></span><span><span class="t">Rates</span>
+      <span class="d">Treasury yields, every business day</span></span>
+      <span class="v"><span class="redact w1"></span></span></a></li>
+    <li><a href="#"><span class="nub"></span><span><span class="t">Housing</span>
+      <span class="d">Permits, starts, completions</span></span>
+      <span class="v"><span class="redact w2"></span></span></a></li>
+  </ul>
+
+  <p class="lab">Questions people actually ask</p>
+  <ul class="qs">
+    <li><a href="#"><span class="dot"></span>Wait, the Fed doesn't set mortgage rates?</a></li>
+    <li><a href="#"><span class="dot"></span>Wait, inflation falling doesn't mean prices are falling?</a></li>
+    <li><a href="#"><span class="dot"></span>Why does everyone watch the 10-year Treasury?</a></li>
+  </ul>
+
+  <div class="ev">
+    <span><b>What changed</b> &middot; revisions and new releases, with what was known when</span>
+  </div>
+
+  <div class="note">
+    <b>Every figure on this page is a redacted placeholder.</b> Inventing plausible economic
+    values for a mockup is how a fabricated number ends up in a screenshot, then in a deck,
+    then in someone's head. The layout can be judged without them.
+  </div>
+</div>
+
+<!-- ==================== STUDY 2 — ONE WORLD ==================== -->
+<div class="studyhead">
+  <p class="k">Study 2 of 2</p>
+  <h2>An economic world &middot; Rates</h2>
+  <p>The densest surface in the product. Tabular figures, a 44px row rhythm, and acid reduced
+     to one mark: which world you are in.</p>
+</div>
+
+<div class="wrap">
+  <ul class="worlds" style="grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; margin-top: 22px">
+    <li><a href="#" style="min-height:48px;justify-content:center;padding:8px"><span class="t" style="font-size:13px">Inflation</span></a></li>
+    <li><a href="#" style="min-height:48px;justify-content:center;padding:8px"><span class="t" style="font-size:13px">Jobs</span></a></li>
+    <li><a href="#" class="here" style="min-height:48px;justify-content:center;padding:8px"><span class="t" style="font-size:13px">Rates</span></a></li>
+    <li><a href="#" style="min-height:48px;justify-content:center;padding:8px"><span class="t" style="font-size:13px">Housing</span></a></li>
+  </ul>
+
+  <h1 class="page">Treasury yields</h1>
+  <p class="sub">What it costs the U.S. government to borrow, by maturity. Source: U.S. Department
+     of the Treasury.</p>
+
+  <p class="lab">Latest close</p>
+  <table>
+    <thead>
+      <tr><th>Maturity</th><th style="text-align:right">Yield</th><th style="text-align:right">1-day</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><div class="rowlab">2-year</div><div class="rowsub">UST_NOMINAL_2Y</div></td>
+          <td class="n"><span class="redact tall w1"></span></td><td class="n"><span class="redact w3"></span></td></tr>
+      <tr><td><div class="rowlab">5-year</div><div class="rowsub">UST_NOMINAL_5Y</div></td>
+          <td class="n"><span class="redact tall w1"></span></td><td class="n"><span class="redact w3"></span></td></tr>
+      <tr><td><div class="rowlab">10-year</div><div class="rowsub">UST_NOMINAL_10Y</div></td>
+          <td class="n"><span class="redact tall w1"></span></td><td class="n"><span class="redact w3"></span></td></tr>
+      <tr><td><div class="rowlab">30-year</div><div class="rowsub">UST_NOMINAL_30Y</div></td>
+          <td class="n"><span class="redact tall w1"></span></td><td class="n"><span class="redact w3"></span></td></tr>
+    </tbody>
+  </table>
+
+  <p class="lab">The curve</p>
+  <div class="chartbox">
+    <svg viewBox="0 0 310 130" role="img" aria-label="Placeholder for the yield-curve chart. No data is shown in this study.">
+      <line x1="30" y1="10" x2="30" y2="106" stroke="#5d5d6a" stroke-width="2"/>
+      <line x1="30" y1="106" x2="300" y2="106" stroke="#5d5d6a" stroke-width="2"/>
+      <rect x="40" y="26" width="252" height="62" rx="6"
+            fill="none" stroke="#e8ff47" stroke-width="2" stroke-dasharray="7 6"/>
+      <text x="166" y="62" text-anchor="middle" font-family="ui-sans-serif,-apple-system,Arial"
+            font-size="12" font-weight="800" letter-spacing="1.6" fill="#a8a8b4">FIGURES REDACTED</text>
+      <text x="45" y="120" font-family="ui-sans-serif,-apple-system,Arial" font-size="10"
+            font-weight="700" letter-spacing="1.2" fill="#6d6d7a">2Y</text>
+      <text x="115" y="120" font-family="ui-sans-serif,-apple-system,Arial" font-size="10"
+            font-weight="700" letter-spacing="1.2" fill="#6d6d7a">5Y</text>
+      <text x="190" y="120" font-family="ui-sans-serif,-apple-system,Arial" font-size="10"
+            font-weight="700" letter-spacing="1.2" fill="#6d6d7a">10Y</text>
+      <text x="265" y="120" font-family="ui-sans-serif,-apple-system,Arial" font-size="10"
+            font-weight="700" letter-spacing="1.2" fill="#6d6d7a">30Y</text>
+    </svg>
+    <p class="chartnote">A shipped chart stays hand-authored SVG at two breakpoints, per ADR-041.
+       The identity changes the frame and the labels, not the plotting.</p>
+  </div>
+
+  <div class="ev">
+    <span><b>Methodology &amp; evidence</b> &middot; how each figure was recorded, and what it was
+      before it was revised</span>
+  </div>
+
+  <p class="lab">Understand this world</p>
+  <ul class="qs">
+    <li><a href="#"><span class="dot"></span>What is a Treasury yield, really?</a></li>
+    <li><a href="#"><span class="dot"></span>Wait, the Fed doesn't set mortgage rates?</a></li>
+  </ul>
+
+  <div class="note">
+    <b>What these studies are arguing.</b> The identity travels; the story typography does not.
+    A world page is opened by someone who wants a number, so the chip language shows up as
+    structure and one accent — never as 42px headlines over a table. If the hybrid is chosen,
+    this restraint is the part most worth writing down as a rule.
+  </div>
+</div>
+
+<a class="back" href="direction-d-hybrid.html">&larr; Back to the story</a>
+
+<p class="foot">
+  Direction D companion studies. Static mockups for #46D review — not wired to the application,
+  not routed, not indexed, nothing committed. No economic figure is shown anywhere on this page.
+</p>
+
+</body>
+</html>

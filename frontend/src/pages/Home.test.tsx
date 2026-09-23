@@ -577,7 +577,20 @@ describe("Releases", () => {
     // "published" -- excluded before checking, the same discipline
     // pages/Releases.test.tsx already establishes.
     const disclosure = screen.getByText(/Release dates indicate scheduled publication dates/);
-    const bodyText = (document.body.textContent ?? "").replace(disclosure.textContent ?? "", "");
+    // #48: the hero's supporting line and the image notice both use
+    // "published" about PROVENANCE -- which agency published a figure,
+    // and the archive a photograph came from. Neither is about a
+    // release occurrence, neither fetches anything, and both are the
+    // same two static sentences on every render. Excluded here for the
+    // same reason the disclosure sentence already is: the guard exists
+    // to stop a SCHEDULED release being described as a published one.
+    const exempt = [
+      disclosure.textContent ?? "",
+      screen.getByText(/Four parts of the U.S. economy/).textContent ?? "",
+      screen.getByText(/Carol M. Highsmith Archive, Library of Congress, Prints/).textContent ?? "",
+    ];
+    let bodyText = document.body.textContent ?? "";
+    for (const sentence of exempt) bodyText = bodyText.replace(sentence, "");
     expect(bodyText).not.toMatch(forbidden);
   });
 
@@ -686,13 +699,117 @@ describe("navigation", () => {
   });
 });
 
+describe("the homepage survives an outage (#48)", () => {
+  it("every request fails and the orientation layer is still complete", async () => {
+    // The hero fetches nothing, which is the whole reason it is first.
+    // An outage is exactly when a reader is most likely to be confused
+    // about what this site is.
+    mockedGetMonitor.mockRejectedValue(new Error("down"));
+    mockedGetWhatChanged.mockRejectedValue(new Error("down"));
+    mockedGetLaborMonitor.mockRejectedValue(new Error("down"));
+    mockedGetLaborWhatChanged.mockRejectedValue(new Error("down"));
+    mockedFetchUpcoming.mockRejectedValue(new Error("down"));
+    mockedFetchRecent.mockRejectedValue(new Error("down"));
+    renderPage();
+
+    expect(screen.getByRole("heading", { level: 1, name: "Explore the living economy." })).toBeInTheDocument();
+    for (const [label, route] of [
+      ["Inflation", "/inflation"],
+      ["Jobs", "/jobs"],
+      ["Rates", "/rates"],
+      ["Housing", "/housing"],
+    ] as const) {
+      expect(screen.getByRole("button", { name: new RegExp(label) })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Open the story" })).toHaveAttribute(
+        "href",
+        "/story/fed-and-mortgage-rates",
+      );
+      void route;
+    }
+
+    // And the lede says it does not know, rather than saying nothing
+    // happened.
+    expect(await screen.findByRole("heading", { name: "Not yet known" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "No new tracked change" })).not.toBeInTheDocument();
+  });
+
+  it("renders the required image notice verbatim", async () => {
+    resolveAll();
+    renderPage();
+    expect(
+      await screen.findByText(/Photographs in the Carol M. Highsmith Archive, Library of Congress/),
+    ).toBeInTheDocument();
+  });
+
+  it("lists each of the four worlds exactly once", async () => {
+    // #48 removed two duplicate world grids. A reader should meet
+    // Housing once, not three times in one screen.
+    resolveAll();
+    renderPage();
+    await findSection("Releases");
+    for (const label of ["Inflation", "Jobs", "Rates", "Housing"]) {
+      // Exactly one control per world. Before #48 there were two world
+      // grids below the hero's job -- WorldOrientation's and the quiet
+      // lede's -- so Housing could appear three times in one screen.
+      expect(screen.getAllByRole("button", { name: new RegExp(label) }), label).toHaveLength(1);
+      // At most one link: the selected world's "Open ..." action. The
+      // other three offer no link at all until they are selected.
+      expect(screen.queryAllByRole("link", { name: new RegExp(`^Open ${label}$`) }).length, label).toBeLessThanOrEqual(
+        1,
+      );
+    }
+  });
+});
+
+describe("the story is offered exactly once (#48B)", () => {
+  it("renders the mobile teaser and the desktop section, each gated to its own width", async () => {
+    // jsdom has no viewport, so BOTH are in the tree. What is asserted
+    // is that each is gated -- a reader never meets the story twice on
+    // one screen, and never fails to meet it at all.
+    resolveAll();
+    renderPage();
+    await findSection("Releases");
+
+    const storyLinks = screen.getAllByRole("link", { name: /the story|Interactive story/ });
+    expect(storyLinks.length).toBeGreaterThanOrEqual(1);
+    for (const link of storyLinks) expect(link).toHaveAttribute("href", "/story/fed-and-mortgage-rates");
+
+    const teaser = document.querySelector(".lx-teaser");
+    expect(teaser?.className).toContain("lg:hidden");
+    const featured = screen.getByRole("heading", { name: "Featured discovery" }).closest("div.hidden");
+    expect(featured?.className).toContain("lg:block");
+  });
+
+  it("puts the teaser before the chart, and the chart is still there", async () => {
+    // The measured problem: the story began 1,637px down a 390px
+    // page, behind a full screen of chart. Order is the fix; nothing
+    // was removed.
+    resolveAll();
+    renderPage();
+    await findSection("Releases");
+
+    const teaser = document.querySelector(".lx-teaser") as HTMLElement;
+    const lede = document.getElementById("lede-heading") as HTMLElement;
+    expect(teaser).not.toBeNull();
+    expect(lede).not.toBeNull();
+    expect(teaser.compareDocumentPosition(lede) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The readings slot is still there and still ahead of everything
+    // else on the page. This file does not mock the intelligence
+    // endpoint, so the lede renders its unknown state -- which is the
+    // point: the teaser does not depend on data arriving.
+    expect(lede.textContent).not.toBe("");
+  });
+});
+
 describe("page structure", () => {
   it("uses one h1 and the exact section heading hierarchy", async () => {
     resolveAll();
     renderPage();
 
     await screen.findByRole("heading", { name: "Current State" });
-    expect(screen.getByRole("heading", { level: 1, name: "The economy right now" })).toBeInTheDocument();
+    // #48: the hero is the header, and its headline is the h1.
+    expect(screen.getByRole("heading", { level: 1, name: "Explore the living economy." })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     // #42A: "What Changed" and "Recent Data Updates" left `/`.
     // #45B added three: world orientation, curated questions, and the
     // path into Revision Intelligence -- the three #45A findings about
@@ -700,7 +817,10 @@ describe("page structure", () => {
     // "Inflation and Jobs, side by side" (heading only; the frozen
     // #23C composition is unchanged).
     for (const name of [
-      "Explore the economy",
+      // #48: "Explore the economy" (WorldOrientation) was retired --
+      // the hero does that job -- and "Featured discovery" promotes the
+      // mortgage-rate story out of the questions list.
+      "Featured discovery",
       "Questions people ask",
       "Current State",
       "Inflation and Jobs, side by side",
@@ -711,9 +831,17 @@ describe("page structure", () => {
     }
   });
 
-  it("shows the tagline", async () => {
+  it("shows the supporting line, which states provenance and promises nothing else", async () => {
+    // #48 replaced "Know what changed in the economy — and prove why."
+    // The new line is narrower on purpose: it describes what the page
+    // can show about every figure, rather than what the reader will
+    // feel about it.
     resolveAll();
     renderPage();
-    expect(await screen.findByText("Know what changed in the economy — and prove why.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Four parts of the U.S. economy. Every figure traces back to the agency that published it, with the date it was published.",
+      ),
+    ).toBeInTheDocument();
   });
 });
