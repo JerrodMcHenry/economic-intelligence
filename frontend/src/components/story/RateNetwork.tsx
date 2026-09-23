@@ -153,12 +153,14 @@ export function RateNetwork({
 
   return (
     <div
-      /* Fills the width it is given, up to a desktop cap. The earlier
-         330px phone cap left 110px of a 440px screen unused AND made the
-         board shorter, which is what forced the node chips close enough
-         together to overlap. Growing the board fixes both at once: a
-         square board's width IS its vertical room. */
-      className="lx-board relative mx-auto w-full max-w-[28rem]"
+      /* Fills the width it is given, up to a cap that rises with the
+         breakpoint. The earlier 330px phone cap left 110px of a 440px
+         screen unused AND made the board shorter, which is what forced
+         the node chips close enough together to overlap — a square
+         board's width IS its vertical room.
+         The `lg` cap is the #46F change: at 1440px the board was 448px,
+         31% of the viewport, in a page that never grew past 672px. */
+      className="lx-board relative mx-auto w-full max-w-[28rem] lg:max-w-[38rem]"
       data-testid="rate-network"
     >
       <svg

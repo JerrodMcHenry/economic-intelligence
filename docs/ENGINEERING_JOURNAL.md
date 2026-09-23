@@ -13990,3 +13990,149 @@ size, and each one either wasted space or broke somewhere nobody had
 measured. This one comes out of an inequality between a tap-target
 height and a percentage spacing — so it can be asserted in a unit test,
 and it moves correctly on its own if either input ever changes.
+
+---
+
+## Increment #46F — Full-page responsive composition
+
+#46E verified the network. This pass audited the page around it, and the
+page was in worse shape than the component it contained. No visual
+identity change, no economic change, nothing committed.
+
+### The audit was the increment
+
+Measured before touching anything, at five real CSS viewport widths. The
+network passed everything — and the page it sat in never grew past
+672px, so at 1440px there were **768 pixels of empty violet field** and
+the interactive centrepiece was **31% of the viewport**.
+
+Worse, the selected-node panel sat 650px down the page at every width
+above the phone. A panel whose entire purpose is to be read immediately
+after a tap was below the fold on a 13-inch laptop.
+
+That is the kind of defect component-level verification cannot find. Every
+#46E check was scoped to the board, and the board was fine.
+
+### One grid, two behaviours
+
+At `lg` the same DOM becomes two columns — diagram left, explanation
+right, the explanation sticky so it stays in view while a reader
+compares nodes. Below `lg` the grid is not a grid, and the block flow is
+exactly the one verified at 294 to 440px. Nothing about the network's
+geometry, spacing or tap targets changed on mobile, which was the
+constraint worth protecting.
+
+The measured effect at 1440px: board 448 to 608, board share 31% to 42%,
+unused side space 768 to 288, panel top **650 to 173**.
+
+### A screenshot lied and the measurements did not
+
+The scaled whole-page capture at 1440px looked left-heavy, as though the
+content were pinned to one side. It was not: the article spans 137 to
+1289 in a 1440 viewport, centred with even gutters. The capture is
+scaled by a CSS transform on the iframe, and reading composition off it
+is exactly the mistake this increment has repeatedly punished.
+
+Measure, then look. The screenshot is for judging design, not geometry.
+
+### The one number that went the wrong way
+
+Mobile page height rose 42px at 390px. The cause is copy the brief
+required: the share card now states that image export and native image
+sharing are not implemented, because neither is. Compacting the
+canonical-link footer paid back about half.
+
+That trade was taken deliberately and is written down rather than
+averaged away. A claim the product cannot honour costs more than 42
+pixels.
+
+### Results
+
+294 / 390 / 440 / 768 / 1024 / 1440px: zero horizontal overflow, zero
+text clipping, no interactive target under 44px on this route, all six
+selections correct at every width, keyboard and focus intact.
+
+1,917 tests across 78 files, typecheck, lint and production build pass.
+Story chunk 7.0 KB gzipped, stylesheet 9.5 KB, no new dependency.
+
+### Lesson
+
+**A verified component can sit inside an unverified page.** Everything
+#46E measured was true and none of it was enough, because the questions
+were all scoped to the board: is it overlapping, is it clipped, are the
+targets big enough. Nobody asked what fraction of the screen it
+occupied, or where the thing explaining it ended up.
+
+The habit worth keeping is to measure the artifact the user actually
+sees — the whole page at the whole width — and only then zoom in.
+
+---
+
+## Increment #46F-C — Page cleanup
+
+Two bounded changes closing #46F: the upper page boundary, and removing
+the share-card prototype from the story. Nothing committed.
+
+### The boundary defect was the workaround
+
+The story wrapped itself in `-mx-4 -my-6 px-4 pb-6 pt-4 sm:-mx-6` to make
+a background escape `PageContainer`. `PageContainer` supplies the width
+and the side gutters and **no vertical padding at all** — so `-my-6` had
+nothing to cancel and simply pulled the violet field 24px up, through the
+header's bottom border. The margin was not hiding the defect; it WAS the
+defect.
+
+It was also incomplete horizontally: the gutter is
+`px-4 sm:px-6 lg:px-8` and the cancel stopped at `sm:-mx-6`, so from
+`lg` up the surface sat 8px inside the gutter, aligned with nothing. And
+it could never have reached the viewport edge regardless, because
+`PageContainer` is capped at `max-w-app`.
+
+The fix is a change of ownership rather than a change of numbers. A
+full-width background belongs to the page, so `IntelligenceShell` now
+takes a `surface` prop and puts it on `<main>` — which already spans the
+full width and already starts exactly where the header ends. The route's
+wrapper is a plain `<div>` with no margins at all.
+
+Measured: `headerBottom === mainTop`, a 0px gap at 390px and 1440px, and
+zero negative margins anywhere inside `main`. No `overflow: hidden`.
+
+### Ending on an apology
+
+The page used to close with a 9:16 preview of a share card, a note
+saying no deployment origin was configured, and a second note saying
+image export was not implemented. Three paragraphs explaining what the
+product cannot do, in the last thing a reader sees.
+
+All of it is gone. The story now ends on sources, related reading, the
+Share button and the canonical link — things a reader can use. The
+component is kept, unrendered, because its composition is the reviewed
+one and it is what a real OG image generator should render when #48
+builds one. Its guards still run against the file, so it cannot rot
+quietly.
+
+Page height fell from 2912 to 2294 at 390px, and the story chunk from
+7.0 KB to 5.9 KB gzipped.
+
+### The Share button was copying something useless
+
+With no deployment origin configured it fell back to the bare path, so
+the clipboard got `/story/fed-and-mortgage-rates`. That is not a
+fabricated domain, but it is not a URL either.
+
+It now falls back to the origin the page is actually served from, read
+in the browser. Verified by intercepting the clipboard write rather than
+by reading the code: it copies
+`http://localhost:5193/story/fed-and-mortgage-rates` in dev. Honest, and
+usable.
+
+### Lesson
+
+**A workaround that has outlived its reason looks exactly like a
+feature.** `-my-6` had been on that element since the surface was
+introduced, and every later pass measured around it — tap targets,
+overlaps, breakpoints, column counts — without once asking what it was
+cancelling. The answer was nothing. It had never cancelled anything.
+
+Worth asking of any negative margin, any `overflow: hidden`, any `z-index`
+above 1: what is this cancelling, and is that thing still there?

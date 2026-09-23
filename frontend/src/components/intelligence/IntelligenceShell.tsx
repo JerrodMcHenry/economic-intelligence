@@ -33,10 +33,22 @@ import { PageContainer } from "../PageContainer";
 export function IntelligenceShell({
   worldLabel,
   worldRoute,
+  surface,
   children,
 }: {
   worldLabel?: string;
   worldRoute?: string;
+  /**
+   * An optional page surface (#46F).
+   *
+   * A route that wants a full-width background must not try to escape
+   * `PageContainer` with negative margins — that is how the story page
+   * ended up painting its violet field 24px ABOVE the header's border
+   * and 8px short of the gutter at `lg`. The background belongs to the
+   * page, so it is applied to `<main>`, which already spans the full
+   * width and already starts exactly where the header ends.
+   */
+  surface?: "luminous";
   children: ReactNode;
 }) {
   return (
@@ -74,7 +86,11 @@ export function IntelligenceShell({
         </PageContainer>
       </header>
 
-      <main id="main-content" className="flex-1">
+      <main
+        id="main-content"
+        data-surface={surface}
+        className={surface ? "flex-1 py-6 sm:py-8" : "flex-1"}
+      >
         <PageContainer>{children}</PageContainer>
       </main>
 

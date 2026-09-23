@@ -486,6 +486,178 @@ Story chunk 6.7 KB gzipped; stylesheet 9.4 KB. No new dependency.
 
 ---
 
+## 14. Full-page responsive composition (#46F)
+
+#46E verified the *network*. This pass audited the *page*, and the page
+was worse than the component.
+
+### 14.1 Audit, before any change
+
+| Viewport | Article | Unused side space | Board | Board as % of viewport | Panel top | Share card |
+|---|---|---|---|---|---|---|
+| 390px | 343 | 47 | 343 | 88% | 578 | 270x480 |
+| 440px | 393 | 47 | 393 | 89% | 608 | 270x480 |
+| 768px | 672 | 96 | 448 | 58% | 650 | 270x480 |
+| 1024px | 672 | **352** | 448 | 44% | 650 | 270x480 |
+| 1440px | 672 | **768** | 448 | **31%** | 650 | 270x480 |
+
+Defects, in order of size:
+
+1. **The article never grew past 672px.** At 1440px that left 768px of
+   empty violet field. The page was a phone layout centred on a desktop.
+2. **The board was capped at 448px** and stopped growing at 768px, so
+   the interactive centrepiece was under a third of a large screen.
+3. **Single column at every width.** The explanation sat 650px down the
+   page on a laptop — below the fold on a 13-inch screen, for a panel
+   whose entire job is to be read immediately after a tap.
+4. **The share card was 270x480 everywhere**, a thumbnail adrift in a
+   672px column with nothing beside it.
+5. **`Keep going` stayed two columns** from 640px to 1440px.
+
+Clean in the audit, and unchanged since: **zero horizontal overflow at
+every width, zero text clipping, no interactive target under 44px** on
+this page. (`MacroChipz 87x24` and `Rates 37x20` are the AppShell
+breadcrumb, not this route.)
+
+### 14.2 What changed
+
+**Desktop, `lg` and above.** The article opens to `max-w-6xl`, and one
+grid turns the same DOM into two columns —
+`minmax(0,1fr) / minmax(0,25rem)` — with the diagram on the left and the
+selected-node panel on the right, sticky so it stays in view while a
+reader compares nodes. The board cap rises to `38rem`.
+
+**Below `lg` nothing about the network changed.** Same board widths,
+same node geometry, same 44px controls, same 294px single-column
+fallback. The grid is simply not a grid there; it is the block flow
+#46E verified.
+
+**Share card.** 270px on a phone, 320px from `sm`, always at the exact
+9:16 export ratio, with a dedicated panel beside it on wider screens
+instead of a caption under a thumbnail.
+
+**Mobile height.** The canonical-link footer collapsed from a paragraph
+plus a separate 44px link block into one line with the link inline.
+
+### 14.3 Results
+
+| Viewport | Article | Unused | Board | % of viewport | Panel top | Share card | Page height |
+|---|---|---|---|---|---|---|---|
+| 294px | 247 | 47 | 247 (column) | — | 600 | 270x480 | 3258 |
+| 390px | 343 | 47 | 343 | 88% | 578 | 270x480 | 2912 |
+| 440px | 393 | 47 | 393 | 89% | 608 | 270x480 | 2820 |
+| 768px | 672 | 96 | 448 | 58% | 650 | 320x569 | 2521 |
+| 1024px | **945** | **79** | **505** | **49%** | **173** | 320x569 | 2253 |
+| 1440px | **1152** | **288** | **608** | **42%** | **173** | 320x569 | 2324 |
+
+At 1440px the article now spans 137 to 1289 in the viewport — centred,
+with even gutters. All six selections at 1440px: no overlaps, no
+clipping, nothing under 44px, keyboard activation works and focus stays
+on the button.
+
+### 14.4 Honest notes
+
+**Mobile page height rose 42px at 390px and 57px at 440px.** The cause
+is the export-honesty copy the brief required — the card now says image
+export and native image sharing are not implemented. The footer
+compaction paid back roughly half. The trade was taken deliberately: a
+claim the product cannot honour costs more than 42px.
+
+**Nothing claims to export an image.** The card is a layout preview at
+the real export ratio. The Share button beside it is the existing #37
+link-sharing control and is unchanged.
+
+**`768px` still uses the single column.** `md` is a tablet width where
+a 400px panel beside a 448px board would leave neither enough room; the
+switch is at `lg` on purpose.
+
+---
+
+## 15. Page cleanup (#46F, final)
+
+### 15.1 The upper boundary: root cause
+
+The story wrapped its content in
+
+```
+-mx-4 -my-6 px-4 pb-6 pt-4 sm:-mx-6 sm:px-6 sm:pt-6
+```
+
+trying to make a background escape `PageContainer`. Three things were
+wrong with it:
+
+1. **`-my-6` had nothing to cancel.** `PageContainer` supplies the
+   content width and the side gutters and **no vertical padding at
+   all** — the route never applied `py-6`. So the negative margin pulled
+   the violet field **24px up, through the header's bottom border**.
+   That is the "extends above its intended top boundary" symptom, and
+   it was the margin itself, not something the margin was hiding.
+2. **The horizontal cancel was incomplete.** The gutter is
+   `px-4 sm:px-6 **lg:px-8**`; the negative margin stopped at `sm:-mx-6`.
+   From `lg` up, the surface was inset 8px on each side — aligned with
+   nothing.
+3. **It could never have worked anyway.** `PageContainer` is capped at
+   `max-w-app`, so a child escaping its padding still cannot reach the
+   viewport edge.
+
+**Fix: the background belongs to the page, not to a child trying to
+escape its container.** `IntelligenceShell` takes an optional
+`surface` prop and applies `data-surface` to `<main>`, which already
+spans the full width and already begins exactly where the header's
+border ends. The route's wrapper is now a plain `<div>`.
+
+Measured after: `headerBottom === mainTop` at 390px and at 1440px, a
+**0px** gap, and **zero negative margins anywhere inside `main`**. No
+`overflow: hidden` was used.
+
+### 15.2 The share-card prototype is gone from the page
+
+The whole `Shareable discovery` section is removed — heading, 9:16
+preview, preview-state note and the not-implemented disclaimer. A page
+that ends on a preview of a feature that does not exist ends on an
+apology. It now ends on `How we know`, `Keep going`, the Share button
+and the canonical link.
+
+`ShareCardPreview.tsx` is **kept but not rendered anywhere**. Its
+composition is the reviewed one and it is what a real Open Graph
+generator should render when #48 builds one. The story suite still
+reads the file for its no-fetch and reduced-motion guards, so it cannot
+rot unnoticed.
+
+**PNG export and native image sharing remain unimplemented and
+unclaimed.**
+
+### 15.3 The Share button copies a real URL
+
+It previously fell back to the bare path when no deployment origin was
+configured, which puts `/story/fed-and-mortgage-rates` on the clipboard
+— useless when pasted. It now falls back to the origin the page is
+**actually being served from**, read in the browser. Verified by
+intercepting the clipboard write: it copies
+`http://localhost:5193/story/fed-and-mortgage-rates` in dev, and
+`https://<origin>/story/fed-and-mortgage-rates` when `VITE_SITE_URL` is
+set. No production domain is fabricated, and the URL is the STORY's, not
+the canonical explainer's.
+
+### 15.4 Verification
+
+| Viewport | Header→main gap | Negative margins | Overlaps | Clipping | <44px in main | h-overflow |
+|---|---|---|---|---|---|---|
+| 390px | 0px | none | none | none | none | 0px |
+| 440px | 0px | none | none | none | none | 0px |
+| 1024px | 0px | none | none | none | none | 0px |
+| 1440px | 0px | none | none | none | none | 0px |
+
+All six node selections correct at 390px and 1440px; two-column desktop
+and the mobile network unchanged. Page height fell from 2912 to **2294**
+at 390px and from 2324 to **1751** at 1440px. Prerendered text 3,349
+characters, still `noindex`, still canonical to the explainer. Story
+chunk 5.9 KB gzipped, down from 7.0 KB.
+
+1,921 tests across 78 files, typecheck, lint and production build pass.
+
+---
+
 ## 11. Out of scope
 
 The Living Economy homepage, other worlds, any application-wide redesign, OG
