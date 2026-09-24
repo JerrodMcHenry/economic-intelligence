@@ -2,6 +2,7 @@ import type React from "react";
 
 import type { RateLevel } from "../../api/rates.types";
 import { percentOf } from "../../lib/cssUnits";
+import type { ComparisonPoint, CurveComparison } from "../../lib/ratesCurveComparison";
 import { formatObservationDate, formatRateValue, maturityLabel } from "../../lib/ratesFormat";
 
 /**
@@ -40,6 +41,27 @@ import { formatObservationDate, formatRateValue, maturityLabel } from "../../lib
  * -- labelled, disabled and explained -- and is still omitted from the
  * line, so a gap in the data stays a visible gap.
  *
+ * COMPARISON, ADDED IN #52B
+ * -------------------------
+ * A second, dashed curve for an earlier published date. It adds no
+ * request and no arithmetic: `lib/ratesCurveComparison.ts` reads the
+ * `from_value`/`from_date` pair that every `changes[]` entry has
+ * carried since #29, and this component plots it.
+ *
+ * Two rules the comparison holds to, both visible in the code below:
+ *
+ *   1. **A missing reading breaks the line.** `null` never becomes a
+ *      coordinate and never enters the axis domain. #51B shipped a null
+ *      that `Math.min` coerced to `0`, which dropped the axis floor AND
+ *      drew the line to the bottom of the chart, fabricating a reading.
+ *      `comparisonPath` starts a new subpath at every gap.
+ *   2. **The two curves are told apart by three things, not one.**
+ *      Colour (brand vs muted), dash pattern, and marker fill
+ *      (solid vs hollow). Colour alone would fail for a reader who
+ *      cannot distinguish it, and this chart has no legend swatch a
+ *      screen reader could read instead -- so the table below carries
+ *      both dates in its own column headers.
+ *
  * ASPECT RATIO, CORRECTED IN #41
  * ------------------------------
  * This chart shipped with `preserveAspectRatio="none"`, which ADR-041
@@ -55,6 +77,11 @@ import { formatObservationDate, formatRateValue, maturityLabel } from "../../lib
  * Recharts in the first place. `display: none` keeps the hidden
  * variant out of the accessibility tree, so a screen reader hears one
  * chart rather than two.
+ *
+ * That uniform scaling is also why the markers below can be SVG
+ * `<circle>`s at all. #48B and #51B both shipped circles that
+ * `preserveAspectRatio="none"` stretched into ellipses; this chart
+ * scales uniformly, so a circle stays a circle.
  */
 
 /** Wide on desktop, taller and narrower on a phone. */
@@ -83,6 +110,7 @@ export function YieldCurveChart({
   asOfDate,
   selectedId,
   onSelect,
+  comparison,
 }: {
   levels: RateLevel[];
   asOfDate: string | null;
@@ -90,6 +118,11 @@ export function YieldCurveChart({
   selectedId?: string;
   /** Omitted renders the chart exactly as it was before #49B. */
   onSelect?: (seriesId: string) => void;
+  /**
+   * An earlier published curve to draw alongside (#52B). Omitted, or
+   * not drawable, renders the chart exactly as it was before #52B.
+   */
+  comparison?: CurveComparison;
 }) {
   const points: CurvePoint[] = levels
     .filter((level) => level.available && level.latest_value !== null)
@@ -108,23 +141,63 @@ export function YieldCurveChart({
     );
   }
 
-  const { min, max } = axisBounds(points.map((point) => point.value));
-  const label = `Nominal Treasury yield curve as of ${formatObservationDate(asOfDate)}. ${levels
+  /*
+   * A comparison is drawn only when it is a genuine curve: at least two
+   * published readings, all of them sharing ONE published date. Four
+   * values from four different dates are not a shape anybody published,
+   * and `selectComparison` reports that rather than hiding it -- see
+   * `CurveComparisonNote` in Rates.tsx, which says so on the page.
+   */
+  const drawn = comparison !== undefined && comparison.drawable && comparison.sharedDate !== null ? comparison : null;
+
+  /*
+   * BOTH curves set the axis, so neither is clipped and the vertical
+   * distance between them is the real one. `null` is filtered out
+   * BEFORE `Math.min`, never coerced -- see this module's header.
+   */
+  const comparisonValues =
+    drawn === null ? [] : drawn.points.map((point) => point.value).filter((value): value is number => value !== null);
+  const { min, max } = axisBounds([...points.map((point) => point.value), ...comparisonValues]);
+
+  const latestReading = levels
     .map(
       (level) =>
         `${maturityLabel(level.series_id)} ${
           level.available && level.latest_value !== null ? `${formatRateValue(level.latest_value)}` : "not yet ingested"
         }`,
     )
-    .join(", ")}. The same values follow in a table.`;
+    .join(", ");
+
+  const label =
+    drawn === null
+      ? `Nominal Treasury yield curve as of ${formatObservationDate(asOfDate)}. ${latestReading}. The same values follow in a table.`
+      : `Two nominal Treasury yield curves. Solid line, ${formatObservationDate(asOfDate)}: ${latestReading}. Dashed line, ${formatObservationDate(
+          drawn.sharedDate,
+        )}: ${comparisonReading(drawn)}. The same values follow in a table.`;
 
   return (
     <figure className="m-0">
       {/* The plot and its controls share one positioned box, so a
           control can sit exactly on its own point at any width. */}
       <div className="relative">
-        <CurvePlot box={MOBILE} points={points} min={min} max={max} label={label} className="sm:hidden" />
-        <CurvePlot box={DESKTOP} points={points} min={min} max={max} label={label} className="hidden sm:block" />
+        <CurvePlot
+          box={MOBILE}
+          points={points}
+          comparison={drawn}
+          min={min}
+          max={max}
+          label={label}
+          className="sm:hidden"
+        />
+        <CurvePlot
+          box={DESKTOP}
+          points={points}
+          comparison={drawn}
+          min={min}
+          max={max}
+          label={label}
+          className="hidden sm:block"
+        />
 
         {onSelect && (
           <ControlLayer levels={levels} min={min} max={max} selectedId={selectedId} onSelect={onSelect} />
@@ -132,39 +205,98 @@ export function YieldCurveChart({
       </div>
 
       <figcaption className="sr-only">
-        Nominal Treasury par yields by maturity as of {formatObservationDate(asOfDate)}.
+        Nominal Treasury par yields by maturity as of {formatObservationDate(asOfDate)}
+        {drawn === null ? "" : `, compared with ${formatObservationDate(drawn.sharedDate)}`}.
       </figcaption>
 
       {/* The accessible, and equally authoritative, version of the chart. */}
-      <table className="mt-4 w-full text-sm">
-        <caption className="sr-only">Nominal Treasury par yields by maturity</caption>
+      {/*
+        * `table-fixed` with declared column widths (#52B). With three
+        * value columns instead of one, `auto` layout let "Sep 18, 2026"
+        * wrap to two lines while "Change" sat hard against it with no
+        * gutter — measured at 390px, the two headers touched. Fixed
+        * widths plus a real gutter keep four columns legible in 326px.
+        */}
+      <table className="mt-4 w-full table-fixed text-sm">
+        <caption className="sr-only">
+          Nominal Treasury par yields by maturity
+          {drawn === null ? "" : `, on ${formatObservationDate(asOfDate)} and ${formatObservationDate(drawn.sharedDate)}`}
+        </caption>
+        <colgroup>
+          <col className={drawn === null ? "w-[28%]" : "w-[18%]"} />
+          {drawn !== null && <col className="w-[28%]" />}
+          <col className={drawn === null ? "w-[30%]" : "w-[28%]"} />
+          <col className={drawn === null ? "w-[42%]" : "w-[26%]"} />
+        </colgroup>
         <thead>
-          <tr className="text-left type-label text-fg-muted">
-            <th scope="col" className="pb-1 font-semibold">
+          <tr className="text-left type-label align-bottom text-fg-muted">
+            <th scope="col" className="pb-1 pr-2 font-semibold">
               Maturity
             </th>
-            <th scope="col" className="pb-1 text-right font-semibold">
-              Yield
+            {drawn !== null && (
+              <th scope="col" className="px-2 pb-1 text-right font-semibold">
+                {formatObservationDate(drawn.sharedDate)}
+              </th>
+            )}
+            <th scope="col" className="px-2 pb-1 text-right font-semibold">
+              {drawn === null ? "Yield" : formatObservationDate(asOfDate)}
             </th>
-            <th scope="col" className="pb-1 text-right font-semibold">
-              Observed
+            <th scope="col" className="pb-1 pl-2 text-right font-semibold">
+              {drawn === null ? "Observed" : "Change"}
             </th>
           </tr>
         </thead>
         <tbody>
-          {points.map((point) => (
-            <tr key={point.seriesId} className="border-t border-line-subtle">
-              <th scope="row" className="py-1.5 text-left font-medium text-fg">
-                {point.label}
-              </th>
-              <td className="py-1.5 text-right type-numeric font-semibold text-fg">{formatRateValue(point.value)}</td>
-              <td className="py-1.5 text-right type-meta text-fg-muted">{formatObservationDate(point.date)}</td>
-            </tr>
-          ))}
+          {points.map((point) => {
+            const past = drawn?.points.find((entry) => entry.seriesId === point.seriesId);
+            return (
+              <tr key={point.seriesId} className="border-t border-line-subtle">
+                <th scope="row" className="py-1.5 pr-2 text-left font-medium text-fg">
+                  {point.label}
+                </th>
+                {drawn !== null && (
+                  <td className="px-2 py-1.5 text-right type-numeric text-fg-secondary">
+                    {past === undefined || past.value === null ? "Not available" : formatRateValue(past.value)}
+                  </td>
+                )}
+                <td className="px-2 py-1.5 text-right type-numeric font-semibold text-fg">
+                  {formatRateValue(point.value)}
+                </td>
+                <td className="py-1.5 pl-2 text-right type-numeric text-fg-secondary">
+                  {drawn === null ? formatObservationDate(point.date) : formatChange(past)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </figure>
   );
+}
+
+/** Published readings on the comparison date, for the chart's `aria-label`. */
+function comparisonReading(comparison: CurveComparison): string {
+  return comparison.points
+    .map(
+      (point) =>
+        `${maturityLabel(point.seriesId)} ${point.value === null ? "not available" : formatRateValue(point.value)}`,
+    )
+    .join(", ");
+}
+
+/**
+ * The backend's own `change_basis_points`, formatted. Imported rather
+ * than recomputed: this is the number `rates_v1.0` published for this
+ * maturity and window, and the table restates it rather than deriving
+ * a second version of it from the two columns beside it.
+ */
+function formatChange(point: ComparisonPoint | undefined): string {
+  if (point === undefined || point.changeBasisPoints === null) return "—";
+  const rounded = Number(point.changeBasisPoints.toFixed(1));
+  const magnitude = Number.isInteger(rounded) ? String(Math.abs(rounded)) : Math.abs(rounded).toFixed(1);
+  if (rounded > 0) return `+${magnitude} bp`;
+  if (rounded < 0) return `−${magnitude} bp`;
+  return "0 bp";
 }
 
 /**
@@ -228,7 +360,11 @@ function ControlLayer({
   onSelect: (seriesId: string) => void;
 }) {
   return (
-    <div className="pointer-events-none absolute inset-0">
+    /* A named group (#52B): the curve card now holds two sets of
+       controls -- these, and the comparison-window buttons above the
+       plot -- and "the four maturity points" needs to be addressable as
+       one thing by a screen-reader user and by a test alike. */
+    <div role="group" aria-label="Select a maturity" className="pointer-events-none absolute inset-0">
       {levels.map((level, index) => {
         const available = level.available && level.latest_value !== null;
         const value = available ? (level.latest_value as number) : null;
@@ -292,6 +428,7 @@ function ControlLayer({
 function CurvePlot({
   box,
   points,
+  comparison,
   min,
   max,
   label,
@@ -299,6 +436,7 @@ function CurvePlot({
 }: {
   box: { width: number; height: number };
   points: CurvePoint[];
+  comparison: CurveComparison | null;
   min: number;
   max: number;
   label: string;
@@ -313,6 +451,17 @@ function CurvePlot({
 
   const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${x(index)} ${y(point.value)}`).join(" ");
   const gridValues = [min, (min + max) / 2, max];
+
+  /*
+   * The comparison is positioned by the LATEST curve's maturity order,
+   * so a point sits directly above or below its own maturity. Matching
+   * by `seriesId` rather than by array index, because a maturity the
+   * backend has not ingested is absent from `points` entirely.
+   */
+  const comparisonPoints =
+    comparison === null
+      ? []
+      : points.map((point) => comparison.points.find((entry) => entry.seriesId === point.seriesId) ?? null);
 
   return (
     <svg
@@ -344,6 +493,49 @@ function CurvePlot({
           </text>
         </g>
       ))}
+
+      {/*
+       * The earlier curve, drawn FIRST so the latest one reads as the
+       * foreground. Dashed, muted and hollow-marked: three independent
+       * cues, because colour alone is not a distinction every reader
+       * can make.
+       */}
+      {comparisonSubpaths(comparisonPoints, x, y).map((subpath) => (
+        <path
+          key={subpath}
+          d={subpath}
+          fill="none"
+          className="stroke-fg-muted"
+          strokeWidth="2"
+          strokeDasharray="6 4"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      ))}
+      {comparisonPoints.map((point, index) =>
+        point === null || point.value === null ? null : (
+          <g key={point.seriesId}>
+            <circle
+              cx={x(index)}
+              cy={y(point.value)}
+              r="4"
+              className="fill-surface stroke-fg-muted"
+              strokeWidth="2"
+            />
+            <text
+              x={x(index)}
+              /* Below its own point, and 16 units clear of the x-axis
+                 maturity labels at `box.height - 14` even when the
+                 lowest reading sits on the axis floor. */
+              y={y(point.value) + 17}
+              textAnchor="middle"
+              className="fill-fg-muted text-[12px] tabular-nums"
+            >
+              {point.value.toFixed(2)}
+            </text>
+          </g>
+        ),
+      )}
 
       {/* The curve itself */}
       <path d={linePath} fill="none" className="stroke-brand" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
@@ -380,4 +572,36 @@ function CurvePlot({
       ))}
     </svg>
   );
+}
+
+/**
+ * The earlier curve as one subpath per unbroken run (#52B).
+ *
+ * A maturity with no published reading for this window ENDS the current
+ * run. A run of one point produces no subpath, because a single point
+ * is not a segment -- its hollow marker still renders, so the reading
+ * is visible even where the line cannot continue through it.
+ *
+ * This is the shape of the #51B fix, applied before the defect could
+ * reappear: nothing here can turn an absent value into a coordinate.
+ */
+function comparisonSubpaths(
+  points: ReadonlyArray<ComparisonPoint | null>,
+  x: (index: number) => number,
+  y: (value: number) => number,
+): string[] {
+  const subpaths: string[] = [];
+  let run: string[] = [];
+
+  points.forEach((point, index) => {
+    if (point === null || point.value === null) {
+      if (run.length > 1) subpaths.push(run.join(" "));
+      run = [];
+      return;
+    }
+    run.push(`${run.length === 0 ? "M" : "L"} ${x(index)} ${y(point.value)}`);
+  });
+  if (run.length > 1) subpaths.push(run.join(" "));
+
+  return subpaths;
 }

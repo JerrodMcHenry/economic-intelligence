@@ -68,6 +68,63 @@ export function buildAllChanges(overrides: Partial<RateChange> = {}): RateChange
   );
 }
 
+/**
+ * The four windows with a DIFFERENT published `from_date` and
+ * `from_value` each (Increment #52B).
+ *
+ * ================================================================
+ * WHY `buildAllChanges` WAS NOT ENOUGH
+ * ================================================================
+ *
+ * `buildAllChanges` applies ONE override object to all four windows, so
+ * every window in the old fixture resolved to `from_date: "2026-09-17"`
+ * and one `from_value`. Every test written before #52B was correct with
+ * that, because none of them read those two fields as anything but
+ * inputs to a basis-point figure the backend had already computed.
+ *
+ * #52B draws `from_value` AS A CURVE, and then the flat fixture was
+ * actively misleading in two ways at once. All four windows landing on
+ * one date meant a test could not tell a correct window selector from
+ * one that ignored its argument. And because `buildRateLevel`'s default
+ * change carries `from_value: 4.94` while the 5-year's latest value is
+ * 4.86, the fixture described a maturity that had FALLEN 8 bp while its
+ * own `change_basis_points` said it had risen 7 — a shape no real
+ * response can produce.
+ *
+ * The values below are the live API's own, captured 2026-09-24 and
+ * recorded in `docs/product/mockups/v52a/rates-snapshot-2026-09-24.json`:
+ * four distinct session dates, shared across every maturity, with each
+ * maturity's `from_value` and `change_basis_points` consistent with its
+ * latest reading.
+ *
+ * The lesson is #51B's, arriving again in a different costume: a
+ * fixture adequate for the tests that already exist is not
+ * automatically adequate for a component that asks a new question of
+ * the same data.
+ */
+const WINDOW_DATES: Record<ChangeWindow, string> = {
+  "1_SESSION": "2026-09-17",
+  "5_SESSIONS": "2026-09-11",
+  "21_SESSIONS": "2026-08-19",
+  "63_SESSIONS": "2026-06-18",
+};
+
+export function buildWindowedChanges(
+  readings: Record<ChangeWindow, { from_value: number; change_basis_points: number }>,
+  toValue: number,
+  toDate = "2026-09-18",
+): RateChange[] {
+  return (["1_SESSION", "5_SESSIONS", "21_SESSIONS", "63_SESSIONS"] as ChangeWindow[]).map((window) =>
+    buildRateChange(window, {
+      from_date: WINDOW_DATES[window],
+      from_value: readings[window].from_value,
+      change_basis_points: readings[window].change_basis_points,
+      to_date: toDate,
+      to_value: toValue,
+    }),
+  );
+}
+
 export function buildHistoricalContext(overrides: Partial<HistoricalContext> = {}): HistoricalContext {
   return {
     available: true,
@@ -156,20 +213,62 @@ export function buildRatesMonitor(overrides: Partial<RatesMonitorResult> = {}): 
         series_id: "UST_NOMINAL_2Y",
         title: "2-Year Treasury Par Yield (Nominal)",
         latest_value: 4.76,
-        changes: buildAllChanges({ change_basis_points: 9.0, from_value: 4.67, to_value: 4.76 }),
+        changes: buildWindowedChanges(
+          {
+            "1_SESSION": { from_value: 4.67, change_basis_points: 9.0 },
+            "5_SESSIONS": { from_value: 4.63, change_basis_points: 13.0 },
+            "21_SESSIONS": { from_value: 4.19, change_basis_points: 57.0 },
+            "63_SESSIONS": { from_value: 4.19, change_basis_points: 57.0 },
+          },
+          4.76,
+        ),
         provenance: buildSourceProvenance({ series_id: "UST_NOMINAL_2Y" }),
       }),
       buildRateLevel({
         series_id: "UST_NOMINAL_5Y",
         title: "5-Year Treasury Par Yield (Nominal)",
         latest_value: 4.86,
+        changes: buildWindowedChanges(
+          {
+            "1_SESSION": { from_value: 4.78, change_basis_points: 8.0 },
+            "5_SESSIONS": { from_value: 4.78, change_basis_points: 8.0 },
+            "21_SESSIONS": { from_value: 4.35, change_basis_points: 51.0 },
+            "63_SESSIONS": { from_value: 4.23, change_basis_points: 63.0 },
+          },
+          4.86,
+        ),
         provenance: buildSourceProvenance({ series_id: "UST_NOMINAL_5Y" }),
       }),
-      buildRateLevel({ series_id: "UST_NOMINAL_10Y", latest_value: 5.01 }),
+      buildRateLevel({
+        series_id: "UST_NOMINAL_10Y",
+        latest_value: 5.01,
+        changes: buildWindowedChanges(
+          {
+            "1_SESSION": { from_value: 4.94, change_basis_points: 7.0 },
+            "5_SESSIONS": { from_value: 4.96, change_basis_points: 5.0 },
+            "21_SESSIONS": { from_value: 4.65, change_basis_points: 36.0 },
+            "63_SESSIONS": { from_value: 4.46, change_basis_points: 55.0 },
+          },
+          5.01,
+        ),
+      }),
       buildRateLevel({
         series_id: "UST_NOMINAL_30Y",
         title: "30-Year Treasury Par Yield (Nominal)",
         latest_value: 5.34,
+        /* The 30-year FELL over five sessions while the other three
+           rose. That disagreement is real (it is what the live API
+           published on 2026-09-18) and it is the only reason a test can
+           exercise the MIXED level reading at all. */
+        changes: buildWindowedChanges(
+          {
+            "1_SESSION": { from_value: 5.29, change_basis_points: 5.0 },
+            "5_SESSIONS": { from_value: 5.35, change_basis_points: -1.0 },
+            "21_SESSIONS": { from_value: 5.19, change_basis_points: 15.0 },
+            "63_SESSIONS": { from_value: 4.9, change_basis_points: 44.0 },
+          },
+          5.34,
+        ),
         provenance: buildSourceProvenance({ series_id: "UST_NOMINAL_30Y" }),
       }),
     ],
@@ -188,13 +287,35 @@ export function buildRatesMonitor(overrides: Partial<RatesMonitorResult> = {}): 
       }),
     ],
     curve_spreads: [
-      buildCurveSpread(),
+      buildCurveSpread({
+        changes: buildWindowedChanges(
+          {
+            "1_SESSION": { from_value: 0.27, change_basis_points: -2.0 },
+            "5_SESSIONS": { from_value: 0.33, change_basis_points: -8.0 },
+            "21_SESSIONS": { from_value: 0.46, change_basis_points: -21.0 },
+            "63_SESSIONS": { from_value: 0.27, change_basis_points: -2.0 },
+          },
+          0.25,
+        ),
+      }),
       buildCurveSpread({
         spread_id: "2s30s",
         title: "30-Year minus 2-Year",
         spread_basis_points: 58.0,
         long_series_id: "UST_NOMINAL_30Y",
         long_value: 5.34,
+        /* The published shape change, per window. #52B's SHAPE sentence
+           reads `from_value`/`to_value` from here rather than
+           subtracting the 2-year from the 30-year itself. */
+        changes: buildWindowedChanges(
+          {
+            "1_SESSION": { from_value: 0.62, change_basis_points: -4.0 },
+            "5_SESSIONS": { from_value: 0.72, change_basis_points: -14.0 },
+            "21_SESSIONS": { from_value: 1.0, change_basis_points: -42.0 },
+            "63_SESSIONS": { from_value: 0.71, change_basis_points: -13.0 },
+          },
+          0.58,
+        ),
         provenance: buildDerivedProvenance({
           calculation: "UST_NOMINAL_30Y - UST_NOMINAL_2Y, in basis points, on one exactly-shared observation date",
           input_series_ids: ["UST_NOMINAL_30Y", "UST_NOMINAL_2Y"],

@@ -142,6 +142,101 @@ class TestUpstreamAccessIsAllowListed:
         assert TreasuryClient()._timeout > 0
 
 
+# ---------------------------------------------------------------------
+# The frontend calculation scan (Increment #30, scope corrected in #53B)
+# ---------------------------------------------------------------------
+#
+# WHY THIS SCAN IS SPLIT INTO TWO TIERS
+# -------------------------------------
+# #53A's audit found this guard red on `main` for two feature commits.
+# It was flagging two lines that are not economic calculations at all:
+#
+#   frontend/src/lib/cssUnits.ts       `fraction * 100` -> a CSS "50%"
+#   components/labor/SurveyThreshold   `(band / span) * 100` -> an SVG
+#                                      width in a 0..100 viewBox
+#
+# The rule was never wrong; the SCOPE was. This guard's own docstring
+# says its subject is "the frontend must never reconstruct a spread, a
+# basis-point change, or inflation compensation", and it names
+# `frontend/src/test/no-rates-calculation.test.ts` as the fine-grained
+# companion that "scans the RATES MODULES". But the scan itself walked
+# every file under `frontend/src`, so the two guards enforced the same
+# rule over different file sets -- and the broader one had no way to
+# tell a percentage-point-to-basis-point conversion from a fraction-to-
+# CSS-percentage one, because in a Labor chart there is no rate in
+# sight to distinguish them.
+#
+# The fix is to give each pattern the scope its own text justifies:
+#
+#   ECONOMICALLY SELF-NAMING patterns keep scanning ALL of frontend/src.
+#   `spreadBasisPoints = a - b` and `nominalValue - realYield` name the
+#   economics in the identifier, so they cannot false-positive on
+#   layout arithmetic no matter which world's file they appear in.
+#   Coverage here is UNCHANGED by #53B.
+#
+#   GENERIC ARITHMETIC (`* 100`) scans the RATES MODULES ONLY, using the
+#   same scope rule the frontend companion has always used. `* 100` is
+#   the one marker that names nothing: in a Rates module it is the shape
+#   of a basis-point conversion and must be caught; anywhere else it is
+#   as likely to be a CSS percentage, and the guard has no way to know.
+#
+# The rule is preserved exactly: a basis-point conversion written in any
+# Rates module still fails this test, and an economically-named
+# derivation still fails it anywhere in the frontend. See
+# `TestTheGuardStillCatchesRealViolations` below, which proves both
+# against this module's own scanning function rather than a copy of it.
+
+
+#: The scope rule `frontend/src/test/no-rates-calculation.test.ts` has
+#: used since #30, mirrored here so the two guards agree by construction
+#: rather than by coincidence.
+def _is_rates_module(relative_path: str) -> bool:
+    return "rates" in relative_path or "Rates" in relative_path or relative_path.endswith("ratesFormat.ts")
+
+
+#: Assignment of a derived financial value. The identifier names the
+#: economics, so these are safe to apply to every frontend file.
+_NAMED_DERIVATION_PATTERNS = (
+    re.compile(r"\b(inflationCompensation|basisPoints|spreadBasisPoints|percentileRank)\s*=\s*[^=;\n]*[-+*/]"),
+    re.compile(r"\b(nominal|real|long|short)\w*\s+-\s+\w*(Value|Yield|Rate)\b"),
+)
+
+#: Percentage points -> basis points. Names nothing, so it is meaningful
+#: only where rates are the subject.
+_RATES_ONLY_PATTERNS = (re.compile(r"\*\s*100\b"),)
+
+#: Scaling an already-computed 0..1 rank into a percentile for display
+#: is unit formatting, not derivation -- the same class of operation as
+#: rendering 0.25 as "25%".
+_DISPLAY_SCALING = re.compile(r"percentile|rank", re.IGNORECASE)
+
+
+def _scan_frontend_for_calculations(frontend_src: Path) -> list[str]:
+    """Every line that looks like a client-side economic derivation.
+
+    One function, used by the real guard AND by its regression tests, so
+    a test asserting "a violation is still caught" is exercising the
+    code that actually runs -- not a second copy of the patterns that
+    could drift away from it.
+    """
+    offenders: list[str] = []
+    for path in sorted(frontend_src.rglob("*.ts*")):
+        if path.name.endswith((".test.ts", ".test.tsx")):
+            continue
+        relative_path = str(path.relative_to(frontend_src))
+        patterns = _NAMED_DERIVATION_PATTERNS + (_RATES_ONLY_PATTERNS if _is_rates_module(relative_path) else ())
+        for line_number, line in enumerate(path.read_text().split("\n"), 1):
+            code = line.split("//", 1)[0]
+            if code.lstrip().startswith("*"):
+                continue  # a block-comment line is prose, not code
+            if _DISPLAY_SCALING.search(code):
+                continue
+            for pattern in patterns:
+                if pattern.search(code):
+                    offenders.append(f"{path}:{line_number}: {line.strip()}")
+    return offenders
+
+
 class TestDerivedValuesAreBackendOwned:
     def test_frontend_does_not_compute_rates_metrics(self):
         """The frontend must never reconstruct a spread, a basis-point
@@ -157,46 +252,115 @@ class TestDerivedValuesAreBackendOwned:
         must display. Naming a series the backend already named is not
         computing anything.
 
-        The markers below therefore target ASSIGNMENT of a derived
-        financial value in frontend code, which is the behaviour this
-        guard actually exists to prevent. The fine-grained companion
-        check lives on the frontend side
-        (`frontend/src/test/no-rates-calculation.test.ts`), which scans
-        the Rates modules for subtraction of rate-shaped values,
-        basis-point conversion, and hand-written percentile math.
+        Increment #53B note: see the two-tier scope explanation above.
         """
         frontend_src = Path("frontend/src")
         if not frontend_src.exists():
             pytest.skip("frontend/src not present")
 
-        # Each pattern matches an ASSIGNMENT whose right-hand side does
-        # arithmetic -- e.g. `const spreadBasisPoints = long - short`.
-        # Reading `spread.spread_basis_points` off a response never
-        # matches; deriving one always does.
-        forbidden_patterns = (
-            re.compile(r"\b(inflationCompensation|basisPoints|spreadBasisPoints|percentileRank)\s*=\s*[^=;\n]*[-+*/]"),
-            re.compile(r"\b(nominal|real|long|short)\w*\s+-\s+\w*(Value|Yield|Rate)\b"),
-            re.compile(r"\*\s*100\b"),
-        )
-        # Scaling an already-computed 0..1 rank into a percentile for
-        # display is unit formatting, not derivation -- the same class of
-        # operation as rendering 0.25 as "25%".
-        display_scaling = re.compile(r"percentile|rank", re.IGNORECASE)
-
-        offenders = []
-        for path in frontend_src.rglob("*.ts*"):
-            if path.name.endswith((".test.ts", ".test.tsx")):
-                continue
-            for line_number, line in enumerate(path.read_text().split("\n"), 1):
-                code = line.split("//", 1)[0]
-                if code.lstrip().startswith("*"):
-                    continue  # a block-comment line is prose, not code
-                if display_scaling.search(code):
-                    continue
-                for pattern in forbidden_patterns:
-                    if pattern.search(code):
-                        offenders.append(f"{path}:{line_number}: {line.strip()}")
+        offenders = _scan_frontend_for_calculations(frontend_src)
         assert offenders == [], f"frontend appears to compute rates values: {offenders}"
+
+    def test_the_shared_percentage_helper_stays_a_layout_helper(self):
+        """`lib/cssUnits.ts` is the one file the narrowed scope creates
+        an opening in, so it is closed explicitly.
+
+        That file exists BECAUSE of this guard: #49B needed a 0..1
+        fraction as a CSS percentage, `* 100` in a Rates module is the
+        shape of a basis-point conversion, and the answer was to move
+        the conversion out of the economics boundary rather than weaken
+        the check. Since #53B narrows the `* 100` scan to Rates modules,
+        that file is no longer scanned for it -- which would make it the
+        obvious place to hide the conversion the guard exists to
+        prevent.
+
+        So it is pinned: a layout helper, with no economic vocabulary in
+        it at all. If it ever needs to know what a yield is, it is no
+        longer a layout helper and this test should fail.
+        """
+        helper = Path("frontend/src/lib/cssUnits.ts")
+        if not helper.exists():
+            pytest.skip("lib/cssUnits.ts not present")
+
+        source = helper.read_text()
+        code = "\n".join(
+            line.split("//", 1)[0]
+            for line in source.split("\n")
+            if not line.lstrip().startswith(("*", "/*"))
+        )
+        for economic_term in ("yield", "spread", "basis", "compensation", "nominal", "maturity", "bp"):
+            assert economic_term not in code.lower(), (
+                f"lib/cssUnits.ts mentions '{economic_term}' in code -- it is a layout helper, "
+                "and a rates concept appearing in it means the conversion has moved back inside "
+                "the economics boundary. See tests/test_rates_architecture.py."
+            )
+        # One exported function, doing one thing.
+        assert code.count("export function") == 1
+
+
+class TestTheGuardStillCatchesRealViolations:
+    """Proof that narrowing the scope did not narrow the RULE.
+
+    Each case writes a synthetic frontend tree to a tmp directory and
+    runs the real `_scan_frontend_for_calculations` over it. A
+    regression test that re-implemented the patterns would prove only
+    that the copy still works.
+    """
+
+    @staticmethod
+    def _tree(tmp_path: Path, files: dict[str, str]) -> Path:
+        root = tmp_path / "src"
+        for name, body in files.items():
+            target = root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body)
+        return root
+
+    def test_a_basis_point_conversion_in_a_rates_module_is_caught(self, tmp_path):
+        root = self._tree(
+            tmp_path,
+            {"components/rates/Spread.tsx": "const bp = spread.value * 100;\n"},
+        )
+        assert _scan_frontend_for_calculations(root), "a basis-point conversion in a Rates module must be caught"
+
+    def test_a_basis_point_conversion_in_a_rates_named_lib_file_is_caught(self, tmp_path):
+        """Scope follows the NAME, so a helper is not an escape route."""
+        root = self._tree(tmp_path, {"lib/ratesMath.ts": "export const toBp = (pp: number) => pp * 100;\n"})
+        assert _scan_frontend_for_calculations(root), "a rates-named helper is in scope and must be caught"
+
+    def test_a_spread_derivation_is_caught_in_any_world(self, tmp_path):
+        """Economically-named derivation is scanned repo-wide, unchanged
+        by #53B -- including in a file with nothing to do with Rates."""
+        root = self._tree(
+            tmp_path,
+            {"components/labor/Chart.tsx": "const spreadBasisPoints = longValue - shortValue;\n"},
+        )
+        assert _scan_frontend_for_calculations(root), "a named spread derivation must be caught anywhere"
+
+    def test_a_rate_shaped_subtraction_is_caught_in_any_world(self, tmp_path):
+        root = self._tree(tmp_path, {"pages/Anything.tsx": "const gap = nominalValue - realYield;\n"})
+        assert _scan_frontend_for_calculations(root), "a rate-shaped subtraction must be caught anywhere"
+
+    def test_a_css_percentage_outside_the_rates_modules_is_allowed(self, tmp_path):
+        """The two lines that made this guard red, as their own case."""
+        root = self._tree(
+            tmp_path,
+            {
+                "lib/cssUnits.ts": "export function percentOf(fraction: number) { return `${fraction * 100}%`; }\n",
+                "components/labor/SurveyThreshold.tsx": "const width = (band / span) * 100;\n",
+            },
+        )
+        assert _scan_frontend_for_calculations(root) == []
+
+    def test_a_percentile_display_scaling_is_still_allowed(self, tmp_path):
+        root = self._tree(tmp_path, {"lib/ratesFormat.ts": "const percentile = Math.round(rank * 100);\n"})
+        assert _scan_frontend_for_calculations(root) == []
+
+    def test_a_test_file_is_never_scanned(self, tmp_path):
+        """Fixtures and tests legitimately contain the shapes the guard
+        forbids in product code."""
+        root = self._tree(tmp_path, {"components/rates/Spread.test.tsx": "const bp = value * 100;\n"})
+        assert _scan_frontend_for_calculations(root) == []
 
 
 def test_methodology_document_exists_and_is_versioned():

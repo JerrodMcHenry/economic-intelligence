@@ -1,8 +1,9 @@
 import { useState } from "react";
 
 import { getRatesMonitor } from "../api/rates";
-import type { RateLevel, RatesMonitorResult } from "../api/rates.types";
+import type { ChangeWindow, RateLevel, RatesMonitorResult } from "../api/rates.types";
 import { getAnalystAvailability } from "../api/analyst";
+import { listRatesMovements } from "../api/intelligence";
 import { useApiResource } from "../api/useApiResource";
 import { Disclosure } from "../components/Disclosure";
 import { AskMacroChipz } from "../components/analyst/AskMacroChipz";
@@ -13,7 +14,13 @@ import { UnderstandWorld } from "../components/explainers/UnderstandLinks";
 import { RevisionsLink } from "../components/revisions/RevisionsLink";
 import { Link } from "react-router-dom";
 import { CurveSpreadCard, InflationCompensationCard } from "../components/rates/DerivedMetricCard";
+import {
+  CurveComparisonControls,
+  CurveComparisonNote,
+  CurveReading,
+} from "../components/rates/CurveComparison";
 import { RateLevelCard } from "../components/rates/RateLevelCard";
+import { RecordedMovements } from "../components/rates/RecordedMovements";
 import { SelectedMaturityPanel } from "../components/rates/SelectedMaturityPanel";
 import { StoryTeaser } from "../components/homepage/StoryTeaser";
 import { YieldCurveChart } from "../components/rates/YieldCurveChart";
@@ -24,6 +31,7 @@ import {
   NOMINAL_YIELD,
   REAL_YIELD,
 } from "../content/explanations/rates";
+import { COMPARISON_WINDOWS, comparisonAvailable, selectComparison } from "../lib/ratesCurveComparison";
 import { formatObservationDate } from "../lib/ratesFormat";
 
 const MONITOR_ERROR_MESSAGE = "Rates intelligence could not be loaded.";
@@ -65,6 +73,30 @@ function RatesContent({ result }: { result: RatesMonitorResult }) {
   const selected: RateLevel | undefined =
     result.nominal_curve.find((level) => level.series_id === selectedId) ?? preferred;
 
+  /*
+   * THE DEFAULT COMPARISON WINDOW IS THE LONGEST ONE PUBLISHED, and the
+   * reason is editorial restraint rather than taste.
+   *
+   * On today's data the 21-session window tells the most striking story
+   * — every maturity up while the 2s30s gap narrows 42 bp — and
+   * choosing it as the default would mean MacroChipz had picked the
+   * window that looked most interesting. That is a significance claim,
+   * and `rates_v1.0` makes none.
+   *
+   * "The widest comparison the backend publishes" is a STRUCTURAL
+   * choice: it requires no view about which movement matters, and it
+   * stays the same rule whichever way the data moves. The other three
+   * windows are one tap away, and "Latest only" turns the comparison
+   * off entirely.
+   *
+   * Hooks stay above the empty-state return below — see the note on
+   * `selectedId`.
+   */
+  const offeredWindows = COMPARISON_WINDOWS.filter((window) => comparisonAvailable(result.nominal_curve, window));
+  const defaultWindow = offeredWindows[offeredWindows.length - 1] ?? null;
+  const [comparisonWindow, setComparisonWindow] = useState<ChangeWindow | null>(defaultWindow);
+  const comparison = comparisonWindow === null ? null : selectComparison(result.nominal_curve, comparisonWindow);
+
   if (!hasAnyData) {
     return (
       <div className="mt-8 rounded-lg border border-line bg-surface p-6">
@@ -91,12 +123,38 @@ function RatesContent({ result }: { result: RatesMonitorResult }) {
           <ExplanationTrigger explanation={NOMINAL_YIELD} />
         </div>
         <div className="lx-card mt-3 rounded-xl p-4 sm:p-6">
-          <YieldCurveChart
+          {/* #52B. The controls sit ABOVE the plot: the chart's own
+              meaning depends on which comparison is active, and a
+              control placed after it would be read after the thing it
+              governs. */}
+          <CurveComparisonControls
             levels={result.nominal_curve}
-            asOfDate={result.as_of_date}
-            selectedId={selected?.series_id}
-            onSelect={setSelectedId}
+            selected={comparisonWindow}
+            onSelect={setComparisonWindow}
           />
+
+          <div className="mt-4">
+            <YieldCurveChart
+              levels={result.nominal_curve}
+              asOfDate={result.as_of_date}
+              selectedId={selected?.series_id}
+              onSelect={setSelectedId}
+              comparison={comparison ?? undefined}
+            />
+          </div>
+
+          {comparison !== null && (
+            <>
+              <CurveComparisonNote comparison={comparison} levels={result.nominal_curve} />
+              {comparison.drawable && comparison.sharedDate !== null && (
+                <CurveReading
+                  comparison={comparison}
+                  spreads={result.curve_spreads}
+                  latestDate={result.as_of_date}
+                />
+              )}
+            </>
+          )}
         </div>
       </section>
 
@@ -259,6 +317,14 @@ function RatesContent({ result }: { result: RatesMonitorResult }) {
 export function RatesPage() {
   const monitor = useApiResource(getRatesMonitor);
   const analyst = useApiResource(getAnalystAvailability);
+  /*
+   * #52B. A THIRD independent resource. Recorded movements come from
+   * the Structured Intelligence service, not from the rates monitor, so
+   * they load and fail on their own: a monitor outage still leaves six
+   * recorded readings on the page, and an intelligence outage leaves
+   * the Treasury curve completely usable.
+   */
+  const movements = useApiResource(listRatesMovements);
 
   return (
     <div>
@@ -333,6 +399,14 @@ export function RatesPage() {
         </div>
       )}
       {monitor.status === "success" && <RatesContent result={monitor.data} />}
+
+      {/* Recorded movements (#52B). OUTSIDE `RatesContent` on purpose:
+          these six objects are independent facts from an independent
+          request, and #52A found they rendered nowhere in the product's
+          Rates world. If the monitor is down, this still renders. */}
+      <div className="mt-10 border-t border-line pt-8">
+        <RecordedMovements movements={movements} headingId="rates-movements-heading" />
+      </div>
 
       {/* Ask MacroChipz (Increment #33) -- optional interpretive layer.
           It sits outside RatesContent so an Analyst outage, or the

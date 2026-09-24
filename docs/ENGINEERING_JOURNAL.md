@@ -15163,3 +15163,296 @@ something I had already used, which is the one place I had stopped looking.
 
 Worth asking of every response the product already consumes: not "what is
 missing", but **"what is next to what I took?"**
+
+## #52B — the guard that pointed at the answer
+
+The sentence I wanted on the page was: *the gap between the 2-year and
+the 30-year is narrower — it was 0.71 points then and 0.58 now.*
+
+The obvious way to get it is to subtract the 2-year from the 30-year on
+two dates. `no-rates-calculation.test.ts` forbids exactly that, and has
+since #30. So my first thought was where to put the arithmetic so the
+scan would not see it.
+
+That was the wrong question, and the right one took ten seconds: **does
+the backend already publish this?** It does. The 2s30s spread carries its
+own `from_value`, `to_value` and `change_basis_points` for the same four
+session windows as every maturity. The number was already there.
+
+In #49B this same guard caught me converting a fraction to a percentage
+and the fix was a layout helper. This time it caught something I had not
+written yet, and the fix was to stop and read the response again.
+**Twice now, the guard has been a better reviewer than I was.**
+
+### Six of the four windows
+
+The other half of the increment came from `changes[].from_date` and
+`from_value` — two fields I had rendered the *neighbours* of in #49B and
+never read.
+
+Four maturities, each publishing a value and a date, and the dates line
+up across all four for every window. That is a curve. The page had been
+receiving four complete past curves in every response and drawing none of
+them.
+
+Over 63 sessions every maturity rose while the 2-year-to-30-year gap
+narrowed from 1.00 points to 0.58. Two things at once, and a single-date
+chart can show neither.
+
+### The default window was the hardest decision in the increment
+
+The 21-session window tells the best story on this data: every maturity
+up, the gap in 42 bp. Defaulting to it would have meant MacroChipz had
+picked the window that looked most interesting — which is a significance
+claim, and `rates_v1.0` makes none.
+
+So the default is **the longest window published**. It requires no view
+about which movement matters, and it stays the same rule whichever way
+the data moves next month. The interesting window is one tap away.
+
+### The word I could not use, even to deny it
+
+`Rates.test.tsx` has asserted since #30 that five words never appear in
+this page's text: recession, risk-off, hawkish, tightening, easing.
+
+My first draft of the shape sentence ended *"…and no recession signal is
+claimed here."* A denial. The test failed anyway, because a text scan
+cannot tell a denial from an assertion — and it should not have to.
+
+The refusal was easy to write without the word: MacroChipz's methodology
+defines no state label and no forecast, so it does not say what a
+narrower or wider gap means for what happens next, or for any rate you
+might personally be offered. Same refusal, stated positively, and it
+covers claims nobody thought to ban.
+
+**Third time a MacroChipz guard has been right and my copy has been
+wrong** — after #48A's publication-language guard and #49B's percentage
+conversion. The pattern is consistent enough to be a rule now: when a
+guard fires on new copy, the copy moves.
+
+### The fixture that described an impossible bond
+
+`buildAllChanges` applies one override to all four windows, so every
+window in the old fixture resolved to the same `from_date` and the same
+`from_value`. Every test written before this increment was correct with
+that, because none of them read those fields as anything but inputs to a
+number the backend had already computed.
+
+Drawing them exposed two problems at once. All four windows landing on
+one date meant no test could tell a working window selector from one that
+ignored its argument. And the 5-year's default change carried
+`from_value: 4.94` against a latest value of 4.86 — a bond that had
+*fallen* 8 bp while its own `change_basis_points` said it had risen 7.
+
+This is #51B's lesson wearing a different costume, and I want it written
+down in both places: **a fixture adequate for the tests that already
+exist is not automatically adequate for a component that asks a new
+question of the same data.** The fixture now carries the live API's own
+four dates and four coherent readings per maturity — including the
+30-year falling 1 bp over five sessions while the other three rose, which
+is the only reason a test can exercise the MIXED reading at all.
+
+### Three measurement notes
+
+**My own reduced-motion check reported no focus ring.** `element.focus()`
+from a script does not reliably match `:focus-visible` after a
+programmatic click. A real `Tab` keypress through the extension:
+`outline: 2px solid`, offset 2px, `focusVisible: true`. The styling had
+been correct the whole time; the measurement was not. Catalogue entry
+six.
+
+**Chrome returns `oklch()` verbatim from `getComputedStyle`.** My first
+contrast pass parsed `rgb(...)` and got `null`, then crashed compositing
+against a null background. Colours are now resolved by painting them to a
+1×1 canvas, which handles any syntax the browser accepts.
+
+**Two artifacts I have hit before, excluded by name this time** rather
+than explained away after the fact: `.sr-only` is a 1px clipped box
+outside its parent, and a closed `<details>` still reports rects for the
+panel it is not rendering. The first overflow sweep reported two escapes
+and one clip; all three were these, and the header one had been there
+since #49B.
+
+### The section I collapsed
+
+Six recorded-movement cards measured 1,500px at 390px, on a page that
+this increment had already grown by 633px for the comparison itself.
+Secondary context taking a fifth of a phone page is not secondary.
+
+They went behind one disclosure whose summary states the count. Nothing
+was dropped — every record, every field, all three limitations per
+object, in the same place. The heading and the explanation of what these
+are stay visible, so the offer is legible before a reader takes it.
+
+### Lesson
+
+**A field I have already rendered is not a field I have already read** —
+and the corollary I did not expect: a guard that blocks the obvious
+implementation is often telling you the value already exists somewhere
+you have not looked.
+
+Both halves of this increment were sitting in responses the page had been
+parsing for months.
+
+## #53B — two guards, one rule, and the command I never ran
+
+#53A's audit found the backend suite red on `main`. Not from the work in
+flight — from `44a122b` (#49B) and `afa3f89` (#51B), two shipped feature
+commits, both green in every check I actually ran at the time.
+
+```
+tests/test_rates_architecture.py::TestDerivedValuesAreBackendOwned::test_frontend_does_not_compute_rates_metrics
+  frontend/src/lib/cssUnits.ts:24: return `${fraction * 100}%`;
+  frontend/src/components/labor/SurveyThreshold.tsx:237: width={(selected.band / span) * 100}
+```
+
+Neither line is an economic calculation. The first turns a 0..1 fraction
+into a CSS `"50%"`. The second sets an SVG width in a 0..100 viewBox, in
+a **Labor** component, about a deadband, with no rate anywhere near it.
+
+### The root cause was scope, not the rule
+
+Two guards enforce "the frontend must not compute economic values":
+
+| | Scope | `* 100` allowance |
+|---|---|---|
+| `frontend/src/test/no-rates-calculation.test.ts` | Rates modules | `percentile\|rank` |
+| `tests/test_rates_architecture.py` | **all of `frontend/src`** | `percentile\|rank` |
+
+The backend guard's own docstring names the frontend one as the
+companion that "scans the RATES MODULES". Its scan walked every file
+under `frontend/src`. The two had been enforcing the same rule over
+different file sets since #30, and nothing failed until a Rates-adjacent
+increment needed a percentage.
+
+The reason that mismatch is fatal for one pattern and harmless for the
+others is worth stating precisely, because it is the whole fix:
+
+- `spreadBasisPoints = a - b` and `nominalValue - realYield` **name the
+  economics in the identifier**. They cannot false-positive on layout
+  arithmetic in any file, in any world.
+- `* 100` **names nothing**. In a Rates module it is the shape of a
+  percentage-point-to-basis-point conversion. In a Labor chart it is as
+  likely to be a percentage of a container, and the guard has no way to
+  tell.
+
+### What #49B actually did, and why it was half a fix
+
+#49B hit this same guard's frontend twin and did the right thing: rather
+than weaken the check, it moved the conversion into `lib/cssUnits.ts`,
+outside the economics boundary. That satisfied the frontend guard, whose
+scope is name-based — `cssUnits.ts` is not a Rates file.
+
+It did not satisfy the backend guard, because `cssUnits.ts` is still
+under `frontend/src`. **I never ran the backend suite during #49B, #50B,
+#51B or #52B.** Four increments of frontend work, and the command that
+would have caught this on the first one was never typed.
+
+### The correction
+
+Each pattern now gets the scope its own text justifies:
+
+- **Economically self-naming patterns keep scanning all of
+  `frontend/src`.** Coverage is unchanged by this increment — a named
+  spread derivation still fails the test in a Housing file.
+- **Generic arithmetic (`* 100`) scans the Rates modules only**, using
+  the same `"rates" | "Rates" | ratesFormat.ts` rule the frontend twin
+  has used since #30. The two guards now agree **by construction**
+  rather than by coincidence.
+
+Neither test was weakened or deleted. The frontend guard is byte-for-byte
+untouched.
+
+### Closing the opening the fix creates
+
+Narrowing the `* 100` scan makes `lib/cssUnits.ts` unscanned for it — and
+that file exists *because* of this guard, which makes it the obvious
+place to hide the conversion the guard prevents. So it is pinned by a new
+test: no economic vocabulary in its code, one exported function. If it
+ever needs to know what a yield is, it has stopped being a layout helper
+and the test fails.
+
+### The regression tests run the real scanner
+
+The scan is now one module-level function that the guard **and** its
+regression tests both call. A test that re-implemented the patterns would
+prove only that the copy still works.
+
+Seven cases: a basis-point conversion in a Rates component and in a
+rates-named `lib/` helper (both caught); a named spread derivation and a
+rate-shaped subtraction in non-Rates files (both caught, proving the
+repo-wide tier survived); the two lines that made this red (both allowed);
+percentile display scaling (allowed); a `.test.tsx` file (never scanned).
+
+Mutation-checked rather than assumed. Forcing the scope rule to always-
+false makes the Rates-module conversion invisible; removing the named
+tier makes the spread derivation invisible. Both are exactly the tests
+that then fail.
+
+```
+tests/test_rates_architecture.py: 26 passed   (was 17 passed, 1 failed)
+frontend no-rates-calculation.test.ts: 7 passed (unchanged, untouched)
+```
+
+### #52B verified against data it had never seen
+
+The second half of this increment was verifying the uncommitted Rates
+curve comparison. It got a better test than planned, and by accident.
+
+During #53A I probed operator auth with a `POST /api/v1/rates/sync`. With
+no `OPERATOR_TOKEN` set and `ENVIRONMENT != production`, that route is
+open by design (ADR-033), so the probe started a real Treasury ingestion.
+I killed the curl client, checked the monitor, saw unchanged values, and
+reported "the interrupted run wrote nothing."
+
+**That was wrong, and I am recording the correction here rather than
+quietly fixing the sentence.** Killing the client did not stop the
+server. Run 3 started 10:48:48 and committed at 10:56:22 — I checked
+during the transaction. The local development database now holds Treasury
+data through 2026-09-23 instead of 2026-09-18, 245 observations per
+series instead of 119. Nothing was corrupted; the idempotent upsert did
+what it is designed to do, on a dev database, and recorded a SUCCEEDED
+audit row. But "I verified it wrote nothing" was a claim I had not
+actually established, and a seven-minute background commit is precisely
+the shape of thing a thirty-second check will miss.
+
+The upside is real. #52B was built and unit-tested against a frozen
+snapshot; it was then verified against **four different comparison dates,
+different values and twice the observation history**, and every published
+figure still matched the API exactly:
+
+```
+window       from_date    aligned   2Y     30Y    published 2s30s
+1 session    2026-09-22   yes       4.71   5.29   0.58 -> 0.55  (−3 bp)
+5 sessions   2026-09-16   yes       4.74   5.35   0.61 -> 0.55  (−6 bp)
+21 sessions  2026-08-24   yes       4.24   5.23   0.99 -> 0.55  (−44 bp)
+63 sessions  2026-06-24   yes       4.11   4.86   0.75 -> 0.55  (−20 bp)
+```
+
+The date alignment that makes the second curve drawable is not a property
+of one frozen snapshot. It held across a week of new prints.
+
+Distinguishability at the tightest window (1 session, markers 16–24px
+apart at 390px) rests on three independent cues, verified from computed
+style: colour `oklch(0.76 0.1 276)` vs `oklch(0.69 0.012 262)`, dash
+`6 4` vs solid, and marker fill solid vs hollow-with-stroke.
+
+Failure isolation re-verified live by patching `fetch`: intelligence down
+leaves a complete four-row curve and both reading clauses; the monitor
+down leaves all six recorded movements and fabricates no zeros; both
+hanging gives two independent loading regions and no number at all.
+
+No material defect found. No #52B file was changed by this increment.
+
+### Lesson
+
+**A guard you do not run is a comment.**
+
+The rule was right, both tests were right about the rule, and the repo
+still shipped two red commits — because the only check that disagreed
+lived in the suite I had stopped running once the work looked
+front-end-shaped. The fix took an hour. Noticing took an audit.
+
+And the smaller one, which cost me a false statement in a report: a
+background write does not stop when the client does. "I checked and
+nothing happened" needs to name *when* it checked.
