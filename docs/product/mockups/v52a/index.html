@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en" data-surface="cinematic">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Rates World — MacroChipz #52A prototype</title>
+<!--
+  ================================================================
+  RATES WORLD PROTOTYPE — increment #52A
+  ================================================================
+
+  A STANDALONE REVIEW ARTEFACT. It modifies no production file.
+
+  ----------------------------------------------------------------
+  WHY THIS IS NOT "A YIELD CURVE" AGAIN
+  ----------------------------------------------------------------
+  /rates already draws a selectable yield curve (#49B). Drawing one
+  again would be a restyle. So the audit asked the narrower question:
+  what does the API already send that the page throws away?
+
+  The answer is a SECOND CURVE. Every maturity's `changes[]` array
+  carries `from_date` and `from_value` for four session windows — and
+  those from_dates are IDENTICAL across all four maturities (verified:
+  2026-09-17, 2026-09-11, 2026-08-19, 2026-06-18). Four published
+  points on one published date is a curve. The page currently renders
+  that data as four basis-point deltas inside four repeated cards and
+  never as a shape.
+
+  So the hero is the comparison: TODAY'S CURVE AND A PAST CURVE ON ONE
+  CHART. It shows the two things that happened at once and that a
+  single-date chart structurally cannot show —
+
+    LEVEL: over 21 sessions every maturity rose (2Y 4.19 -> 4.76).
+    SHAPE: over the same 21 sessions the 2Y-to-30Y gap NARROWED,
+           1.00 points -> 0.58 points.
+
+  Both are published fields. Neither is subtracted here.
+
+  ----------------------------------------------------------------
+  THE RULES IT HOLDS ITSELF TO
+  ----------------------------------------------------------------
+  1. NO INVENTED FIGURE. Every number is `window.RATES`.
+  2. NOTHING ECONOMIC IS CALCULATED HERE. Not a spread, not a basis
+     point, not a percentile. `rates_v1.0` computed the derived
+     numbers; Treasury published the observations. Even the
+     "wider/narrower" sentence reads the 2s30s spread's own published
+     `from_value` and `to_value` rather than subtracting two yields.
+     The only arithmetic in this file is turning a value into a pixel.
+  3. SHAPE IS DESCRIBED, NEVER FORECAST. No recession claim. No claim
+     that a Treasury yield sets a mortgage rate. `rates_v1.0` defines
+     no state label and no forecast, and neither does this page.
+  4. MISSING DATA IS DOCUMENTED, NOT SIMULATED. No spread history
+     series exists (four candidate ids 404). There is no
+     /api/v1/monitors/rates/history (422 — the route accepts only
+     inflation and labor). Ten maturities are not ingested. Said, not
+     filled in.
+
+  ----------------------------------------------------------------
+  SVG / HTML SPLIT
+  ----------------------------------------------------------------
+  Visuals are SVG; interaction and type are HTML. The two curves and
+  the gridlines are SVG in a 0..100 x 0..100 box stretched with
+  preserveAspectRatio="none" plus vector-effect="non-scaling-stroke",
+  so stroke weight does not distort. EVERY DOT IS AN HTML ELEMENT —
+  #48B and #51B both shipped SVG circles that the same stretch turned
+  into ellipses, and a round dot positioned at a percentage cannot be
+  distorted by a viewBox at all. Labels and the 44px targets are HTML
+  for the same reason: 11px stays 11px.
+-->
+<style>
+  :root {
+    --mc-brand: #9facf1; --mc-focus: #a2b0ff;
+    --mc-fg: #e9ebef; --mc-fg-secondary: #bdc1c8; --mc-fg-muted: #979ca3;
+    --lx-char: #121317; --lx-char-2: #191b21; --lx-mid: #0e1422;
+    --lx-line: #2a2d35; --lx-line-2: #363a45;
+    --lx-bloom-a: rgba(124,96,240,.34); --lx-bloom-b: rgba(162,176,255,.24);
+    --lx-card-hi: rgba(255,255,255,.14); --lx-card-lo: rgba(255,255,255,.075);
+    --lx-selected: rgba(124,96,240,.30);
+    /* Rates' own pair within the shared family. "Now" is the brand
+       violet the product already uses for a live reading; "then" is a
+       desaturated steel that reads as a memory rather than a second
+       opinion. Neither is an economic-state tone: nothing here is
+       good or bad, and the #27B state palette stays out of it. */
+    --rx-now: #a6b1f5;
+    --rx-then: #7c8697;
+    /* The dashed LINE and the number printed beside it are the same
+       idea but not the same accessibility problem. A line is a
+       graphical object (3:1); a 12.5px number is text (4.5:1), and
+       #7c8697 measured 4.57:1 on the card -- a pass with nothing to
+       spare. The text gets its own lighter step. */
+    --rx-then-text: #9aa4b4;
+    --rx-now-soft: rgba(166,177,245,.16);
+    --ed-amber: #c9954a;
+    --sans: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--lx-char); -webkit-text-size-adjust: 100%; }
+  body { margin:0; color:var(--mc-fg); font-family:var(--sans); font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased;
+    background: radial-gradient(120% 640px at 82% -60px, var(--lx-bloom-a) 0%, transparent 62%),
+      radial-gradient(90% 520px at 4% 560px, var(--lx-bloom-b) 0%, transparent 66%),
+      linear-gradient(180deg, var(--lx-mid) 0px, var(--lx-char) 760px), var(--lx-char);
+    background-repeat:no-repeat; }
+  .wrap { max-width:1216px; margin:0 auto; padding-left:16px; padding-right:16px; }
+  @media (min-width:640px){ .wrap{padding-left:24px;padding-right:24px} }
+  @media (min-width:1024px){ .wrap{padding-left:32px;padding-right:32px} }
+  a { color:inherit; }
+  a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid var(--mc-focus); outline-offset:2px; }
+
+  .bar { display:flex; align-items:center; min-height:54px; background:#0d0e11; border-bottom:1px solid var(--lx-line); position:relative; z-index:3; }
+  .bar .in { display:flex; align-items:center; gap:16px; width:100%; }
+  .wm { font-size:16px; font-weight:600; letter-spacing:-.01em; } .wm span { color:var(--mc-brand); }
+  .bar nav { display:none; gap:2px; margin-left:auto; }
+  @media (min-width:720px){ .bar nav{display:flex} }
+  .bar nav a { display:inline-flex; align-items:center; min-height:44px; padding:0 9px; border-radius:8px; font-size:13px; color:var(--mc-fg-secondary); text-decoration:none; }
+  .bar nav a[aria-current] { color:var(--mc-fg); background:rgba(255,255,255,.07); font-weight:600; }
+
+  .snap { background:rgba(201,149,74,.10); border-bottom:1px solid rgba(201,149,74,.30); font-size:12.5px; line-height:1.45; color:var(--mc-fg-secondary); }
+  .snap .in { padding:9px 0; }
+  .snap b { color:var(--ed-amber); font-weight:700; letter-spacing:.04em; text-transform:uppercase; font-size:11px; }
+
+  .hero .in { padding-top:24px; padding-bottom:6px; }
+  .kicker { margin:0; font-size:11px; font-weight:700; letter-spacing:.22em; text-transform:uppercase; color:var(--ed-amber); }
+  h1 { margin:10px 0 0; font-size:27px; line-height:1.12; font-weight:700; letter-spacing:-.03em; text-wrap:balance; }
+  @media (min-width:640px){ h1{font-size:35px} } @media (min-width:1024px){ h1{font-size:41px} }
+  .sub { margin:10px 0 0; max-width:62ch; font-size:15px; color:var(--mc-fg-secondary); }
+  @media (min-width:1024px){ .sub{font-size:16.5px} }
+  .asof { margin:14px 0 0; display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; font-size:12.5px; color:var(--mc-fg-muted); }
+  .pill { display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:999px; border:1px solid var(--lx-line-2); background:rgba(255,255,255,.03); }
+  .pill i { width:6px; height:6px; border-radius:999px; background:var(--mc-brand); font-style:normal; }
+
+  section { padding-top:32px; }
+  .sec { margin:0 0 14px; font-size:11px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color:var(--ed-amber); display:flex; align-items:center; gap:10px; }
+  .sec::after { content:""; flex:1; height:1px; background:linear-gradient(90deg, rgba(201,149,74,.45), transparent); }
+  .card { background:linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.028) 100%), #1b1d26;
+    border:1px solid var(--lx-card-lo); border-radius:14px; box-shadow:inset 0 1px 0 0 var(--lx-card-hi), 0 18px 40px -22px rgba(0,0,0,.95); }
+
+  /* ---------- the when-switch ---------- */
+  .when { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  @media (min-width:720px){ .when { grid-template-columns:repeat(4,1fr); } }
+  .when button {
+    min-height:44px; padding:9px 11px; border-radius:11px; cursor:pointer; text-align:left;
+    background:rgba(255,255,255,.04); border:1px solid var(--lx-line-2); color:var(--mc-fg-secondary);
+    transition:background-color .15s, border-color .15s, color .15s;
+  }
+  .when button[aria-pressed="true"] { color:#eef0ff; background:var(--lx-selected); border-color:rgba(162,176,255,.45); }
+  .when .w { display:block; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--mc-fg-muted); }
+  .when .d { display:block; margin-top:3px; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
+
+  /* ---------- the two-curve chart ---------- */
+  .chartCard { padding:16px 14px 14px; margin-top:12px; }
+  @media (min-width:640px){ .chartCard { padding:20px 20px 16px; } }
+  .legend { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; font-size:12.5px; color:var(--mc-fg-secondary); }
+  .legend span { display:inline-flex; align-items:center; gap:8px; font-variant-numeric:tabular-nums; }
+  .legend i { width:22px; height:0; border-top-width:2px; border-top-style:solid; display:inline-block; }
+  .legend .n i { border-top-color:var(--rx-now); }
+  .legend .t i { border-top-color:var(--rx-then); border-top-style:dashed; }
+
+  /* THE ASPECT RATIO IS PART OF THE ARGUMENT.
+     First draft: at 1440 the board measured 1110x340 -- 3.26:1 -- and a
+     curve drawn in a box that wide reads as almost flat whatever it is
+     doing. Both curves are stretched identically so the COMPARISON is
+     honest, but the shape is the point of this page and it should not
+     need squinting at.
+     So at >=1024 the card splits: the plot takes the left column and
+     the Level/Shape reading moves out of the flow underneath and into
+     the right. The board lands near 2:1, and the desktop dead space
+     the audit measured on the current page is doing work. */
+  .plot { min-width:0; }
+  .board { position:relative; height:240px; margin-top:14px; }
+  @media (min-width:640px){ .board { height:300px; } }
+  @media (min-width:1024px){
+    .chartCard { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(272px,1fr); gap:0 28px; align-items:start; }
+    .chartCard > .when { grid-column:1 / -1; }
+    .board { height:330px; }
+    .reading { grid-column:2; border-top:0; border-left:1px solid var(--lx-line); padding-top:0; padding-left:24px; margin-top:14px; }
+  }
+  .board > svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  /* Every dot is HTML. A round dot positioned at a percentage cannot
+     be turned into an ellipse by a stretched viewBox. */
+  .pt { position:absolute; transform:translate(-50%,-50%); border-radius:999px; pointer-events:none; }
+  .pt.now { width:11px; height:11px; background:var(--rx-now); box-shadow:0 0 0 3px rgba(166,177,245,.18); }
+  .pt.then { width:9px; height:9px; background:transparent; border:2px solid var(--rx-then); }
+  .ring { position:absolute; transform:translate(-50%,-50%); width:30px; height:30px; border-radius:999px;
+          border:2px solid var(--rx-now); pointer-events:none; }
+  .vlab { position:absolute; transform:translate(-50%,-50%); font-size:12.5px; font-weight:700; font-variant-numeric:tabular-nums;
+          white-space:nowrap; pointer-events:none; }
+  .vlab.now { color:#eef0ff; }
+  .vlab.then { color:var(--rx-then-text); font-weight:600; }
+
+  /* The 44px targets: HTML buttons over the plot, one per maturity. */
+  .hit { position:absolute; top:0; bottom:26px; width:58px; transform:translateX(-50%); background:transparent;
+         border:0; border-radius:10px; cursor:pointer; padding:0; }
+  .hit:hover { background:var(--rx-now-soft); }
+  .xlab { position:absolute; bottom:0; transform:translateX(-50%); font-size:12px; color:var(--mc-fg-muted); white-space:nowrap; }
+  .hit[aria-pressed="true"] + .xlab { color:var(--mc-fg); font-weight:700; }
+
+  .reading { margin-top:16px; border-top:1px solid var(--lx-line); padding-top:14px; }
+  .reading p { margin:0 0 10px; font-size:14.5px; color:var(--mc-fg-secondary); max-width:64ch; }
+  .reading p:last-child { margin-bottom:0; }
+  .reading b { color:#eef0ff; font-variant-numeric:tabular-nums; }
+  .reading .k { display:block; font-size:11px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:var(--mc-brand); margin-bottom:3px; }
+
+  /* ---------- selected maturity ---------- */
+  .sel { padding:18px; } @media (min-width:640px){ .sel { padding:22px; } }
+  .sel h3 { margin:0; font-size:17px; font-weight:700; letter-spacing:-.01em; }
+  .sel .big { margin:10px 0 0; font-size:38px; font-weight:700; letter-spacing:-.03em; font-variant-numeric:tabular-nums; line-height:1; }
+  .sel .sm { margin:8px 0 0; font-size:13.5px; color:var(--mc-fg-muted); font-variant-numeric:tabular-nums; }
+  .grid4 { margin-top:16px; display:grid; grid-template-columns:1fr 1fr; gap:12px 16px; }
+  @media (min-width:640px){ .grid4 { grid-template-columns:repeat(4,1fr); } }
+  .grid4 .w { font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--mc-fg-muted); }
+  .grid4 .v { margin-top:3px; font-size:16px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .grid4 .f { margin-top:2px; font-size:11.5px; color:var(--mc-fg-muted); font-variant-numeric:tabular-nums; }
+
+  /* ---------- derived strip ---------- */
+  .dgrid { display:grid; gap:10px; }
+  @media (min-width:720px){ .dgrid { grid-template-columns:1fr 1fr; } }
+  .drow { padding:14px 16px; }
+  .drow .t { font-size:13.5px; color:var(--mc-fg-secondary); }
+  .drow .v { margin-top:4px; font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+  .drow .i { margin-top:4px; font-size:12px; color:var(--mc-fg-muted); font-variant-numeric:tabular-nums; }
+  .badge { display:inline-block; margin-bottom:8px; font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+           color:var(--ed-amber); border:1px solid rgba(201,149,74,.4); border-radius:999px; padding:2px 8px; }
+
+  /* ---------- movements ---------- */
+  .mv { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+  .mv li { padding:13px 16px; }
+  .mv .top { display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline; }
+  .mv .id { font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .mv .dt { font-size:12px; color:var(--mc-fg-muted); font-variant-numeric:tabular-nums; }
+  .mv .ev { margin-top:4px; font-size:13px; color:var(--mc-fg-secondary); font-variant-numeric:tabular-nums; }
+
+  .lesson { padding:18px; } @media (min-width:640px){ .lesson{padding:22px} }
+  .lesson .q { margin:0 0 8px; font-size:11px; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--mc-brand); }
+  .lesson h3 { margin:0; font-size:16.5px; font-weight:700; letter-spacing:-.01em; }
+  .lesson p { margin:10px 0 0; font-size:14.5px; color:var(--mc-fg-secondary); max-width:62ch; }
+  .limits { padding:18px; } .limits ul { margin:10px 0 0; padding-left:18px; }
+  .limits li { margin-top:7px; font-size:14.5px; color:var(--mc-fg-secondary); max-width:60ch; }
+
+  details { border-top:1px solid var(--lx-line); }
+  summary { display:flex; align-items:center; gap:9px; min-height:44px; cursor:pointer; font-size:13.5px; font-weight:600; color:var(--mc-fg-secondary); list-style:none; }
+  summary::-webkit-details-marker { display:none; }
+  summary .chev { transition:transform .15s; color:var(--mc-fg-muted); }
+  details[open] summary .chev { transform:rotate(90deg); }
+  .dl { display:grid; grid-template-columns:max-content 1fr; gap:3px 16px; font-size:13px; padding-bottom:14px; }
+  .dl dt { color:var(--mc-fg-muted); } .dl dd { margin:0; color:var(--mc-fg-secondary); overflow-wrap:anywhere; }
+
+  .links { list-style:none; margin:0; padding:0; display:grid; gap:2px; }
+  .links a { display:flex; align-items:center; min-height:44px; font-size:14px; color:var(--mc-fg-secondary); text-decoration:none; }
+  .links a:hover { color:var(--mc-fg); text-decoration:underline; text-underline-offset:4px; }
+
+  footer { margin-top:44px; border-top:1px solid var(--lx-line); background:#0b0c0f; }
+  footer .in { padding-top:20px; padding-bottom:28px; display:grid; gap:10px; }
+  footer .c { font-size:11.5px; line-height:1.6; color:var(--mc-fg-muted); }
+
+  .demo { margin-top:26px; border:1px dashed var(--lx-line-2); border-radius:12px; padding:12px 14px; }
+  .demo p { margin:0 0 9px; font-size:11.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--mc-fg-muted); font-weight:700; }
+  .demo button { min-height:44px; padding:0 14px; margin:0 8px 8px 0; border-radius:9px; cursor:pointer; font-size:13px; font-weight:600;
+    color:var(--mc-fg-secondary); background:rgba(255,255,255,.04); border:1px solid var(--lx-line-2); }
+  .demo button[aria-pressed="true"] { color:#eef0ff; background:var(--lx-selected); border-color:rgba(162,176,255,.42); }
+  .skel { background:linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,.08), rgba(255,255,255,.04)); border-radius:8px; }
+  .alert { border:1px solid rgba(201,149,74,.45); background:rgba(201,149,74,.08); border-radius:11px; padding:14px; font-size:14px; color:var(--mc-fg-secondary); }
+  .alert button { margin-top:10px; min-height:44px; padding:0 14px; border-radius:9px; cursor:pointer; font-size:13px; font-weight:600; color:var(--mc-fg); background:rgba(255,255,255,.06); border:1px solid var(--lx-line-2); }
+
+  .sr { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+</style>
+</head>
+<body>
+
+<div class="bar"><div class="wrap in">
+  <span class="wm">Macro<span>Chipz</span></span>
+  <nav><a href="#">Home</a><a href="#">Inflation</a><a href="#">Jobs</a><a href="#" aria-current="page">Rates</a><a href="#">Housing</a><a href="#">Calendar</a></nav>
+</div></div>
+
+<div class="snap"><div class="wrap in"><b>Prototype</b> &middot; <span id="snapText"></span></div></div>
+
+<header class="hero"><div class="wrap in">
+  <p class="kicker">Rates</p>
+  <h1 id="heroH"></h1>
+  <p class="sub" id="heroSub"></p>
+  <div class="asof">
+    <span class="pill"><i></i><span id="asOf"></span></span>
+    <span id="src"></span>
+  </div>
+</div></header>
+
+<main>
+<section class="wrap" aria-labelledby="cv-h">
+  <h2 class="sec" id="cv-h">The curve, then and now</h2>
+  <div id="curveSlot"></div>
+</section>
+
+<section class="wrap" aria-labelledby="se-h">
+  <h2 class="sec" id="se-h">The maturity you picked</h2>
+  <div id="selSlot"></div>
+</section>
+
+<section class="wrap" aria-labelledby="mn-h">
+  <h2 class="sec" id="mn-h">What the shape does and does not mean</h2>
+  <div class="card lesson">
+    <p class="q">Reading a curve</p>
+    <h3>A curve is a price list, not a prediction.</h3>
+    <p>Each point is what investors accepted on that day for lending to the U.S. government for that long. When the line
+       tilts up, longer loans were paying more than shorter ones. When it flattens, that gap narrowed.</p>
+    <p>MacroChipz reports the shape and the dates it changed between. It does not tell you what the shape predicts.
+       <b>rates_v1.0</b> defines no state label, no forecast and no cross-domain conclusion &mdash; so this page does not
+       say a flatter curve signals a recession, and does not say the 10-year yield sets the rate on your mortgage.</p>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="dv-h">
+  <h2 class="sec" id="dv-h">What MacroChipz calculated</h2>
+  <p class="sub" style="margin:0 0 12px">Differences <b>rates_v1.0</b> computes between published yields on one shared
+     observation date. Inflation compensation can reflect inflation expectations as well as liquidity and risk premia, so
+     it is not called an inflation forecast.</p>
+  <div id="derSlot"></div>
+</section>
+
+<section class="wrap" aria-labelledby="rc-h">
+  <h2 class="sec" id="rc-h">Movements MacroChipz recorded</h2>
+  <div id="mvSlot"></div>
+</section>
+
+<section class="wrap" aria-labelledby="lim-h">
+  <h2 class="sec" id="lim-h">What this page does not have</h2>
+  <div class="card limits"><ul id="limits"></ul></div>
+</section>
+
+<section class="wrap" aria-labelledby="ev-h">
+  <h2 class="sec" id="ev-h">Evidence &amp; methodology</h2>
+  <div class="card" style="padding:4px 18px 8px">
+    <details>
+      <summary><span class="chev">&#9656;</span> Where these numbers come from</summary>
+      <dl class="dl" id="evd"></dl>
+    </details>
+    <details>
+      <summary><span class="chev">&#9656;</span> How the past curve is drawn</summary>
+      <div style="padding-bottom:14px; font-size:13.5px; color:var(--mc-fg-secondary); max-width:64ch">
+        <p style="margin:0">The dashed curve is not reconstructed. Each maturity's response carries a
+        <code>from_date</code> and a <code>from_value</code> for every session window, and those dates match across all
+        four maturities &mdash; so the four published values for one date are plotted as they arrive.</p>
+        <p style="margin:10px 0 0">The widening-or-narrowing sentence reads the 2s30s spread's own published
+        <code>from_value</code> and <code>to_value</code>. Nothing on this page subtracts one yield from another.</p>
+        <p style="margin:10px 0 0">Windows count published trading sessions, never calendar days. 21 sessions is
+        approximately, not exactly, one month, which is why no window is labelled in months.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="demo">
+    <p>Prototype only &mdash; each resource failing on its own</p>
+    <button type="button" id="dNormal" aria-pressed="true">Everything loads</button>
+    <button type="button" id="dLoading" aria-pressed="false">Everything loading</button>
+    <button type="button" id="dCurve" aria-pressed="false">Rates monitor fails</button>
+    <button type="button" id="dMv" aria-pressed="false">Movements feed fails</button>
+    <button type="button" id="dGap" aria-pressed="false">A past date is missing</button>
+  </div>
+</section>
+</main>
+
+<footer><div class="wrap in">
+  <div class="c" id="attr"></div>
+  <div class="c">Prototype for design review (#52A). Not a MacroChipz publication. Values are a dated snapshot, not live data.</div>
+</div></footer>
+
+<script src="data.js"></script>
+<script>
+(function () {
+  "use strict";
+  var D = window.RATES;
+
+  /* ---------------- formatting only ---------------- */
+  var MONTH = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  function fmtDate(iso) {
+    if (!iso) return "unavailable";
+    var p = iso.split("-");
+    return MONTH[Number(p[1]) - 1] + " " + Number(p[2]) + ", " + p[0];
+  }
+  function fmtShort(iso) {
+    if (!iso) return "—";
+    var p = iso.split("-");
+    return MONTH[Number(p[1]) - 1] + " " + Number(p[2]);
+  }
+  function bp(n) {
+    if (n === null || n === undefined) return "unavailable";
+    var s = n > 0 ? "+" : n < 0 ? "−" : "";
+    return s + Math.abs(n) + " bp";
+  }
+  function pct(v) { return v === null || v === undefined ? "—" : v.toFixed(2) + "%"; }
+  function pp(v) { return v === null || v === undefined ? "—" : v.toFixed(2); }
+
+  /* ---------------- state ---------------- */
+  var windowKey = "21_SESSIONS";      /* the window that shows both effects at once */
+  var maturity = "UST_NOMINAL_10Y";   /* the product's own headline maturity */
+  var mode = "normal";
+
+  function comparison() {
+    for (var i = 0; i < D.comparisons.length; i++) {
+      if (D.comparisons[i].window === windowKey) return D.comparisons[i];
+    }
+    return D.comparisons[0];
+  }
+
+  /* In the "a past date is missing" demo the 5Y leg of the past curve is
+     withheld, exactly as an unavailable change arrives: available:false
+     with a null value. The curve must break rather than fall to zero --
+     the null-coerced-to-zero defect #51B shipped and then fixed. */
+  function thenPoints() {
+    var c = comparison();
+    return c.points.map(function (p) {
+      if (mode === "gap" && p.series_id === "UST_NOMINAL_5Y") {
+        return { series_id: p.series_id, label: p.label, value: null, date: p.date, available: false };
+      }
+      return p;
+    });
+  }
+
+  /* ---------------- the chart ---------------- */
+  /* Percent of the board. Left and right are symmetrical and sized for
+     the HALF-WIDTH of an end point's printed value, not for an axis:
+     at 390px the board is ~330px, so 8% is ~26px against a ~15px half
+     label. That is what keeps "4.19" inside the card. */
+  var PAD_L = 8, PAD_R = 8, PAD_T = 12, PAD_B = 16;
+
+  function xFor(i, n) { return PAD_L + (i / (n - 1)) * (100 - PAD_L - PAD_R); }
+
+  function domain(now, then) {
+    var vals = [];
+    now.forEach(function (p) { if (p.value !== null && p.value !== undefined) vals.push(p.value); });
+    then.forEach(function (p) { if (p.value !== null && p.value !== undefined) vals.push(p.value); });
+    if (!vals.length) return null;
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    var pad = (hi - lo) * 0.18 || 0.1;
+    return { lo: lo - pad, hi: hi + pad };
+  }
+
+  function yFor(v, dm) { return PAD_T + (100 - PAD_T - PAD_B) * (1 - (v - dm.lo) / (dm.hi - dm.lo)); }
+
+  /* Build one polyline path, BREAKING at every missing value. */
+  function pathFor(points, dm) {
+    var out = [], run = [];
+    points.forEach(function (p, i) {
+      if (p.value === null || p.value === undefined) {
+        if (run.length > 1) out.push(run.join(" "));
+        run = [];
+        return;
+      }
+      run.push((run.length ? "L" : "M") + " " + xFor(i, points.length).toFixed(3) + " " + yFor(p.value, dm).toFixed(3));
+    });
+    if (run.length > 1) out.push(run.join(" "));
+    return out;
+  }
+
+  function renderCurve() {
+    var slot = document.getElementById("curveSlot");
+
+    if (mode === "loading") {
+      slot.innerHTML =
+        '<div class="card chartCard"><div class="skel" style="height:44px"></div>' +
+        '<div class="skel" style="height:240px;margin-top:14px"></div></div>';
+      return;
+    }
+    if (mode === "curve") {
+      slot.innerHTML =
+        '<div class="alert" role="status">Rates intelligence could not be loaded. Nothing on this page is estimated in ' +
+        'the meantime &mdash; no curve, no yields and no calculated differences are shown.' +
+        '<br><button type="button">Try again</button></div>';
+      return;
+    }
+
+    var c = comparison();
+    var now = D.today_curve;
+    var then = thenPoints();
+    var dm = domain(now, then);
+
+    var html = '<div class="card chartCard">';
+
+    /* the when-switch */
+    html += '<div class="when" role="group" aria-label="Compare today with an earlier published date">';
+    D.comparisons.forEach(function (cc) {
+      html += '<button type="button" data-w="' + cc.window + '" aria-pressed="' + (cc.window === windowKey) + '">' +
+              '<span class="w">' + cc.window_label + ' ago</span>' +
+              '<span class="d">' + fmtShort(cc.from_date) + ', ' + cc.from_date.slice(0, 4) + '</span></button>';
+    });
+    html += '</div>';
+
+    html += '<div class="plot"><div class="legend" style="margin-top:14px">' +
+            '<span class="n"><i></i>' + fmtDate(D.as_of_date) + '</span>' +
+            '<span class="t"><i></i>' + fmtDate(c.from_date) + '</span></div>';
+
+    /* the board */
+    html += '<div class="board">';
+    html += '<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">';
+    [0.25, 0.5, 0.75].forEach(function (f) {
+      var y = PAD_T + (100 - PAD_T - PAD_B) * f;
+      html += '<line x1="' + PAD_L + '" y1="' + y + '" x2="' + (100 - PAD_R) + '" y2="' + y +
+              '" stroke="rgba(255,255,255,.07)" stroke-width="1" vector-effect="non-scaling-stroke" />';
+    });
+    pathFor(then, dm).forEach(function (d) {
+      html += '<path d="' + d + '" fill="none" stroke="var(--rx-then)" stroke-width="2" stroke-dasharray="5 4" ' +
+              'stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />';
+    });
+    pathFor(now, dm).forEach(function (d) {
+      html += '<path d="' + d + '" fill="none" stroke="var(--rx-now)" stroke-width="2.5" ' +
+              'stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />';
+    });
+    html += '</svg>';
+
+    /* NO Y AXIS. Eight points are on the board and every one of them
+       carries its own printed value, so an axis label would repeat a
+       number already on screen -- and the first draft proved it does
+       worse than that: the 4.19% axis label landed exactly on the 2Y
+       "then" dot and its 4.19 label at 390px. A scale nobody needs is
+       not worth a collision. */
+
+    /* dots, labels and 44px targets -- all HTML */
+    then.forEach(function (p, i) {
+      if (p.value === null || p.value === undefined) return;
+      var x = xFor(i, then.length), y = yFor(p.value, dm);
+      html += '<span class="pt then" style="left:' + x + '%;top:' + y + '%"></span>';
+      html += '<span class="vlab then" style="left:' + x + '%;top:calc(' + y + '% + 20px)">' + p.value.toFixed(2) + '</span>';
+    });
+    now.forEach(function (p, i) {
+      var x = xFor(i, now.length), y = yFor(p.value, dm);
+      if (p.series_id === maturity) html += '<span class="ring" style="left:' + x + '%;top:' + y + '%"></span>';
+      html += '<span class="pt now" style="left:' + x + '%;top:' + y + '%"></span>';
+      html += '<span class="vlab now" style="left:' + x + '%;top:calc(' + y + '% - 24px)">' + p.value.toFixed(2) + '</span>';
+    });
+    now.forEach(function (p, i) {
+      var x = xFor(i, now.length);
+      html += '<button type="button" class="hit" data-m="' + p.series_id + '" aria-pressed="' + (p.series_id === maturity) +
+              '" style="left:' + x + '%"><span class="sr">' + p.label + ', ' + pct(p.value) + ' on ' + fmtDate(p.date) +
+              '</span></button>';
+      html += '<span class="xlab" style="left:' + x + '%">' + p.label + '</span>';
+    });
+    html += '</div></div>';
+
+    /* the reading: two clauses, both from published fields */
+    html += '<div class="reading" aria-live="polite">';
+
+    var missing = then.filter(function (p) { return p.value === null || p.value === undefined; });
+    if (missing.length) {
+      html += '<p><span class="k">Incomplete comparison</span>' +
+              'The ' + missing.map(function (p) { return p.label; }).join(" and ") + ' value for ' + fmtDate(c.from_date) +
+              ' is not available, so the dashed line breaks there rather than being drawn through an assumed value.</p>';
+    }
+
+    var ends = D.levels;
+    var twoBp = ends["UST_NOMINAL_2Y"].changes[windowKey].change_basis_points;
+    var thirtyBp = ends["UST_NOMINAL_30Y"].changes[windowKey].change_basis_points;
+    var allUp = D.today_curve.every(function (p) { return ends[p.series_id].changes[windowKey].change_basis_points > 0; });
+    var allDown = D.today_curve.every(function (p) { return ends[p.series_id].changes[windowKey].change_basis_points < 0; });
+    var levelText = allUp ? "Every maturity pays more than it did"
+                  : allDown ? "Every maturity pays less than it did"
+                  : "Some maturities pay more and some pay less than they did";
+
+    html += '<p><span class="k">Level</span>' + levelText + ' on ' + fmtDate(c.from_date) + '. The 2-year moved <b>' +
+            bp(twoBp) + '</b> and the 30-year moved <b>' + bp(thirtyBp) + '</b>.</p>';
+
+    var s = c.spread_2s30s;
+    var shape = s.change_basis_points < 0 ? "narrower" : s.change_basis_points > 0 ? "wider" : "unchanged";
+    html += '<p><span class="k">Shape</span>The gap between the 2-year and the 30-year is <b>' + shape + '</b>: it was <b>' +
+            pp(s.from_value_percentage_points) + '</b> percentage points on ' + fmtDate(s.from_date) + ' and <b>' +
+            pp(s.to_value_percentage_points) + '</b> on ' + fmtDate(s.to_date) + '. MacroChipz publishes that as <b>' +
+            bp(s.change_basis_points) + '</b> and draws no conclusion from it.</p>';
+
+    html += '</div></div>';
+    slot.innerHTML = html;
+
+    slot.querySelectorAll(".when button").forEach(function (b) {
+      b.addEventListener("click", function () { windowKey = b.getAttribute("data-w"); render(); });
+    });
+    slot.querySelectorAll(".hit").forEach(function (b) {
+      b.addEventListener("click", function () { maturity = b.getAttribute("data-m"); render(); });
+    });
+  }
+
+  /* ---------------- selected maturity ---------------- */
+  function renderSelected() {
+    var slot = document.getElementById("selSlot");
+    if (mode === "loading") { slot.innerHTML = '<div class="card skel" style="height:240px"></div>'; return; }
+    if (mode === "curve") {
+      slot.innerHTML = '<div class="alert" role="status">No maturity can be shown while the rates monitor is unavailable.</div>';
+      return;
+    }
+    var L = D.levels[maturity];
+    var h = '<div class="card sel">';
+    h += '<h3>' + L.title + '</h3>';
+    h += '<p class="big">' + pct(L.latest_value) + '</p>';
+    h += '<p class="sm">Published by the U.S. Department of the Treasury for ' + fmtDate(L.latest_date) + '.</p>';
+    h += '<div class="grid4">';
+    ["1_SESSION", "5_SESSIONS", "21_SESSIONS", "63_SESSIONS"].forEach(function (w) {
+      var ch = L.changes[w];
+      var lab = w === "1_SESSION" ? "1 session" : w.split("_")[0] + " sessions";
+      h += '<div><div class="w">' + lab + '</div><div class="v">' + (ch.available ? bp(ch.change_basis_points) : "unavailable") +
+           '</div><div class="f">' + (ch.available ? pct(ch.from_value) + " on " + fmtShort(ch.from_date) : "") + '</div></div>';
+    });
+    h += '</div>';
+
+    var hc = L.historical_context;
+    if (hc && hc.available) {
+      h += '<p class="sm" style="margin-top:16px">Among the <b>' + hc.observation_count + '</b> five-session changes ' +
+           'MacroChipz has recorded for this maturity, between ' + fmtDate(hc.history_start_date) + ' and ' +
+           fmtDate(hc.history_end_date) + ', the most negative was ' + bp(hc.minimum_change_basis_points) +
+           ' and the most positive ' + bp(hc.maximum_change_basis_points) + '.</p>';
+    }
+    h += '<details style="margin-top:14px"><summary><span class="chev">&#9656;</span> Where this number came from</summary>' +
+         '<dl class="dl"><dt>Provider</dt><dd>' + L.provenance.provider + '</dd>' +
+         '<dt>Dataset</dt><dd>' + L.provenance.dataset + '</dd>' +
+         '<dt>Series</dt><dd>' + L.provenance.series_id + '</dd>' +
+         '<dt>Observed</dt><dd>' + fmtDate(L.provenance.observation_date) + '</dd>' +
+         '<dt>Revisions</dt><dd>' + L.provenance.revision_count + '</dd></dl></details>';
+    h += '</div>';
+    slot.innerHTML = h;
+  }
+
+  /* ---------------- derived ---------------- */
+  function renderDerived() {
+    var slot = document.getElementById("derSlot");
+    if (mode === "loading") { slot.innerHTML = '<div class="card skel" style="height:180px"></div>'; return; }
+    if (mode === "curve") { slot.innerHTML = '<div class="alert" role="status">No calculated differences are shown while the rates monitor is unavailable.</div>'; return; }
+    var h = '<div class="dgrid">';
+    D.derived.spreads.forEach(function (s) {
+      h += '<div class="card drow"><span class="badge">Calculated by MacroChipz</span>' +
+           '<div class="t">' + s.title + '</div><div class="v">' + s.spread_basis_points + ' bp</div>' +
+           '<div class="i">' + pct(s.long_value) + " − " + pct(s.short_value) + ' on ' + fmtDate(s.observation_date) + '</div></div>';
+    });
+    D.derived.inflation_compensation.forEach(function (c) {
+      h += '<div class="card drow"><span class="badge">Calculated by MacroChipz</span>' +
+           '<div class="t">' + c.title + '</div><div class="v">' + c.compensation_percent.toFixed(2) + '%</div>' +
+           '<div class="i">' + pct(c.nominal_value) + " − " + pct(c.real_value) + ' on ' + fmtDate(c.observation_date) + '</div></div>';
+    });
+    h += '</div>';
+    h += '<p class="sub" style="margin-top:12px">Real yields published for the same day: ' +
+         D.real_curve.map(function (r) { return r.title.replace(" (TIPS)", "") + " " + pct(r.latest_value); }).join(" · ") + '.</p>';
+    slot.innerHTML = h;
+  }
+
+  /* ---------------- movements ---------------- */
+  function renderMovements() {
+    var slot = document.getElementById("mvSlot");
+    if (mode === "loading") { slot.innerHTML = '<div class="card skel" style="height:160px"></div>'; return; }
+    if (mode === "mv") {
+      slot.innerHTML = '<div class="alert" role="status">Recorded movements could not be loaded. The curve above is unaffected.' +
+                       '<br><button type="button">Try again</button></div>';
+      return;
+    }
+    var h = '<p class="sub" style="margin:0 0 12px">Each Treasury observation MacroChipz has processed is recorded on its ' +
+            'own. These carry no significance claim: <b>rates_v1.0</b> defines no notability threshold, so a record means ' +
+            'the movement was observed, not that it mattered.</p><ul class="mv">';
+    D.movements.forEach(function (m) {
+      var ev = m.evidence[0];
+      h += '<li class="card"><div class="top"><span class="id">' + m.concepts[0] + '</span>' +
+           '<span class="dt">observed ' + fmtDate(m.effective_period) + '</span></div>' +
+           '<div class="ev">' + (ev ? pct(ev.value) + " · " + ev.provider : "") + '</div></li>';
+    });
+    h += '</ul>';
+    slot.innerHTML = h;
+  }
+
+  /* ---------------- static ---------------- */
+  function renderStatic() {
+    document.getElementById("snapText").textContent =
+      "Snapshot of real API responses captured " + fmtDate(D._captured_at.slice(0, 10)) +
+      ". Latest published observation " + fmtDate(D.as_of_date) + ". Not live data.";
+    document.getElementById("heroH").textContent = "The whole curve moved. Its shape moved too.";
+    document.getElementById("heroSub").textContent =
+      "A Treasury yield is the annual return an investor earns by holding one. Four maturities priced on the same day " +
+      "make a curve — and comparing that curve with an earlier published day shows two different things at once: " +
+      "how much investors earn, and how much extra they earn for lending longer.";
+    document.getElementById("asOf").textContent = "Latest published: " + fmtDate(D.as_of_date);
+    document.getElementById("src").textContent = "Published by the U.S. Department of the Treasury";
+    document.getElementById("attr").textContent = D.attribution;
+
+    var cov = D.observation_coverage["UST_NOMINAL_10Y"];
+    document.getElementById("evd").innerHTML =
+      "<dt>Methodology</dt><dd>" + D.methodology_id + "</dd>" +
+      "<dt>Data basis</dt><dd>" + D.data_basis + "</dd>" +
+      "<dt>Provider</dt><dd>" + D.provider + "</dd>" +
+      "<dt>Latest observation</dt><dd>" + fmtDate(D.as_of_date) + "</dd>" +
+      "<dt>Observations held</dt><dd>" + cov.returned + " daily observations per maturity, " +
+        fmtDate(cov.first_date) + " to " + fmtDate(cov.last_date) + ", no gaps</dd>" +
+      "<dt>Maturities ingested</dt><dd>2Y, 5Y, 10Y, 30Y nominal; 5Y, 10Y real (TIPS)</dd>";
+
+    var u = D.unavailable;
+    document.getElementById("limits").innerHTML = [
+      "<b>No history of the gap itself.</b> MacroChipz stores no spread series, so the narrowing above can be shown " +
+        "between two dates but not plotted over time. Four candidate series ids were checked and all four returned 404.",
+      "<b>No recorded-result history for Rates.</b> Inflation and Jobs can replay a past conclusion; " +
+        "<code>/api/v1/monitors/rates/history</code> accepts only those two worlds today, so Rates has no equivalent.",
+      "<b>Only six maturities.</b> Treasury publishes the 1-month through 20-year as well; MacroChipz ingests 2Y, 5Y, " +
+        "10Y and 30Y nominal and 5Y and 10Y real. The curve drawn here is the part that exists, not the whole curve.",
+      "<b>Daily closes, not prices.</b> These are end-of-session par yields collected at about 3:30 PM ET, not what " +
+        "anything traded at during the day.",
+      "<b>Latest published data, not point-in-time.</b> Values include later corrections, so this is not a record of " +
+        "what was known on the day."
+    ].map(function (t) { return "<li>" + t + "</li>"; }).join("");
+  }
+
+  function render() { renderCurve(); renderSelected(); renderDerived(); renderMovements(); }
+
+  /* ---------------- demo switches ---------------- */
+  var BTN = { normal: "dNormal", loading: "dLoading", curve: "dCurve", mv: "dMv", gap: "dGap" };
+  Object.keys(BTN).forEach(function (k) {
+    document.getElementById(BTN[k]).addEventListener("click", function () {
+      mode = k;
+      Object.keys(BTN).forEach(function (j) {
+        document.getElementById(BTN[j]).setAttribute("aria-pressed", String(j === k));
+      });
+      render();
+    });
+  });
+
+  renderStatic();
+  render();
+})();
+</script>
+</body>
+</html>

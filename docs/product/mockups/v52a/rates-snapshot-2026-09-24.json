@@ -1,0 +1,5780 @@
+{
+ "_snapshot": {
+  "label": "MacroChipz #52A Rates World prototype snapshot",
+  "captured_at": "2026-09-24T16:38:02Z",
+  "captured_from": "http://localhost:8000 (local MacroChipz backend, seeded environment)",
+  "purpose": "Frozen copy of real API responses so the standalone prototype renders published values only. NOT live data. NOT a MacroChipz publication.",
+  "endpoints": [
+   "GET /api/v1/monitors/rates",
+   "GET /api/v1/series/{series_id}/observations?limit=400 (six Treasury series)",
+   "GET /api/v1/intelligence?world=rates&limit=50"
+  ],
+  "latest_published_observation_date": "2026-09-18",
+  "note": "Every number the prototype draws is copied verbatim from these responses. The prototype performs no economic arithmetic."
+ },
+ "monitors_rates": {
+  "methodology_id": "rates_v1.0",
+  "data_basis": "latest_published_data",
+  "provider": "TREASURY",
+  "attribution": "Source: U.S. Department of the Treasury (Daily Treasury Par Yield Curve Rates).",
+  "as_of_date": "2026-09-18",
+  "nominal_curve": [
+   {
+    "series_id": "UST_NOMINAL_2Y",
+    "title": "2-Year Treasury Par Yield (Nominal)",
+    "units": "Percent",
+    "kind": "SOURCE_OBSERVATION",
+    "available": true,
+    "latest_date": "2026-09-18",
+    "latest_value": 4.76,
+    "changes": [
+     {
+      "window": "1_SESSION",
+      "sessions": 1,
+      "available": true,
+      "change_basis_points": 9.0,
+      "from_date": "2026-09-17",
+      "from_value": 4.67,
+      "to_date": "2026-09-18",
+      "to_value": 4.76
+     },
+     {
+      "window": "5_SESSIONS",
+      "sessions": 5,
+      "available": true,
+      "change_basis_points": 13.0,
+      "from_date": "2026-09-11",
+      "from_value": 4.63,
+      "to_date": "2026-09-18",
+      "to_value": 4.76
+     },
+     {
+      "window": "21_SESSIONS",
+      "sessions": 21,
+      "available": true,
+      "change_basis_points": 57.0,
+      "from_date": "2026-08-19",
+      "from_value": 4.19,
+      "to_date": "2026-09-18",
+      "to_value": 4.76
+     },
+     {
+      "window": "63_SESSIONS",
+      "sessions": 63,
+      "available": true,
+      "change_basis_points": 57.0,
+      "from_date": "2026-06-18",
+      "from_value": 4.19,
+      "to_date": "2026-09-18",
+      "to_value": 4.76
+     }
+    ],
+    "historical_context": {
+     "available": true,
+     "window": "5_SESSIONS",
+     "observation_count": 113,
+     "history_start_date": "2026-04-08",
+     "history_end_date": "2026-09-18",
+     "percentile_rank": 0.831858,
+     "magnitude_percentile_rank": 0.80531,
+     "minimum_change_basis_points": -14.0,
+     "maximum_change_basis_points": 31.0
+    },
+    "provenance": {
+     "provider": "TREASURY",
+     "dataset": "daily_treasury_yield_curve",
+     "series_id": "UST_NOMINAL_2Y",
+     "observation_date": "2026-09-18",
+     "source_url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve",
+     "retrieved_at": "2026-09-19T17:04:54.461189-07:00",
+     "revision_count": 0,
+     "last_revised_at": null
+    }
+   },
+   {
+    "series_id": "UST_NOMINAL_5Y",
+    "title": "5-Year Treasury Par Yield (Nominal)",
+    "units": "Percent",
+    "kind": "SOURCE_OBSERVATION",
+    "available": true,
+    "latest_date": "2026-09-18",
+    "latest_value": 4.86,
+    "changes": [
+     {
+      "window": "1_SESSION",
+      "sessions": 1,
+      "available": true,
+      "change_basis_points": 8.0,
+      "from_date": "2026-09-17",
+      "from_value": 4.78,
+      "to_date": "2026-09-18",
+      "to_value": 4.86
+     },
+     {
+      "window": "5_SESSIONS",
+      "sessions": 5,
+      "available": true,
+      "change_basis_points": 8.0,
+      "from_date": "2026-09-11",
+      "from_value": 4.78,
+      "to_date": "2026-09-18",
+      "to_value": 4.86
+     },
+     {
+      "window": "21_SESSIONS",
+      "sessions": 21,
+      "available": true,
+      "change_basis_points": 51.0,
+      "from_date": "2026-08-19",
+      "from_value": 4.35,
+      "to_date": "2026-09-18",
+      "to_value": 4.86
+     },
+     {
+      "window": "63_SESSIONS",
+      "sessions": 63,
+      "available": true,
+      "change_basis_points": 63.0,
+      "from_date": "2026-06-18",
+      "from_value": 4.23,
+      "to_date": "2026-09-18",
+      "to_value": 4.86
+     }
+    ],
+    "historical_context": {
+     "available": true,
+     "window": "5_SESSIONS",
+     "observation_count": 113,
+     "history_start_date": "2026-04-08",
+     "history_end_date": "2026-09-18",
+     "percentile_rank": 0.681416,
+     "magnitude_percentile_rank": 0.539823,
+     "minimum_change_basis_points": -15.0,
+     "maximum_change_basis_points": 26.0
+    },
+    "provenance": {
+     "provider": "TREASURY",
+     "dataset": "daily_treasury_yield_curve",
+     "series_id": "UST_NOMINAL_5Y",
+     "observation_date": "2026-09-18",
+     "source_url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve",
+     "retrieved_at": "2026-09-19T17:04:54.461189-07:00",
+     "revision_count": 0,
+     "last_revised_at": null
+    }
+   },
+   {
+    "series_id": "UST_NOMINAL_10Y",
+    "title": "10-Year Treasury Par Yield (Nominal)",
+    "units": "Percent",
+    "kind": "SOURCE_OBSERVATION",
+    "available": true,
+    "latest_date": "2026-09-18",
+    "latest_value": 5.01,
+    "changes": [
+     {
+      "window": "1_SESSION",
+      "sessions": 1,
+      "available": true,
+      "change_basis_points": 7.0,
+      "from_date": "2026-09-17",
+      "from_value": 4.94,
+      "to_date": "2026-09-18",
+      "to_value": 5.01
+     },
+     {
+      "window": "5_SESSIONS",
+      "sessions": 5,
+      "available": true,
+      "change_basis_points": 5.0,
+      "from_date": "2026-09-11",
+      "from_value": 4.96,
+      "to_date": "2026-09-18",
+      "to_value": 5.01
+     },
+     {
+      "window": "21_SESSIONS",
+      "sessions": 21,
+      "available": true,
+      "change_basis_points": 36.0,
+      "from_date": "2026-08-19",
+      "from_value": 4.65,
+      "to_date": "2026-09-18",
+      "to_value": 5.01
+     },
+     {
+      "window": "63_SESSIONS",
+      "sessions": 63,
+      "available": true,
+      "change_basis_points": 55.0,
+      "from_date": "2026-06-18",
+      "from_value": 4.46,
+      "to_date": "2026-09-18",
+      "to_value": 5.01
+     }
+    ],
+    "historical_context": {
+     "available": true,
+     "window": "5_SESSIONS",
+     "observation_count": 113,
+     "history_start_date": "2026-04-08",
+     "history_end_date": "2026-09-18",
+     "percentile_rank": 0.566372,
+     "magnitude_percentile_rank": 0.39823,
+     "minimum_change_basis_points": -19.0,
+     "maximum_change_basis_points": 21.0
+    },
+    "provenance": {
+     "provider": "TREASURY",
+     "dataset": "daily_treasury_yield_curve",
+     "series_id": "UST_NOMINAL_10Y",
+     "observation_date": "2026-09-18",
+     "source_url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve",
+     "retrieved_at": "2026-09-19T17:04:54.461189-07:00",
+     "revision_count": 0,
+     "last_revised_at": null
+    }
+   },
+   {
+    "series_id": "UST_NOMINAL_30Y",
+    "title": "30-Year Treasury Par Yield (Nominal)",
+    "units": "Percent",
+    "kind": "SOURCE_OBSERVATION",
+    "available": true,
+    "latest_date": "2026-09-18",
+    "latest_value": 5.34,
+    "changes": [
+     {
+      "window": "1_SESSION",
+      "sessions": 1,
+      "available": true,
+      "change_basis_points": 5.0,
+      "from_date": "2026-09-17",
+      "from_value": 5.29,
+      "to_date": "2026-09-18",
+      "to_value": 5.34
+     },
+     {
+      "window": "5_SESSIONS",
+      "sessions": 5,
+      "available": true,
+      "change_basis_points": -1.0,
+      "from_date": "2026-09-11",
+      "from_value": 5.35,
+      "to_date": "2026-09-18",
+      "to_value": 5.34
+     },
+     {
+      "window": "21_SESSIONS",
+      "sessions": 21,
+      "available": true,
+      "change_basis_points": 15.0,
+      "from_date": "2026-08-19",
+      "from_value": 5.19,
+      "to_date": "2026-09-18",
+      "to_value": 5.34
+     },
+     {
+      "window": "63_SESSIONS",
+      "sessions": 63,
+      "available": true,
+      "change_basis_points": 44.0,
+      "from_date": "2026-06-18",
+      "from_value": 4.9,
+      "to_date": "2026-09-18",
+      "to_value": 5.34
+     }
+    ],
+    "historical_context": {
+     "available": true,
+     "window": "5_SESSIONS",
+     "observation_count": 113,
+     "history_start_date": "2026-04-08",
+     "history_end_date": "2026-09-18",
+     "percentile_rank": 0.327434,
+     "magnitude_percentile_rank": 0.035398,
+     "minimum_change_basis_points": -17.0,
+     "maximum_change_basis_points": 19.0
+    },
+    "provenance": {
+     "provider": "TREASURY",
+     "dataset": "daily_treasury_yield_curve",
+     "series_id": "UST_NOMINAL_30Y",
+     "observation_date": "2026-09-18",
+     "source_url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve",
+     "retrieved_at": "2026-09-19T17:04:54.461189-07:00",
+     "revision_count": 0,
+     "last_revised_at": null
+    }
+   }
+  ],
+  "real_curve": [
+   {
+    "series_id": "UST_REAL_5Y",
+    "title": "5-Year Treasury Par Real Yield (TIPS)",
+    "units": "Percent",
+    "kind": "SOURCE_OBSERVATION",
+    "available": true,
+    "latest_date": "2026-09-18",
+    "latest_value": 2.55,
+    "changes": [
+     {
+      "window": "1_SESSION",
+      "sessions": 1,
+      "available": true,
+      "change_basis_points": 9.0,
+      "from_date": "2026-09-17",
+      "from_value": 2.46,
+      "to_date": "2026-09-18",
+      "to_value": 2.55
+     },
+     {
+      "window": "5_SESSIONS",
+      "sessions": 5,
+      "available": true,
+      "change_basis_points": 17.0,
+      "from_date": "2026-09-11",
+      "from_value": 2.38,
+      "to_date": "2026-09-18",
+      "to_value": 2.55
+     },
+     {
+      "window": "21_SESSIONS",
+      "sessions": 21,
+      "available": true,
+      "change_basis_points": 48.0,
+      "from_date": "2026-08-19",
+      "from_value": 2.07,
+      "to_date": "2026-09-18",
+      "to_value": 2.55
+     },
+     {
+      "window": "63_SESSIONS",
+      "sessions": 63,
+      "available": true,
+      "change_basis_points": 59.0,
+      "from_date": "2026-06-18",
+      "from_value": 1.96,
+      "to_date": "2026-09-18",
+      "to_value": 2.55
+     }
+    ],
+    "historical_context": {
+     "available": true,
+     "window": "5_SESSIONS",
+     "observation_count": 113,
+     "history_start_date": "2026-04-08",
+     "history_end_date": "2026-09-18",
+     "percentile_rank": 0.831858,
+     "magnitude_percentile_rank": 0.831858,
+     "minimum_change_basis_points": -11.0,
+     "maximum_change_basis_points": 31.0
+    },
+    "provenance": {
+     "provider": "TREASURY",
+     "dataset": "daily_treasury_real_yield_curve",
+     "series_id": "UST_REAL_5Y",
+     "observation_date": "2026-09-18",
+     "source_url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_real_yield_curve",
+     "retrieved_at": "2026-09-19T17:06:45.423250-07:00",
+     "revision_count": 0,
+     "last_revised_at": null
+    }
+   },
+   {
+    "series_id": "UST_REAL_10Y",
+    "title": "10-Year Treasury Par Real Yield (TIPS)",
+    "units": "Percent",
+    "kind": "SOURCE_OBSERVATION",
+    "available": true,
+    "latest_date": "2026-09-18",
+    "latest_value": 2.68,
+    "changes": [
+     {
+      "window": "1_SESSION",
+      "sessions": 1,
+      "available": true,
+      "change_basis_points": 7.0,
+      "from_date": "2026-09-17",
+      "from_value": 2.61,
+      "to_date": "2026-09-18",
+      "to_value": 2.68
+     },
+     {
+      "window": "5_SESSIONS",
+      "sessions": 5,
+      "available": true,
+      "change_basis_points": 8.0,
+      "from_date": "2026-09-11",
+      "from_value": 2.6,
+      "to_date": "2026-09-18",
+      "to_value": 2.68
+     },
+     {
+      "window": "21_SESSIONS",
+      "sessions": 21,
+      "available": true,
+      "change_basis_points": 33.0,
+      "from_date": "2026-08-19",
+      "from_value": 2.35,
+      "to_date": "2026-09-18",
+      "to_value": 2.68
+     },
+     {
+      "window": "63_SESSIONS",
+      "sessions": 63,
+      "available": true,
+      "change_basis_points": 47.0,
+      "from_date": "2026-06-18",
+      "from_value": 2.21,
+      "to_date": "2026-09-18",
+      "to_value": 2.68
+     }
+    ],
+    "historical_context": {
+     "available": true,
+     "window": "5_SESSIONS",
+     "observation_count": 113,
+     "history_start_date": "2026-04-08",
+     "history_end_date": "2026-09-18",
+     "percentile_rank": 0.769912,
+     "magnitude_percentile_rank": 0.716814,
+     "minimum_change_basis_points": -12.0,
+     "maximum_change_basis_points": 22.0
+    },
+    "provenance": {
+     "provider": "TREASURY",
+     "dataset": "daily_treasury_real_yield_curve",
+     "series_id": "UST_REAL_10Y",
+     "observation_date": "2026-09-18",
+     "source_url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_real_yield_curve",
+     "retrieved_at": "2026-09-19T17:06:45.423250-07:00",
+     "revision_count": 0,
+     "last_revised_at": null
+    }
+   }
+  ],
+  "curve_spreads": [
+   {
+    "spread_id": "2s10s",
+    "title": "10-Year minus 2-Year",
+    "kind": "DERIVED",
+    "available": true,
+    "observation_date": "2026-09-18",
+    "spread_basis_points": 25.0,
+    "long_series_id": "UST_NOMINAL_10Y",
+    "short_series_id": "UST_NOMINAL_2Y",
+    "long_value": 5.01,
+    "short_value": 4.76,
+    "unavailable_reason": null,
+    "changes": [
+     {
+      "window": "1_SESSION",
+      "sessions": 1,
+      "available": true,
+      "change_basis_points": -2.0,
+      "from_date": "2026-09-17",
+      "from_value": 0.27,
+      "to_date": "2026-09-18",
+      "to_value": 0.25
+     },
+     {
+      "window": "5_SESSIONS",
+      "sessions": 5,
+      "available": true,
+      "change_basis_points": -8.0,
+      "from_date": "2026-09-11",
+      "from_value": 0.33,
+      "to_date": "2026-09-18",
+      "to_value": 0.25
+     },
+     {
+      "window": "21_SESSIONS",
+      "sessions": 21,
+      "available": true,
+      "change_basis_points": -21.0,
+      "from_date": "2026-08-19",
+      "from_value": 0.46,
+      "to_date": "2026-09-18",
+      "to_value": 0.25
+     },
+     {
+      "window": "63_SESSIONS",
+      "sessions": 63,
+      "available": true,
+      "change_basis_points": -2.0,
+      "from_date": "2026-06-18",
+      "from_value": 0.27,
+      "to_date": "2026-09-18",
+      "to_value": 0.25
+     }
+    ],
+    "historical_context": {
+     "available": true,
+     "window": "5_SESSIONS",
+     "observation_count": 113,
+     "history_start_date": "2026-04-08",
+     "history_end_date": "2026-09-18",
+     "percentile_rank": 0.079646,
+     "magnitude_percentile_rank": 0.831858,
+     "minimum_change_basis_points": -13.0,
+     "maximum_change_basis_points": 11.0
+    },
+    "provenance": {
+     "methodology_id": "rates_v1.0",
+     "calculation": "UST_NOMINAL_10Y - UST_NOMINAL_2Y, in basis points, on one exactly-shared observation date",
+     "input_series_ids": [
+      "UST_NOMINAL_10Y",
+      "UST_NOMINAL_2Y"
+     ],
+     "input_observation_date": "2026-09-18",
+     "calculated_at": "2026-09-24T16:38:02.340476Z"
+    }
+   },
+   {
+    "spread_id": "2s30s",
+    "title": "30-Year minus 2-Year",
+    "kind": "DERIVED",
+    "available": true,
+    "observation_date": "2026-09-18",
+    "spread_basis_points": 58.0,
+    "long_series_id": "UST_NOMINAL_30Y",
+    "short_series_id": "UST_NOMINAL_2Y",
+    "long_value": 5.34,
+    "short_value": 4.76,
+    "unavailable_reason": null,
+    "changes": [
+     {
+      "window": "1_SESSION",
+      "sessions": 1,
+      "available": true,
+      "change_basis_points": -4.0,
+      "from_date": "2026-09-17",
+      "from_value": 0.62,
+      "to_date": "2026-09-18",
+      "to_value": 0.58
+     },
+     {
+      "window": "5_SESSIONS",
+      "sessions": 5,
+      "available": true,
+      "change_basis_points": -14.0,
+      "from_date": "2026-09-11",
+      "from_value": 0.72,
+      "to_date": "2026-09-18",
+      "to_value": 0.58
+     },
+     {
+      "window": "21_SESSIONS",
+      "sessions": 21,
+      "available": true,
+      "change_basis_points": -42.0,
+      "from_date": "2026-08-19",
+      "from_value": 1.0,
+      "to_date": "2026-09-18",
+      "to_value": 0.58
+     },
+     {
+      "window": "63_SESSIONS",
+      "sessions": 63,
+      "available": true,
+      "change_basis_points": -13.0,
+      "from_date": "2026-06-18",
+      "from_value": 0.71,
+      "to_date": "2026-09-18",
+      "to_value": 0.58
+     }
+    ],
+    "historical_context": {
+     "available": true,
+     "window": "5_SESSIONS",
+     "observation_count": 113,
+     "history_start_date": "2026-04-08",
+     "history_end_date": "2026-09-18",
+     "percentile_rank": 0.088496,
+     "magnitude_percentile_rank": 0.867257,
+     "minimum_change_basis_points": -24.0,
+     "maximum_change_basis_points": 18.0
+    },
+    "provenance": {
+     "methodology_id": "rates_v1.0",
+     "calculation": "UST_NOMINAL_30Y - UST_NOMINAL_2Y, in basis points, on one exactly-shared observation date",
+     "input_series_ids": [
+      "UST_NOMINAL_30Y",
+      "UST_NOMINAL_2Y"
+     ],
+     "input_observation_date": "2026-09-18",
+     "calculated_at": "2026-09-24T16:38:02.340476Z"
+    }
+   }
+  ],
+  "inflation_compensation": [
+   {
+    "maturity": "5Y",
+    "title": "5-Year market-implied inflation compensation",
+    "kind": "DERIVED",
+    "available": true,
+    "observation_date": "2026-09-18",
+    "compensation_percent": 2.31,
+    "nominal_series_id": "UST_NOMINAL_5Y",
+    "real_series_id": "UST_REAL_5Y",
+    "nominal_value": 4.86,
+    "real_value": 2.55,
+    "unavailable_reason": null,
+    "changes": [
+     {
+      "window": "1_SESSION",
+      "sessions": 1,
+      "available": true,
+      "change_basis_points": -1.0,
+      "from_date": "2026-09-17",
+      "from_value": 2.32,
+      "to_date": "2026-09-18",
+      "to_value": 2.31
+     },
+     {
+      "window": "5_SESSIONS",
+      "sessions": 5,
+      "available": true,
+      "change_basis_points": -9.0,
+      "from_date": "2026-09-11",
+      "from_value": 2.4,
+      "to_date": "2026-09-18",
+      "to_value": 2.31
+     },
+     {
+      "window": "21_SESSIONS",
+      "sessions": 21,
+      "available": true,
+      "change_basis_points": 3.0,
+      "from_date": "2026-08-19",
+      "from_value": 2.28,
+      "to_date": "2026-09-18",
+      "to_value": 2.31
+     },
+     {
+      "window": "63_SESSIONS",
+      "sessions": 63,
+      "available": true,
+      "change_basis_points": 4.0,
+      "from_date": "2026-06-18",
+      "from_value": 2.27,
+      "to_date": "2026-09-18",
+      "to_value": 2.31
+     }
+    ],
+    "historical_context": {
+     "available": true,
+     "window": "5_SESSIONS",
+     "observation_count": 113,
+     "history_start_date": "2026-04-08",
+     "history_end_date": "2026-09-18",
+     "percentile_rank": 0.115044,
+     "magnitude_percentile_rank": 0.79646,
+     "minimum_change_basis_points": -17.0,
+     "maximum_change_basis_points": 13.0
+    },
+    "provenance": {
+     "methodology_id": "rates_v1.0",
+     "calculation": "UST_NOMINAL_5Y - UST_REAL_5Y, in percentage points, on one exactly-shared observation date; market-implied compensation, not an inflation forecast",
+     "input_series_ids": [
+      "UST_NOMINAL_5Y",
+      "UST_REAL_5Y"
+     ],
+     "input_observation_date": "2026-09-18",
+     "calculated_at": "2026-09-24T16:38:02.340476Z"
+    }
+   },
+   {
+    "maturity": "10Y",
+    "title": "10-Year market-implied inflation compensation",
+    "kind": "DERIVED",
+    "available": true,
+    "observation_date": "2026-09-18",
+    "compensation_percent": 2.33,
+    "nominal_series_id": "UST_NOMINAL_10Y",
+    "real_series_id": "UST_REAL_10Y",
+    "nominal_value": 5.01,
+    "real_value": 2.68,
+    "unavailable_reason": null,
+    "changes": [
+     {
+      "window": "1_SESSION",
+      "sessions": 1,
+      "available": true,
+      "change_basis_points": 0.0,
+      "from_date": "2026-09-17",
+      "from_value": 2.33,
+      "to_date": "2026-09-18",
+      "to_value": 2.33
+     },
+     {
+      "window": "5_SESSIONS",
+      "sessions": 5,
+      "available": true,
+      "change_basis_points": -3.0,
+      "from_date": "2026-09-11",
+      "from_value": 2.36,
+      "to_date": "2026-09-18",
+      "to_value": 2.33
+     },
+     {
+      "window": "21_SESSIONS",
+      "sessions": 21,
+      "available": true,
+      "change_basis_points": 3.0,
+      "from_date": "2026-08-19",
+      "from_value": 2.3,
+      "to_date": "2026-09-18",
+      "to_value": 2.33
+     },
+     {
+      "window": "63_SESSIONS",
+      "sessions": 63,
+      "available": true,
+      "change_basis_points": 8.0,
+      "from_date": "2026-06-18",
+      "from_value": 2.25,
+      "to_date": "2026-09-18",
+      "to_value": 2.33
+     }
+    ],
+    "historical_context": {
+     "available": true,
+     "window": "5_SESSIONS",
+     "observation_count": 113,
+     "history_start_date": "2026-04-08",
+     "history_end_date": "2026-09-18",
+     "percentile_rank": 0.212389,
+     "magnitude_percentile_rank": 0.433628,
+     "minimum_change_basis_points": -11.0,
+     "maximum_change_basis_points": 10.0
+    },
+    "provenance": {
+     "methodology_id": "rates_v1.0",
+     "calculation": "UST_NOMINAL_10Y - UST_REAL_10Y, in percentage points, on one exactly-shared observation date; market-implied compensation, not an inflation forecast",
+     "input_series_ids": [
+      "UST_NOMINAL_10Y",
+      "UST_REAL_10Y"
+     ],
+     "input_observation_date": "2026-09-18",
+     "calculated_at": "2026-09-24T16:38:02.340476Z"
+    }
+   }
+  ]
+ },
+ "series_observations": {
+  "UST_NOMINAL_2Y": {
+   "series_id": "UST_NOMINAL_2Y",
+   "title": "2-Year Treasury Par Yield (Nominal)",
+   "units": "Percent",
+   "source": "TREASURY",
+   "observations": [
+    {
+     "date": "2026-04-01",
+     "value": 3.81
+    },
+    {
+     "date": "2026-04-02",
+     "value": 3.79
+    },
+    {
+     "date": "2026-04-03",
+     "value": 3.84
+    },
+    {
+     "date": "2026-04-06",
+     "value": 3.84
+    },
+    {
+     "date": "2026-04-07",
+     "value": 3.81
+    },
+    {
+     "date": "2026-04-08",
+     "value": 3.79
+    },
+    {
+     "date": "2026-04-09",
+     "value": 3.78
+    },
+    {
+     "date": "2026-04-10",
+     "value": 3.81
+    },
+    {
+     "date": "2026-04-13",
+     "value": 3.78
+    },
+    {
+     "date": "2026-04-14",
+     "value": 3.76
+    },
+    {
+     "date": "2026-04-15",
+     "value": 3.76
+    },
+    {
+     "date": "2026-04-16",
+     "value": 3.78
+    },
+    {
+     "date": "2026-04-17",
+     "value": 3.71
+    },
+    {
+     "date": "2026-04-20",
+     "value": 3.72
+    },
+    {
+     "date": "2026-04-21",
+     "value": 3.78
+    },
+    {
+     "date": "2026-04-22",
+     "value": 3.79
+    },
+    {
+     "date": "2026-04-23",
+     "value": 3.83
+    },
+    {
+     "date": "2026-04-24",
+     "value": 3.78
+    },
+    {
+     "date": "2026-04-27",
+     "value": 3.78
+    },
+    {
+     "date": "2026-04-28",
+     "value": 3.84
+    },
+    {
+     "date": "2026-04-29",
+     "value": 3.92
+    },
+    {
+     "date": "2026-04-30",
+     "value": 3.88
+    },
+    {
+     "date": "2026-05-01",
+     "value": 3.88
+    },
+    {
+     "date": "2026-05-04",
+     "value": 3.95
+    },
+    {
+     "date": "2026-05-05",
+     "value": 3.93
+    },
+    {
+     "date": "2026-05-06",
+     "value": 3.87
+    },
+    {
+     "date": "2026-05-07",
+     "value": 3.92
+    },
+    {
+     "date": "2026-05-08",
+     "value": 3.9
+    },
+    {
+     "date": "2026-05-11",
+     "value": 3.95
+    },
+    {
+     "date": "2026-05-12",
+     "value": 4.0
+    },
+    {
+     "date": "2026-05-13",
+     "value": 3.98
+    },
+    {
+     "date": "2026-05-14",
+     "value": 4.0
+    },
+    {
+     "date": "2026-05-15",
+     "value": 4.09
+    },
+    {
+     "date": "2026-05-18",
+     "value": 4.07
+    },
+    {
+     "date": "2026-05-19",
+     "value": 4.13
+    },
+    {
+     "date": "2026-05-20",
+     "value": 4.04
+    },
+    {
+     "date": "2026-05-21",
+     "value": 4.08
+    },
+    {
+     "date": "2026-05-22",
+     "value": 4.13
+    },
+    {
+     "date": "2026-05-26",
+     "value": 4.01
+    },
+    {
+     "date": "2026-05-27",
+     "value": 4.0
+    },
+    {
+     "date": "2026-05-28",
+     "value": 3.99
+    },
+    {
+     "date": "2026-05-29",
+     "value": 3.98
+    },
+    {
+     "date": "2026-06-01",
+     "value": 4.05
+    },
+    {
+     "date": "2026-06-02",
+     "value": 4.05
+    },
+    {
+     "date": "2026-06-03",
+     "value": 4.08
+    },
+    {
+     "date": "2026-06-04",
+     "value": 4.05
+    },
+    {
+     "date": "2026-06-05",
+     "value": 4.17
+    },
+    {
+     "date": "2026-06-08",
+     "value": 4.15
+    },
+    {
+     "date": "2026-06-09",
+     "value": 4.13
+    },
+    {
+     "date": "2026-06-10",
+     "value": 4.13
+    },
+    {
+     "date": "2026-06-11",
+     "value": 4.05
+    },
+    {
+     "date": "2026-06-12",
+     "value": 4.09
+    },
+    {
+     "date": "2026-06-15",
+     "value": 4.07
+    },
+    {
+     "date": "2026-06-16",
+     "value": 4.05
+    },
+    {
+     "date": "2026-06-17",
+     "value": 4.2
+    },
+    {
+     "date": "2026-06-18",
+     "value": 4.19
+    },
+    {
+     "date": "2026-06-22",
+     "value": 4.24
+    },
+    {
+     "date": "2026-06-23",
+     "value": 4.16
+    },
+    {
+     "date": "2026-06-24",
+     "value": 4.11
+    },
+    {
+     "date": "2026-06-25",
+     "value": 4.09
+    },
+    {
+     "date": "2026-06-26",
+     "value": 4.07
+    },
+    {
+     "date": "2026-06-29",
+     "value": 4.1
+    },
+    {
+     "date": "2026-06-30",
+     "value": 4.14
+    },
+    {
+     "date": "2026-07-01",
+     "value": 4.17
+    },
+    {
+     "date": "2026-07-02",
+     "value": 4.14
+    },
+    {
+     "date": "2026-07-06",
+     "value": 4.13
+    },
+    {
+     "date": "2026-07-07",
+     "value": 4.19
+    },
+    {
+     "date": "2026-07-08",
+     "value": 4.21
+    },
+    {
+     "date": "2026-07-09",
+     "value": 4.16
+    },
+    {
+     "date": "2026-07-10",
+     "value": 4.21
+    },
+    {
+     "date": "2026-07-13",
+     "value": 4.26
+    },
+    {
+     "date": "2026-07-14",
+     "value": 4.18
+    },
+    {
+     "date": "2026-07-15",
+     "value": 4.13
+    },
+    {
+     "date": "2026-07-16",
+     "value": 4.16
+    },
+    {
+     "date": "2026-07-17",
+     "value": 4.18
+    },
+    {
+     "date": "2026-07-20",
+     "value": 4.21
+    },
+    {
+     "date": "2026-07-21",
+     "value": 4.26
+    },
+    {
+     "date": "2026-07-22",
+     "value": 4.31
+    },
+    {
+     "date": "2026-07-23",
+     "value": 4.37
+    },
+    {
+     "date": "2026-07-24",
+     "value": 4.33
+    },
+    {
+     "date": "2026-07-27",
+     "value": 4.31
+    },
+    {
+     "date": "2026-07-28",
+     "value": 4.26
+    },
+    {
+     "date": "2026-07-29",
+     "value": 4.22
+    },
+    {
+     "date": "2026-07-30",
+     "value": 4.23
+    },
+    {
+     "date": "2026-07-31",
+     "value": 4.28
+    },
+    {
+     "date": "2026-08-03",
+     "value": 4.25
+    },
+    {
+     "date": "2026-08-04",
+     "value": 4.2
+    },
+    {
+     "date": "2026-08-05",
+     "value": 4.18
+    },
+    {
+     "date": "2026-08-06",
+     "value": 4.25
+    },
+    {
+     "date": "2026-08-07",
+     "value": 4.19
+    },
+    {
+     "date": "2026-08-10",
+     "value": 4.25
+    },
+    {
+     "date": "2026-08-11",
+     "value": 4.22
+    },
+    {
+     "date": "2026-08-12",
+     "value": 4.2
+    },
+    {
+     "date": "2026-08-13",
+     "value": 4.15
+    },
+    {
+     "date": "2026-08-14",
+     "value": 4.17
+    },
+    {
+     "date": "2026-08-17",
+     "value": 4.19
+    },
+    {
+     "date": "2026-08-18",
+     "value": 4.19
+    },
+    {
+     "date": "2026-08-19",
+     "value": 4.19
+    },
+    {
+     "date": "2026-08-20",
+     "value": 4.19
+    },
+    {
+     "date": "2026-08-21",
+     "value": 4.24
+    },
+    {
+     "date": "2026-08-24",
+     "value": 4.24
+    },
+    {
+     "date": "2026-08-25",
+     "value": 4.17
+    },
+    {
+     "date": "2026-08-26",
+     "value": 4.19
+    },
+    {
+     "date": "2026-08-27",
+     "value": 4.2
+    },
+    {
+     "date": "2026-08-28",
+     "value": 4.34
+    },
+    {
+     "date": "2026-08-31",
+     "value": 4.34
+    },
+    {
+     "date": "2026-09-01",
+     "value": 4.39
+    },
+    {
+     "date": "2026-09-02",
+     "value": 4.39
+    },
+    {
+     "date": "2026-09-03",
+     "value": 4.34
+    },
+    {
+     "date": "2026-09-04",
+     "value": 4.37
+    },
+    {
+     "date": "2026-09-08",
+     "value": 4.39
+    },
+    {
+     "date": "2026-09-09",
+     "value": 4.43
+    },
+    {
+     "date": "2026-09-10",
+     "value": 4.56
+    },
+    {
+     "date": "2026-09-11",
+     "value": 4.63
+    },
+    {
+     "date": "2026-09-14",
+     "value": 4.65
+    },
+    {
+     "date": "2026-09-15",
+     "value": 4.67
+    },
+    {
+     "date": "2026-09-16",
+     "value": 4.74
+    },
+    {
+     "date": "2026-09-17",
+     "value": 4.67
+    },
+    {
+     "date": "2026-09-18",
+     "value": 4.76
+    }
+   ],
+   "pagination": {
+    "limit": 400,
+    "offset": 0,
+    "returned": 119,
+    "total": 119
+   }
+  },
+  "UST_NOMINAL_5Y": {
+   "series_id": "UST_NOMINAL_5Y",
+   "title": "5-Year Treasury Par Yield (Nominal)",
+   "units": "Percent",
+   "source": "TREASURY",
+   "observations": [
+    {
+     "date": "2026-04-01",
+     "value": 3.97
+    },
+    {
+     "date": "2026-04-02",
+     "value": 3.94
+    },
+    {
+     "date": "2026-04-03",
+     "value": 3.99
+    },
+    {
+     "date": "2026-04-06",
+     "value": 3.98
+    },
+    {
+     "date": "2026-04-07",
+     "value": 3.95
+    },
+    {
+     "date": "2026-04-08",
+     "value": 3.92
+    },
+    {
+     "date": "2026-04-09",
+     "value": 3.91
+    },
+    {
+     "date": "2026-04-10",
+     "value": 3.94
+    },
+    {
+     "date": "2026-04-13",
+     "value": 3.92
+    },
+    {
+     "date": "2026-04-14",
+     "value": 3.87
+    },
+    {
+     "date": "2026-04-15",
+     "value": 3.9
+    },
+    {
+     "date": "2026-04-16",
+     "value": 3.91
+    },
+    {
+     "date": "2026-04-17",
+     "value": 3.84
+    },
+    {
+     "date": "2026-04-20",
+     "value": 3.86
+    },
+    {
+     "date": "2026-04-21",
+     "value": 3.91
+    },
+    {
+     "date": "2026-04-22",
+     "value": 3.91
+    },
+    {
+     "date": "2026-04-23",
+     "value": 3.96
+    },
+    {
+     "date": "2026-04-24",
+     "value": 3.92
+    },
+    {
+     "date": "2026-04-27",
+     "value": 3.94
+    },
+    {
+     "date": "2026-04-28",
+     "value": 3.97
+    },
+    {
+     "date": "2026-04-29",
+     "value": 4.05
+    },
+    {
+     "date": "2026-04-30",
+     "value": 4.02
+    },
+    {
+     "date": "2026-05-01",
+     "value": 4.02
+    },
+    {
+     "date": "2026-05-04",
+     "value": 4.08
+    },
+    {
+     "date": "2026-05-05",
+     "value": 4.08
+    },
+    {
+     "date": "2026-05-06",
+     "value": 3.99
+    },
+    {
+     "date": "2026-05-07",
+     "value": 4.04
+    },
+    {
+     "date": "2026-05-08",
+     "value": 4.02
+    },
+    {
+     "date": "2026-05-11",
+     "value": 4.07
+    },
+    {
+     "date": "2026-05-12",
+     "value": 4.12
+    },
+    {
+     "date": "2026-05-13",
+     "value": 4.12
+    },
+    {
+     "date": "2026-05-14",
+     "value": 4.13
+    },
+    {
+     "date": "2026-05-15",
+     "value": 4.26
+    },
+    {
+     "date": "2026-05-18",
+     "value": 4.27
+    },
+    {
+     "date": "2026-05-19",
+     "value": 4.32
+    },
+    {
+     "date": "2026-05-20",
+     "value": 4.22
+    },
+    {
+     "date": "2026-05-21",
+     "value": 4.25
+    },
+    {
+     "date": "2026-05-22",
+     "value": 4.27
+    },
+    {
+     "date": "2026-05-26",
+     "value": 4.19
+    },
+    {
+     "date": "2026-05-27",
+     "value": 4.17
+    },
+    {
+     "date": "2026-05-28",
+     "value": 4.15
+    },
+    {
+     "date": "2026-05-29",
+     "value": 4.13
+    },
+    {
+     "date": "2026-06-01",
+     "value": 4.18
+    },
+    {
+     "date": "2026-06-02",
+     "value": 4.17
+    },
+    {
+     "date": "2026-06-03",
+     "value": 4.21
+    },
+    {
+     "date": "2026-06-04",
+     "value": 4.18
+    },
+    {
+     "date": "2026-06-05",
+     "value": 4.29
+    },
+    {
+     "date": "2026-06-08",
+     "value": 4.29
+    },
+    {
+     "date": "2026-06-09",
+     "value": 4.26
+    },
+    {
+     "date": "2026-06-10",
+     "value": 4.27
+    },
+    {
+     "date": "2026-06-11",
+     "value": 4.18
+    },
+    {
+     "date": "2026-06-12",
+     "value": 4.21
+    },
+    {
+     "date": "2026-06-15",
+     "value": 4.18
+    },
+    {
+     "date": "2026-06-16",
+     "value": 4.16
+    },
+    {
+     "date": "2026-06-17",
+     "value": 4.27
+    },
+    {
+     "date": "2026-06-18",
+     "value": 4.23
+    },
+    {
+     "date": "2026-06-22",
+     "value": 4.29
+    },
+    {
+     "date": "2026-06-23",
+     "value": 4.27
+    },
+    {
+     "date": "2026-06-24",
+     "value": 4.17
+    },
+    {
+     "date": "2026-06-25",
+     "value": 4.15
+    },
+    {
+     "date": "2026-06-26",
+     "value": 4.12
+    },
+    {
+     "date": "2026-06-29",
+     "value": 4.14
+    },
+    {
+     "date": "2026-06-30",
+     "value": 4.19
+    },
+    {
+     "date": "2026-07-01",
+     "value": 4.24
+    },
+    {
+     "date": "2026-07-02",
+     "value": 4.23
+    },
+    {
+     "date": "2026-07-06",
+     "value": 4.21
+    },
+    {
+     "date": "2026-07-07",
+     "value": 4.27
+    },
+    {
+     "date": "2026-07-08",
+     "value": 4.31
+    },
+    {
+     "date": "2026-07-09",
+     "value": 4.27
+    },
+    {
+     "date": "2026-07-10",
+     "value": 4.3
+    },
+    {
+     "date": "2026-07-13",
+     "value": 4.37
+    },
+    {
+     "date": "2026-07-14",
+     "value": 4.31
+    },
+    {
+     "date": "2026-07-15",
+     "value": 4.26
+    },
+    {
+     "date": "2026-07-16",
+     "value": 4.28
+    },
+    {
+     "date": "2026-07-17",
+     "value": 4.28
+    },
+    {
+     "date": "2026-07-20",
+     "value": 4.33
+    },
+    {
+     "date": "2026-07-21",
+     "value": 4.37
+    },
+    {
+     "date": "2026-07-22",
+     "value": 4.41
+    },
+    {
+     "date": "2026-07-23",
+     "value": 4.46
+    },
+    {
+     "date": "2026-07-24",
+     "value": 4.43
+    },
+    {
+     "date": "2026-07-27",
+     "value": 4.4
+    },
+    {
+     "date": "2026-07-28",
+     "value": 4.35
+    },
+    {
+     "date": "2026-07-29",
+     "value": 4.37
+    },
+    {
+     "date": "2026-07-30",
+     "value": 4.38
+    },
+    {
+     "date": "2026-07-31",
+     "value": 4.45
+    },
+    {
+     "date": "2026-08-03",
+     "value": 4.4
+    },
+    {
+     "date": "2026-08-04",
+     "value": 4.33
+    },
+    {
+     "date": "2026-08-05",
+     "value": 4.33
+    },
+    {
+     "date": "2026-08-06",
+     "value": 4.4
+    },
+    {
+     "date": "2026-08-07",
+     "value": 4.35
+    },
+    {
+     "date": "2026-08-10",
+     "value": 4.41
+    },
+    {
+     "date": "2026-08-11",
+     "value": 4.39
+    },
+    {
+     "date": "2026-08-12",
+     "value": 4.38
+    },
+    {
+     "date": "2026-08-13",
+     "value": 4.32
+    },
+    {
+     "date": "2026-08-14",
+     "value": 4.36
+    },
+    {
+     "date": "2026-08-17",
+     "value": 4.38
+    },
+    {
+     "date": "2026-08-18",
+     "value": 4.37
+    },
+    {
+     "date": "2026-08-19",
+     "value": 4.35
+    },
+    {
+     "date": "2026-08-20",
+     "value": 4.39
+    },
+    {
+     "date": "2026-08-21",
+     "value": 4.43
+    },
+    {
+     "date": "2026-08-24",
+     "value": 4.41
+    },
+    {
+     "date": "2026-08-25",
+     "value": 4.35
+    },
+    {
+     "date": "2026-08-26",
+     "value": 4.37
+    },
+    {
+     "date": "2026-08-27",
+     "value": 4.38
+    },
+    {
+     "date": "2026-08-28",
+     "value": 4.48
+    },
+    {
+     "date": "2026-08-31",
+     "value": 4.49
+    },
+    {
+     "date": "2026-09-01",
+     "value": 4.55
+    },
+    {
+     "date": "2026-09-02",
+     "value": 4.54
+    },
+    {
+     "date": "2026-09-03",
+     "value": 4.52
+    },
+    {
+     "date": "2026-09-04",
+     "value": 4.54
+    },
+    {
+     "date": "2026-09-08",
+     "value": 4.57
+    },
+    {
+     "date": "2026-09-09",
+     "value": 4.61
+    },
+    {
+     "date": "2026-09-10",
+     "value": 4.75
+    },
+    {
+     "date": "2026-09-11",
+     "value": 4.78
+    },
+    {
+     "date": "2026-09-14",
+     "value": 4.8
+    },
+    {
+     "date": "2026-09-15",
+     "value": 4.83
+    },
+    {
+     "date": "2026-09-16",
+     "value": 4.86
+    },
+    {
+     "date": "2026-09-17",
+     "value": 4.78
+    },
+    {
+     "date": "2026-09-18",
+     "value": 4.86
+    }
+   ],
+   "pagination": {
+    "limit": 400,
+    "offset": 0,
+    "returned": 119,
+    "total": 119
+   }
+  },
+  "UST_NOMINAL_10Y": {
+   "series_id": "UST_NOMINAL_10Y",
+   "title": "10-Year Treasury Par Yield (Nominal)",
+   "units": "Percent",
+   "source": "TREASURY",
+   "observations": [
+    {
+     "date": "2026-04-01",
+     "value": 4.33
+    },
+    {
+     "date": "2026-04-02",
+     "value": 4.31
+    },
+    {
+     "date": "2026-04-03",
+     "value": 4.35
+    },
+    {
+     "date": "2026-04-06",
+     "value": 4.34
+    },
+    {
+     "date": "2026-04-07",
+     "value": 4.33
+    },
+    {
+     "date": "2026-04-08",
+     "value": 4.29
+    },
+    {
+     "date": "2026-04-09",
+     "value": 4.29
+    },
+    {
+     "date": "2026-04-10",
+     "value": 4.31
+    },
+    {
+     "date": "2026-04-13",
+     "value": 4.3
+    },
+    {
+     "date": "2026-04-14",
+     "value": 4.26
+    },
+    {
+     "date": "2026-04-15",
+     "value": 4.29
+    },
+    {
+     "date": "2026-04-16",
+     "value": 4.32
+    },
+    {
+     "date": "2026-04-17",
+     "value": 4.26
+    },
+    {
+     "date": "2026-04-20",
+     "value": 4.26
+    },
+    {
+     "date": "2026-04-21",
+     "value": 4.3
+    },
+    {
+     "date": "2026-04-22",
+     "value": 4.3
+    },
+    {
+     "date": "2026-04-23",
+     "value": 4.34
+    },
+    {
+     "date": "2026-04-24",
+     "value": 4.31
+    },
+    {
+     "date": "2026-04-27",
+     "value": 4.35
+    },
+    {
+     "date": "2026-04-28",
+     "value": 4.36
+    },
+    {
+     "date": "2026-04-29",
+     "value": 4.42
+    },
+    {
+     "date": "2026-04-30",
+     "value": 4.4
+    },
+    {
+     "date": "2026-05-01",
+     "value": 4.39
+    },
+    {
+     "date": "2026-05-04",
+     "value": 4.45
+    },
+    {
+     "date": "2026-05-05",
+     "value": 4.43
+    },
+    {
+     "date": "2026-05-06",
+     "value": 4.36
+    },
+    {
+     "date": "2026-05-07",
+     "value": 4.41
+    },
+    {
+     "date": "2026-05-08",
+     "value": 4.38
+    },
+    {
+     "date": "2026-05-11",
+     "value": 4.42
+    },
+    {
+     "date": "2026-05-12",
+     "value": 4.46
+    },
+    {
+     "date": "2026-05-13",
+     "value": 4.46
+    },
+    {
+     "date": "2026-05-14",
+     "value": 4.47
+    },
+    {
+     "date": "2026-05-15",
+     "value": 4.59
+    },
+    {
+     "date": "2026-05-18",
+     "value": 4.61
+    },
+    {
+     "date": "2026-05-19",
+     "value": 4.67
+    },
+    {
+     "date": "2026-05-20",
+     "value": 4.57
+    },
+    {
+     "date": "2026-05-21",
+     "value": 4.57
+    },
+    {
+     "date": "2026-05-22",
+     "value": 4.56
+    },
+    {
+     "date": "2026-05-26",
+     "value": 4.5
+    },
+    {
+     "date": "2026-05-27",
+     "value": 4.48
+    },
+    {
+     "date": "2026-05-28",
+     "value": 4.45
+    },
+    {
+     "date": "2026-05-29",
+     "value": 4.45
+    },
+    {
+     "date": "2026-06-01",
+     "value": 4.47
+    },
+    {
+     "date": "2026-06-02",
+     "value": 4.46
+    },
+    {
+     "date": "2026-06-03",
+     "value": 4.49
+    },
+    {
+     "date": "2026-06-04",
+     "value": 4.47
+    },
+    {
+     "date": "2026-06-05",
+     "value": 4.55
+    },
+    {
+     "date": "2026-06-08",
+     "value": 4.56
+    },
+    {
+     "date": "2026-06-09",
+     "value": 4.53
+    },
+    {
+     "date": "2026-06-10",
+     "value": 4.55
+    },
+    {
+     "date": "2026-06-11",
+     "value": 4.45
+    },
+    {
+     "date": "2026-06-12",
+     "value": 4.48
+    },
+    {
+     "date": "2026-06-15",
+     "value": 4.47
+    },
+    {
+     "date": "2026-06-16",
+     "value": 4.43
+    },
+    {
+     "date": "2026-06-17",
+     "value": 4.49
+    },
+    {
+     "date": "2026-06-18",
+     "value": 4.46
+    },
+    {
+     "date": "2026-06-22",
+     "value": 4.51
+    },
+    {
+     "date": "2026-06-23",
+     "value": 4.5
+    },
+    {
+     "date": "2026-06-24",
+     "value": 4.41
+    },
+    {
+     "date": "2026-06-25",
+     "value": 4.4
+    },
+    {
+     "date": "2026-06-26",
+     "value": 4.38
+    },
+    {
+     "date": "2026-06-29",
+     "value": 4.38
+    },
+    {
+     "date": "2026-06-30",
+     "value": 4.44
+    },
+    {
+     "date": "2026-07-01",
+     "value": 4.48
+    },
+    {
+     "date": "2026-07-02",
+     "value": 4.49
+    },
+    {
+     "date": "2026-07-06",
+     "value": 4.48
+    },
+    {
+     "date": "2026-07-07",
+     "value": 4.55
+    },
+    {
+     "date": "2026-07-08",
+     "value": 4.56
+    },
+    {
+     "date": "2026-07-09",
+     "value": 4.54
+    },
+    {
+     "date": "2026-07-10",
+     "value": 4.56
+    },
+    {
+     "date": "2026-07-13",
+     "value": 4.62
+    },
+    {
+     "date": "2026-07-14",
+     "value": 4.58
+    },
+    {
+     "date": "2026-07-15",
+     "value": 4.55
+    },
+    {
+     "date": "2026-07-16",
+     "value": 4.57
+    },
+    {
+     "date": "2026-07-17",
+     "value": 4.55
+    },
+    {
+     "date": "2026-07-20",
+     "value": 4.6
+    },
+    {
+     "date": "2026-07-21",
+     "value": 4.63
+    },
+    {
+     "date": "2026-07-22",
+     "value": 4.67
+    },
+    {
+     "date": "2026-07-23",
+     "value": 4.71
+    },
+    {
+     "date": "2026-07-24",
+     "value": 4.69
+    },
+    {
+     "date": "2026-07-27",
+     "value": 4.65
+    },
+    {
+     "date": "2026-07-28",
+     "value": 4.61
+    },
+    {
+     "date": "2026-07-29",
+     "value": 4.67
+    },
+    {
+     "date": "2026-07-30",
+     "value": 4.68
+    },
+    {
+     "date": "2026-07-31",
+     "value": 4.75
+    },
+    {
+     "date": "2026-08-03",
+     "value": 4.7
+    },
+    {
+     "date": "2026-08-04",
+     "value": 4.63
+    },
+    {
+     "date": "2026-08-05",
+     "value": 4.63
+    },
+    {
+     "date": "2026-08-06",
+     "value": 4.69
+    },
+    {
+     "date": "2026-08-07",
+     "value": 4.65
+    },
+    {
+     "date": "2026-08-10",
+     "value": 4.72
+    },
+    {
+     "date": "2026-08-11",
+     "value": 4.7
+    },
+    {
+     "date": "2026-08-12",
+     "value": 4.68
+    },
+    {
+     "date": "2026-08-13",
+     "value": 4.63
+    },
+    {
+     "date": "2026-08-14",
+     "value": 4.68
+    },
+    {
+     "date": "2026-08-17",
+     "value": 4.72
+    },
+    {
+     "date": "2026-08-18",
+     "value": 4.71
+    },
+    {
+     "date": "2026-08-19",
+     "value": 4.65
+    },
+    {
+     "date": "2026-08-20",
+     "value": 4.69
+    },
+    {
+     "date": "2026-08-21",
+     "value": 4.74
+    },
+    {
+     "date": "2026-08-24",
+     "value": 4.7
+    },
+    {
+     "date": "2026-08-25",
+     "value": 4.64
+    },
+    {
+     "date": "2026-08-26",
+     "value": 4.66
+    },
+    {
+     "date": "2026-08-27",
+     "value": 4.67
+    },
+    {
+     "date": "2026-08-28",
+     "value": 4.73
+    },
+    {
+     "date": "2026-08-31",
+     "value": 4.75
+    },
+    {
+     "date": "2026-09-01",
+     "value": 4.79
+    },
+    {
+     "date": "2026-09-02",
+     "value": 4.79
+    },
+    {
+     "date": "2026-09-03",
+     "value": 4.77
+    },
+    {
+     "date": "2026-09-04",
+     "value": 4.78
+    },
+    {
+     "date": "2026-09-08",
+     "value": 4.8
+    },
+    {
+     "date": "2026-09-09",
+     "value": 4.83
+    },
+    {
+     "date": "2026-09-10",
+     "value": 4.95
+    },
+    {
+     "date": "2026-09-11",
+     "value": 4.96
+    },
+    {
+     "date": "2026-09-14",
+     "value": 4.97
+    },
+    {
+     "date": "2026-09-15",
+     "value": 5.0
+    },
+    {
+     "date": "2026-09-16",
+     "value": 5.01
+    },
+    {
+     "date": "2026-09-17",
+     "value": 4.94
+    },
+    {
+     "date": "2026-09-18",
+     "value": 5.01
+    }
+   ],
+   "pagination": {
+    "limit": 400,
+    "offset": 0,
+    "returned": 119,
+    "total": 119
+   }
+  },
+  "UST_NOMINAL_30Y": {
+   "series_id": "UST_NOMINAL_30Y",
+   "title": "30-Year Treasury Par Yield (Nominal)",
+   "units": "Percent",
+   "source": "TREASURY",
+   "observations": [
+    {
+     "date": "2026-04-01",
+     "value": 4.91
+    },
+    {
+     "date": "2026-04-02",
+     "value": 4.88
+    },
+    {
+     "date": "2026-04-03",
+     "value": 4.91
+    },
+    {
+     "date": "2026-04-06",
+     "value": 4.89
+    },
+    {
+     "date": "2026-04-07",
+     "value": 4.9
+    },
+    {
+     "date": "2026-04-08",
+     "value": 4.89
+    },
+    {
+     "date": "2026-04-09",
+     "value": 4.9
+    },
+    {
+     "date": "2026-04-10",
+     "value": 4.91
+    },
+    {
+     "date": "2026-04-13",
+     "value": 4.9
+    },
+    {
+     "date": "2026-04-14",
+     "value": 4.87
+    },
+    {
+     "date": "2026-04-15",
+     "value": 4.89
+    },
+    {
+     "date": "2026-04-16",
+     "value": 4.93
+    },
+    {
+     "date": "2026-04-17",
+     "value": 4.88
+    },
+    {
+     "date": "2026-04-20",
+     "value": 4.88
+    },
+    {
+     "date": "2026-04-21",
+     "value": 4.89
+    },
+    {
+     "date": "2026-04-22",
+     "value": 4.9
+    },
+    {
+     "date": "2026-04-23",
+     "value": 4.92
+    },
+    {
+     "date": "2026-04-24",
+     "value": 4.91
+    },
+    {
+     "date": "2026-04-27",
+     "value": 4.94
+    },
+    {
+     "date": "2026-04-28",
+     "value": 4.94
+    },
+    {
+     "date": "2026-04-29",
+     "value": 4.98
+    },
+    {
+     "date": "2026-04-30",
+     "value": 4.98
+    },
+    {
+     "date": "2026-05-01",
+     "value": 4.97
+    },
+    {
+     "date": "2026-05-04",
+     "value": 5.02
+    },
+    {
+     "date": "2026-05-05",
+     "value": 4.98
+    },
+    {
+     "date": "2026-05-06",
+     "value": 4.94
+    },
+    {
+     "date": "2026-05-07",
+     "value": 4.97
+    },
+    {
+     "date": "2026-05-08",
+     "value": 4.95
+    },
+    {
+     "date": "2026-05-11",
+     "value": 4.98
+    },
+    {
+     "date": "2026-05-12",
+     "value": 5.03
+    },
+    {
+     "date": "2026-05-13",
+     "value": 5.03
+    },
+    {
+     "date": "2026-05-14",
+     "value": 5.02
+    },
+    {
+     "date": "2026-05-15",
+     "value": 5.12
+    },
+    {
+     "date": "2026-05-18",
+     "value": 5.14
+    },
+    {
+     "date": "2026-05-19",
+     "value": 5.18
+    },
+    {
+     "date": "2026-05-20",
+     "value": 5.11
+    },
+    {
+     "date": "2026-05-21",
+     "value": 5.1
+    },
+    {
+     "date": "2026-05-22",
+     "value": 5.07
+    },
+    {
+     "date": "2026-05-26",
+     "value": 5.03
+    },
+    {
+     "date": "2026-05-27",
+     "value": 5.01
+    },
+    {
+     "date": "2026-05-28",
+     "value": 4.98
+    },
+    {
+     "date": "2026-05-29",
+     "value": 4.99
+    },
+    {
+     "date": "2026-06-01",
+     "value": 4.99
+    },
+    {
+     "date": "2026-06-02",
+     "value": 4.97
+    },
+    {
+     "date": "2026-06-03",
+     "value": 4.99
+    },
+    {
+     "date": "2026-06-04",
+     "value": 4.97
+    },
+    {
+     "date": "2026-06-05",
+     "value": 5.01
+    },
+    {
+     "date": "2026-06-08",
+     "value": 5.03
+    },
+    {
+     "date": "2026-06-09",
+     "value": 5.01
+    },
+    {
+     "date": "2026-06-10",
+     "value": 5.03
+    },
+    {
+     "date": "2026-06-11",
+     "value": 4.95
+    },
+    {
+     "date": "2026-06-12",
+     "value": 4.97
+    },
+    {
+     "date": "2026-06-15",
+     "value": 4.97
+    },
+    {
+     "date": "2026-06-16",
+     "value": 4.93
+    },
+    {
+     "date": "2026-06-17",
+     "value": 4.93
+    },
+    {
+     "date": "2026-06-18",
+     "value": 4.9
+    },
+    {
+     "date": "2026-06-22",
+     "value": 4.95
+    },
+    {
+     "date": "2026-06-23",
+     "value": 4.94
+    },
+    {
+     "date": "2026-06-24",
+     "value": 4.86
+    },
+    {
+     "date": "2026-06-25",
+     "value": 4.86
+    },
+    {
+     "date": "2026-06-26",
+     "value": 4.87
+    },
+    {
+     "date": "2026-06-29",
+     "value": 4.86
+    },
+    {
+     "date": "2026-06-30",
+     "value": 4.91
+    },
+    {
+     "date": "2026-07-01",
+     "value": 4.97
+    },
+    {
+     "date": "2026-07-02",
+     "value": 4.98
+    },
+    {
+     "date": "2026-07-06",
+     "value": 4.99
+    },
+    {
+     "date": "2026-07-07",
+     "value": 5.05
+    },
+    {
+     "date": "2026-07-08",
+     "value": 5.06
+    },
+    {
+     "date": "2026-07-09",
+     "value": 5.05
+    },
+    {
+     "date": "2026-07-10",
+     "value": 5.06
+    },
+    {
+     "date": "2026-07-13",
+     "value": 5.1
+    },
+    {
+     "date": "2026-07-14",
+     "value": 5.08
+    },
+    {
+     "date": "2026-07-15",
+     "value": 5.08
+    },
+    {
+     "date": "2026-07-16",
+     "value": 5.09
+    },
+    {
+     "date": "2026-07-17",
+     "value": 5.06
+    },
+    {
+     "date": "2026-07-20",
+     "value": 5.11
+    },
+    {
+     "date": "2026-07-21",
+     "value": 5.13
+    },
+    {
+     "date": "2026-07-22",
+     "value": 5.15
+    },
+    {
+     "date": "2026-07-23",
+     "value": 5.17
+    },
+    {
+     "date": "2026-07-24",
+     "value": 5.16
+    },
+    {
+     "date": "2026-07-27",
+     "value": 5.12
+    },
+    {
+     "date": "2026-07-28",
+     "value": 5.09
+    },
+    {
+     "date": "2026-07-29",
+     "value": 5.2
+    },
+    {
+     "date": "2026-07-30",
+     "value": 5.21
+    },
+    {
+     "date": "2026-07-31",
+     "value": 5.27
+    },
+    {
+     "date": "2026-08-03",
+     "value": 5.23
+    },
+    {
+     "date": "2026-08-04",
+     "value": 5.18
+    },
+    {
+     "date": "2026-08-05",
+     "value": 5.17
+    },
+    {
+     "date": "2026-08-06",
+     "value": 5.22
+    },
+    {
+     "date": "2026-08-07",
+     "value": 5.19
+    },
+    {
+     "date": "2026-08-10",
+     "value": 5.25
+    },
+    {
+     "date": "2026-08-11",
+     "value": 5.24
+    },
+    {
+     "date": "2026-08-12",
+     "value": 5.24
+    },
+    {
+     "date": "2026-08-13",
+     "value": 5.21
+    },
+    {
+     "date": "2026-08-14",
+     "value": 5.25
+    },
+    {
+     "date": "2026-08-17",
+     "value": 5.31
+    },
+    {
+     "date": "2026-08-18",
+     "value": 5.28
+    },
+    {
+     "date": "2026-08-19",
+     "value": 5.19
+    },
+    {
+     "date": "2026-08-20",
+     "value": 5.23
+    },
+    {
+     "date": "2026-08-21",
+     "value": 5.27
+    },
+    {
+     "date": "2026-08-24",
+     "value": 5.23
+    },
+    {
+     "date": "2026-08-25",
+     "value": 5.17
+    },
+    {
+     "date": "2026-08-26",
+     "value": 5.18
+    },
+    {
+     "date": "2026-08-27",
+     "value": 5.19
+    },
+    {
+     "date": "2026-08-28",
+     "value": 5.22
+    },
+    {
+     "date": "2026-08-31",
+     "value": 5.25
+    },
+    {
+     "date": "2026-09-01",
+     "value": 5.27
+    },
+    {
+     "date": "2026-09-02",
+     "value": 5.27
+    },
+    {
+     "date": "2026-09-03",
+     "value": 5.25
+    },
+    {
+     "date": "2026-09-04",
+     "value": 5.24
+    },
+    {
+     "date": "2026-09-08",
+     "value": 5.25
+    },
+    {
+     "date": "2026-09-09",
+     "value": 5.28
+    },
+    {
+     "date": "2026-09-10",
+     "value": 5.37
+    },
+    {
+     "date": "2026-09-11",
+     "value": 5.35
+    },
+    {
+     "date": "2026-09-14",
+     "value": 5.34
+    },
+    {
+     "date": "2026-09-15",
+     "value": 5.36
+    },
+    {
+     "date": "2026-09-16",
+     "value": 5.35
+    },
+    {
+     "date": "2026-09-17",
+     "value": 5.29
+    },
+    {
+     "date": "2026-09-18",
+     "value": 5.34
+    }
+   ],
+   "pagination": {
+    "limit": 400,
+    "offset": 0,
+    "returned": 119,
+    "total": 119
+   }
+  },
+  "UST_REAL_5Y": {
+   "series_id": "UST_REAL_5Y",
+   "title": "5-Year Treasury Par Real Yield (TIPS)",
+   "units": "Percent",
+   "source": "TREASURY",
+   "observations": [
+    {
+     "date": "2026-04-01",
+     "value": 1.42
+    },
+    {
+     "date": "2026-04-02",
+     "value": 1.37
+    },
+    {
+     "date": "2026-04-03",
+     "value": 1.38
+    },
+    {
+     "date": "2026-04-06",
+     "value": 1.38
+    },
+    {
+     "date": "2026-04-07",
+     "value": 1.34
+    },
+    {
+     "date": "2026-04-08",
+     "value": 1.36
+    },
+    {
+     "date": "2026-04-09",
+     "value": 1.35
+    },
+    {
+     "date": "2026-04-10",
+     "value": 1.36
+    },
+    {
+     "date": "2026-04-13",
+     "value": 1.31
+    },
+    {
+     "date": "2026-04-14",
+     "value": 1.28
+    },
+    {
+     "date": "2026-04-15",
+     "value": 1.29
+    },
+    {
+     "date": "2026-04-16",
+     "value": 1.31
+    },
+    {
+     "date": "2026-04-17",
+     "value": 1.28
+    },
+    {
+     "date": "2026-04-20",
+     "value": 1.29
+    },
+    {
+     "date": "2026-04-21",
+     "value": 1.31
+    },
+    {
+     "date": "2026-04-22",
+     "value": 1.3
+    },
+    {
+     "date": "2026-04-23",
+     "value": 1.38
+    },
+    {
+     "date": "2026-04-24",
+     "value": 1.31
+    },
+    {
+     "date": "2026-04-27",
+     "value": 1.32
+    },
+    {
+     "date": "2026-04-28",
+     "value": 1.34
+    },
+    {
+     "date": "2026-04-29",
+     "value": 1.38
+    },
+    {
+     "date": "2026-04-30",
+     "value": 1.35
+    },
+    {
+     "date": "2026-05-01",
+     "value": 1.33
+    },
+    {
+     "date": "2026-05-04",
+     "value": 1.36
+    },
+    {
+     "date": "2026-05-05",
+     "value": 1.41
+    },
+    {
+     "date": "2026-05-06",
+     "value": 1.41
+    },
+    {
+     "date": "2026-05-07",
+     "value": 1.43
+    },
+    {
+     "date": "2026-05-08",
+     "value": 1.4
+    },
+    {
+     "date": "2026-05-11",
+     "value": 1.4
+    },
+    {
+     "date": "2026-05-12",
+     "value": 1.43
+    },
+    {
+     "date": "2026-05-13",
+     "value": 1.42
+    },
+    {
+     "date": "2026-05-14",
+     "value": 1.46
+    },
+    {
+     "date": "2026-05-15",
+     "value": 1.56
+    },
+    {
+     "date": "2026-05-18",
+     "value": 1.58
+    },
+    {
+     "date": "2026-05-19",
+     "value": 1.66
+    },
+    {
+     "date": "2026-05-20",
+     "value": 1.63
+    },
+    {
+     "date": "2026-05-21",
+     "value": 1.68
+    },
+    {
+     "date": "2026-05-22",
+     "value": 1.73
+    },
+    {
+     "date": "2026-05-26",
+     "value": 1.66
+    },
+    {
+     "date": "2026-05-27",
+     "value": 1.64
+    },
+    {
+     "date": "2026-05-28",
+     "value": 1.61
+    },
+    {
+     "date": "2026-05-29",
+     "value": 1.61
+    },
+    {
+     "date": "2026-06-01",
+     "value": 1.64
+    },
+    {
+     "date": "2026-06-02",
+     "value": 1.65
+    },
+    {
+     "date": "2026-06-03",
+     "value": 1.68
+    },
+    {
+     "date": "2026-06-04",
+     "value": 1.7
+    },
+    {
+     "date": "2026-06-05",
+     "value": 1.81
+    },
+    {
+     "date": "2026-06-08",
+     "value": 1.82
+    },
+    {
+     "date": "2026-06-09",
+     "value": 1.82
+    },
+    {
+     "date": "2026-06-10",
+     "value": 1.83
+    },
+    {
+     "date": "2026-06-11",
+     "value": 1.78
+    },
+    {
+     "date": "2026-06-12",
+     "value": 1.82
+    },
+    {
+     "date": "2026-06-15",
+     "value": 1.78
+    },
+    {
+     "date": "2026-06-16",
+     "value": 1.8
+    },
+    {
+     "date": "2026-06-17",
+     "value": 1.96
+    },
+    {
+     "date": "2026-06-18",
+     "value": 1.96
+    },
+    {
+     "date": "2026-06-22",
+     "value": 2.01
+    },
+    {
+     "date": "2026-06-23",
+     "value": 2.03
+    },
+    {
+     "date": "2026-06-24",
+     "value": 1.98
+    },
+    {
+     "date": "2026-06-25",
+     "value": 1.92
+    },
+    {
+     "date": "2026-06-26",
+     "value": 1.91
+    },
+    {
+     "date": "2026-06-29",
+     "value": 1.9
+    },
+    {
+     "date": "2026-06-30",
+     "value": 1.93
+    },
+    {
+     "date": "2026-07-01",
+     "value": 1.98
+    },
+    {
+     "date": "2026-07-02",
+     "value": 1.99
+    },
+    {
+     "date": "2026-07-06",
+     "value": 1.94
+    },
+    {
+     "date": "2026-07-07",
+     "value": 1.99
+    },
+    {
+     "date": "2026-07-08",
+     "value": 2.0
+    },
+    {
+     "date": "2026-07-09",
+     "value": 1.99
+    },
+    {
+     "date": "2026-07-10",
+     "value": 2.02
+    },
+    {
+     "date": "2026-07-13",
+     "value": 2.06
+    },
+    {
+     "date": "2026-07-14",
+     "value": 2.03
+    },
+    {
+     "date": "2026-07-15",
+     "value": 2.01
+    },
+    {
+     "date": "2026-07-16",
+     "value": 2.04
+    },
+    {
+     "date": "2026-07-17",
+     "value": 2.01
+    },
+    {
+     "date": "2026-07-20",
+     "value": 2.05
+    },
+    {
+     "date": "2026-07-21",
+     "value": 2.09
+    },
+    {
+     "date": "2026-07-22",
+     "value": 2.11
+    },
+    {
+     "date": "2026-07-23",
+     "value": 2.17
+    },
+    {
+     "date": "2026-07-24",
+     "value": 2.19
+    },
+    {
+     "date": "2026-07-27",
+     "value": 2.22
+    },
+    {
+     "date": "2026-07-28",
+     "value": 2.19
+    },
+    {
+     "date": "2026-07-29",
+     "value": 2.13
+    },
+    {
+     "date": "2026-07-30",
+     "value": 2.14
+    },
+    {
+     "date": "2026-07-31",
+     "value": 2.19
+    },
+    {
+     "date": "2026-08-03",
+     "value": 2.17
+    },
+    {
+     "date": "2026-08-04",
+     "value": 2.14
+    },
+    {
+     "date": "2026-08-05",
+     "value": 2.15
+    },
+    {
+     "date": "2026-08-06",
+     "value": 2.17
+    },
+    {
+     "date": "2026-08-07",
+     "value": 2.13
+    },
+    {
+     "date": "2026-08-10",
+     "value": 2.16
+    },
+    {
+     "date": "2026-08-11",
+     "value": 2.16
+    },
+    {
+     "date": "2026-08-12",
+     "value": 2.14
+    },
+    {
+     "date": "2026-08-13",
+     "value": 2.11
+    },
+    {
+     "date": "2026-08-14",
+     "value": 2.12
+    },
+    {
+     "date": "2026-08-17",
+     "value": 2.13
+    },
+    {
+     "date": "2026-08-18",
+     "value": 2.1
+    },
+    {
+     "date": "2026-08-19",
+     "value": 2.07
+    },
+    {
+     "date": "2026-08-20",
+     "value": 2.05
+    },
+    {
+     "date": "2026-08-21",
+     "value": 2.09
+    },
+    {
+     "date": "2026-08-24",
+     "value": 2.09
+    },
+    {
+     "date": "2026-08-25",
+     "value": 2.04
+    },
+    {
+     "date": "2026-08-26",
+     "value": 2.06
+    },
+    {
+     "date": "2026-08-27",
+     "value": 2.07
+    },
+    {
+     "date": "2026-08-28",
+     "value": 2.18
+    },
+    {
+     "date": "2026-08-31",
+     "value": 2.18
+    },
+    {
+     "date": "2026-09-01",
+     "value": 2.18
+    },
+    {
+     "date": "2026-09-02",
+     "value": 2.19
+    },
+    {
+     "date": "2026-09-03",
+     "value": 2.15
+    },
+    {
+     "date": "2026-09-04",
+     "value": 2.17
+    },
+    {
+     "date": "2026-09-08",
+     "value": 2.17
+    },
+    {
+     "date": "2026-09-09",
+     "value": 2.2
+    },
+    {
+     "date": "2026-09-10",
+     "value": 2.29
+    },
+    {
+     "date": "2026-09-11",
+     "value": 2.38
+    },
+    {
+     "date": "2026-09-14",
+     "value": 2.4
+    },
+    {
+     "date": "2026-09-15",
+     "value": 2.42
+    },
+    {
+     "date": "2026-09-16",
+     "value": 2.51
+    },
+    {
+     "date": "2026-09-17",
+     "value": 2.46
+    },
+    {
+     "date": "2026-09-18",
+     "value": 2.55
+    }
+   ],
+   "pagination": {
+    "limit": 400,
+    "offset": 0,
+    "returned": 119,
+    "total": 119
+   }
+  },
+  "UST_REAL_10Y": {
+   "series_id": "UST_REAL_10Y",
+   "title": "10-Year Treasury Par Real Yield (TIPS)",
+   "units": "Percent",
+   "source": "TREASURY",
+   "observations": [
+    {
+     "date": "2026-04-01",
+     "value": 2.02
+    },
+    {
+     "date": "2026-04-02",
+     "value": 1.97
+    },
+    {
+     "date": "2026-04-03",
+     "value": 1.99
+    },
+    {
+     "date": "2026-04-06",
+     "value": 1.98
+    },
+    {
+     "date": "2026-04-07",
+     "value": 1.96
+    },
+    {
+     "date": "2026-04-08",
+     "value": 1.96
+    },
+    {
+     "date": "2026-04-09",
+     "value": 1.95
+    },
+    {
+     "date": "2026-04-10",
+     "value": 1.95
+    },
+    {
+     "date": "2026-04-13",
+     "value": 1.92
+    },
+    {
+     "date": "2026-04-14",
+     "value": 1.89
+    },
+    {
+     "date": "2026-04-15",
+     "value": 1.9
+    },
+    {
+     "date": "2026-04-16",
+     "value": 1.93
+    },
+    {
+     "date": "2026-04-17",
+     "value": 1.9
+    },
+    {
+     "date": "2026-04-20",
+     "value": 1.91
+    },
+    {
+     "date": "2026-04-21",
+     "value": 1.92
+    },
+    {
+     "date": "2026-04-22",
+     "value": 1.92
+    },
+    {
+     "date": "2026-04-23",
+     "value": 1.92
+    },
+    {
+     "date": "2026-04-24",
+     "value": 1.89
+    },
+    {
+     "date": "2026-04-27",
+     "value": 1.91
+    },
+    {
+     "date": "2026-04-28",
+     "value": 1.92
+    },
+    {
+     "date": "2026-04-29",
+     "value": 1.96
+    },
+    {
+     "date": "2026-04-30",
+     "value": 1.94
+    },
+    {
+     "date": "2026-05-01",
+     "value": 1.91
+    },
+    {
+     "date": "2026-05-04",
+     "value": 1.95
+    },
+    {
+     "date": "2026-05-05",
+     "value": 1.96
+    },
+    {
+     "date": "2026-05-06",
+     "value": 1.94
+    },
+    {
+     "date": "2026-05-07",
+     "value": 1.96
+    },
+    {
+     "date": "2026-05-08",
+     "value": 1.93
+    },
+    {
+     "date": "2026-05-11",
+     "value": 1.95
+    },
+    {
+     "date": "2026-05-12",
+     "value": 1.99
+    },
+    {
+     "date": "2026-05-13",
+     "value": 1.99
+    },
+    {
+     "date": "2026-05-14",
+     "value": 2.0
+    },
+    {
+     "date": "2026-05-15",
+     "value": 2.1
+    },
+    {
+     "date": "2026-05-18",
+     "value": 2.13
+    },
+    {
+     "date": "2026-05-19",
+     "value": 2.18
+    },
+    {
+     "date": "2026-05-20",
+     "value": 2.13
+    },
+    {
+     "date": "2026-05-21",
+     "value": 2.18
+    },
+    {
+     "date": "2026-05-22",
+     "value": 2.16
+    },
+    {
+     "date": "2026-05-26",
+     "value": 2.1
+    },
+    {
+     "date": "2026-05-27",
+     "value": 2.09
+    },
+    {
+     "date": "2026-05-28",
+     "value": 2.06
+    },
+    {
+     "date": "2026-05-29",
+     "value": 2.07
+    },
+    {
+     "date": "2026-06-01",
+     "value": 2.07
+    },
+    {
+     "date": "2026-06-02",
+     "value": 2.07
+    },
+    {
+     "date": "2026-06-03",
+     "value": 2.11
+    },
+    {
+     "date": "2026-06-04",
+     "value": 2.11
+    },
+    {
+     "date": "2026-06-05",
+     "value": 2.19
+    },
+    {
+     "date": "2026-06-08",
+     "value": 2.21
+    },
+    {
+     "date": "2026-06-09",
+     "value": 2.2
+    },
+    {
+     "date": "2026-06-10",
+     "value": 2.21
+    },
+    {
+     "date": "2026-06-11",
+     "value": 2.16
+    },
+    {
+     "date": "2026-06-12",
+     "value": 2.17
+    },
+    {
+     "date": "2026-06-15",
+     "value": 2.15
+    },
+    {
+     "date": "2026-06-16",
+     "value": 2.14
+    },
+    {
+     "date": "2026-06-17",
+     "value": 2.23
+    },
+    {
+     "date": "2026-06-18",
+     "value": 2.21
+    },
+    {
+     "date": "2026-06-22",
+     "value": 2.28
+    },
+    {
+     "date": "2026-06-23",
+     "value": 2.29
+    },
+    {
+     "date": "2026-06-24",
+     "value": 2.23
+    },
+    {
+     "date": "2026-06-25",
+     "value": 2.19
+    },
+    {
+     "date": "2026-06-26",
+     "value": 2.18
+    },
+    {
+     "date": "2026-06-29",
+     "value": 2.16
+    },
+    {
+     "date": "2026-06-30",
+     "value": 2.2
+    },
+    {
+     "date": "2026-07-01",
+     "value": 2.25
+    },
+    {
+     "date": "2026-07-02",
+     "value": 2.26
+    },
+    {
+     "date": "2026-07-06",
+     "value": 2.24
+    },
+    {
+     "date": "2026-07-07",
+     "value": 2.3
+    },
+    {
+     "date": "2026-07-08",
+     "value": 2.31
+    },
+    {
+     "date": "2026-07-09",
+     "value": 2.31
+    },
+    {
+     "date": "2026-07-10",
+     "value": 2.32
+    },
+    {
+     "date": "2026-07-13",
+     "value": 2.36
+    },
+    {
+     "date": "2026-07-14",
+     "value": 2.33
+    },
+    {
+     "date": "2026-07-15",
+     "value": 2.32
+    },
+    {
+     "date": "2026-07-16",
+     "value": 2.35
+    },
+    {
+     "date": "2026-07-17",
+     "value": 2.31
+    },
+    {
+     "date": "2026-07-20",
+     "value": 2.35
+    },
+    {
+     "date": "2026-07-21",
+     "value": 2.37
+    },
+    {
+     "date": "2026-07-22",
+     "value": 2.39
+    },
+    {
+     "date": "2026-07-23",
+     "value": 2.43
+    },
+    {
+     "date": "2026-07-24",
+     "value": 2.43
+    },
+    {
+     "date": "2026-07-27",
+     "value": 2.44
+    },
+    {
+     "date": "2026-07-28",
+     "value": 2.41
+    },
+    {
+     "date": "2026-07-29",
+     "value": 2.41
+    },
+    {
+     "date": "2026-07-30",
+     "value": 2.41
+    },
+    {
+     "date": "2026-07-31",
+     "value": 2.47
+    },
+    {
+     "date": "2026-08-03",
+     "value": 2.43
+    },
+    {
+     "date": "2026-08-04",
+     "value": 2.4
+    },
+    {
+     "date": "2026-08-05",
+     "value": 2.41
+    },
+    {
+     "date": "2026-08-06",
+     "value": 2.43
+    },
+    {
+     "date": "2026-08-07",
+     "value": 2.4
+    },
+    {
+     "date": "2026-08-10",
+     "value": 2.43
+    },
+    {
+     "date": "2026-08-11",
+     "value": 2.43
+    },
+    {
+     "date": "2026-08-12",
+     "value": 2.42
+    },
+    {
+     "date": "2026-08-13",
+     "value": 2.39
+    },
+    {
+     "date": "2026-08-14",
+     "value": 2.41
+    },
+    {
+     "date": "2026-08-17",
+     "value": 2.44
+    },
+    {
+     "date": "2026-08-18",
+     "value": 2.41
+    },
+    {
+     "date": "2026-08-19",
+     "value": 2.35
+    },
+    {
+     "date": "2026-08-20",
+     "value": 2.35
+    },
+    {
+     "date": "2026-08-21",
+     "value": 2.4
+    },
+    {
+     "date": "2026-08-24",
+     "value": 2.38
+    },
+    {
+     "date": "2026-08-25",
+     "value": 2.32
+    },
+    {
+     "date": "2026-08-26",
+     "value": 2.34
+    },
+    {
+     "date": "2026-08-27",
+     "value": 2.34
+    },
+    {
+     "date": "2026-08-28",
+     "value": 2.42
+    },
+    {
+     "date": "2026-08-31",
+     "value": 2.44
+    },
+    {
+     "date": "2026-09-01",
+     "value": 2.44
+    },
+    {
+     "date": "2026-09-02",
+     "value": 2.45
+    },
+    {
+     "date": "2026-09-03",
+     "value": 2.42
+    },
+    {
+     "date": "2026-09-04",
+     "value": 2.43
+    },
+    {
+     "date": "2026-09-08",
+     "value": 2.43
+    },
+    {
+     "date": "2026-09-09",
+     "value": 2.46
+    },
+    {
+     "date": "2026-09-10",
+     "value": 2.55
+    },
+    {
+     "date": "2026-09-11",
+     "value": 2.6
+    },
+    {
+     "date": "2026-09-14",
+     "value": 2.6
+    },
+    {
+     "date": "2026-09-15",
+     "value": 2.62
+    },
+    {
+     "date": "2026-09-16",
+     "value": 2.68
+    },
+    {
+     "date": "2026-09-17",
+     "value": 2.61
+    },
+    {
+     "date": "2026-09-18",
+     "value": 2.68
+    }
+   ],
+   "pagination": {
+    "limit": 400,
+    "offset": 0,
+    "returned": 119,
+    "total": 119
+   }
+  }
+ },
+ "intelligence_rates": {
+  "items": [
+   {
+    "id": "rates:UST_REAL_10Y:2026-09-18",
+    "type": "RATES_MOVEMENT",
+    "world": "rates",
+    "concepts": [
+     "UST_REAL_10Y"
+    ],
+    "effective_period": "2026-09-18",
+    "recorded_at": "2026-09-20T00:06:45.423250Z",
+    "published_at": null,
+    "knowledge_basis": "OBSERVED",
+    "basis": "METHODOLOGY_DERIVED",
+    "methodology": {
+     "methodology_id": "rates_v1.0",
+     "data_basis": "latest_published_data"
+    },
+    "evidence": [
+     {
+      "concept_id": "UST_REAL_10Y",
+      "provider": "TREASURY",
+      "provider_series_id": "UST_REAL_10Y",
+      "observation_date": "2026-09-18",
+      "value": 2.68
+     }
+    ],
+    "relations": [
+     {
+      "kind": "CONCERNS_CONCEPT",
+      "target": "UST_REAL_10Y"
+     },
+     {
+      "kind": "AFFECTS_WORLD",
+      "target": "rates"
+     }
+    ],
+    "limitations": [
+     "Carries no significance claim: rates_v1.0 defines no notability threshold, so this reports the movement and its own historical position, not that the movement matters.",
+     "Change windows are counted in trading SESSIONS, never calendar days.",
+     "Treasury observations are stored under MacroChipz's own series identifiers, so `provider_series_id` here is the stored identifier rather than Treasury's own XML field name; that field is recorded in observation_provenance.source_series_field. See docs/architecture/economic-concept-identity.md section 6."
+    ],
+    "contract_version": "intelligence_v1",
+    "payload": {
+     "series_title": "10-Year Treasury Par Real Yield (TIPS)",
+     "latest_value": 2.68,
+     "changes": [
+      {
+       "window": "1_SESSION",
+       "sessions": 1,
+       "available": true,
+       "change_basis_points": 7.0,
+       "from_date": "2026-09-17",
+       "from_value": 2.61
+      },
+      {
+       "window": "5_SESSIONS",
+       "sessions": 5,
+       "available": true,
+       "change_basis_points": 8.0,
+       "from_date": "2026-09-11",
+       "from_value": 2.6
+      },
+      {
+       "window": "21_SESSIONS",
+       "sessions": 21,
+       "available": true,
+       "change_basis_points": 33.0,
+       "from_date": "2026-08-19",
+       "from_value": 2.35
+      },
+      {
+       "window": "63_SESSIONS",
+       "sessions": 63,
+       "available": true,
+       "change_basis_points": 47.0,
+       "from_date": "2026-06-18",
+       "from_value": 2.21
+      }
+     ],
+     "historical_percentile_rank": 0.769912,
+     "historical_magnitude_percentile_rank": 0.716814,
+     "historical_observation_count": 113,
+     "visual_evidence": {
+      "kind": "TIME_SERIES",
+      "concept_id": "UST_REAL_10Y",
+      "unit": "Percent",
+      "requested_sessions": 63,
+      "available_sessions": 63,
+      "points": [
+       {
+        "observation_date": "2026-06-22",
+        "value": 2.28
+       },
+       {
+        "observation_date": "2026-06-23",
+        "value": 2.29
+       },
+       {
+        "observation_date": "2026-06-24",
+        "value": 2.23
+       },
+       {
+        "observation_date": "2026-06-25",
+        "value": 2.19
+       },
+       {
+        "observation_date": "2026-06-26",
+        "value": 2.18
+       },
+       {
+        "observation_date": "2026-06-29",
+        "value": 2.16
+       },
+       {
+        "observation_date": "2026-06-30",
+        "value": 2.2
+       },
+       {
+        "observation_date": "2026-07-01",
+        "value": 2.25
+       },
+       {
+        "observation_date": "2026-07-02",
+        "value": 2.26
+       },
+       {
+        "observation_date": "2026-07-06",
+        "value": 2.24
+       },
+       {
+        "observation_date": "2026-07-07",
+        "value": 2.3
+       },
+       {
+        "observation_date": "2026-07-08",
+        "value": 2.31
+       },
+       {
+        "observation_date": "2026-07-09",
+        "value": 2.31
+       },
+       {
+        "observation_date": "2026-07-10",
+        "value": 2.32
+       },
+       {
+        "observation_date": "2026-07-13",
+        "value": 2.36
+       },
+       {
+        "observation_date": "2026-07-14",
+        "value": 2.33
+       },
+       {
+        "observation_date": "2026-07-15",
+        "value": 2.32
+       },
+       {
+        "observation_date": "2026-07-16",
+        "value": 2.35
+       },
+       {
+        "observation_date": "2026-07-17",
+        "value": 2.31
+       },
+       {
+        "observation_date": "2026-07-20",
+        "value": 2.35
+       },
+       {
+        "observation_date": "2026-07-21",
+        "value": 2.37
+       },
+       {
+        "observation_date": "2026-07-22",
+        "value": 2.39
+       },
+       {
+        "observation_date": "2026-07-23",
+        "value": 2.43
+       },
+       {
+        "observation_date": "2026-07-24",
+        "value": 2.43
+       },
+       {
+        "observation_date": "2026-07-27",
+        "value": 2.44
+       },
+       {
+        "observation_date": "2026-07-28",
+        "value": 2.41
+       },
+       {
+        "observation_date": "2026-07-29",
+        "value": 2.41
+       },
+       {
+        "observation_date": "2026-07-30",
+        "value": 2.41
+       },
+       {
+        "observation_date": "2026-07-31",
+        "value": 2.47
+       },
+       {
+        "observation_date": "2026-08-03",
+        "value": 2.43
+       },
+       {
+        "observation_date": "2026-08-04",
+        "value": 2.4
+       },
+       {
+        "observation_date": "2026-08-05",
+        "value": 2.41
+       },
+       {
+        "observation_date": "2026-08-06",
+        "value": 2.43
+       },
+       {
+        "observation_date": "2026-08-07",
+        "value": 2.4
+       },
+       {
+        "observation_date": "2026-08-10",
+        "value": 2.43
+       },
+       {
+        "observation_date": "2026-08-11",
+        "value": 2.43
+       },
+       {
+        "observation_date": "2026-08-12",
+        "value": 2.42
+       },
+       {
+        "observation_date": "2026-08-13",
+        "value": 2.39
+       },
+       {
+        "observation_date": "2026-08-14",
+        "value": 2.41
+       },
+       {
+        "observation_date": "2026-08-17",
+        "value": 2.44
+       },
+       {
+        "observation_date": "2026-08-18",
+        "value": 2.41
+       },
+       {
+        "observation_date": "2026-08-19",
+        "value": 2.35
+       },
+       {
+        "observation_date": "2026-08-20",
+        "value": 2.35
+       },
+       {
+        "observation_date": "2026-08-21",
+        "value": 2.4
+       },
+       {
+        "observation_date": "2026-08-24",
+        "value": 2.38
+       },
+       {
+        "observation_date": "2026-08-25",
+        "value": 2.32
+       },
+       {
+        "observation_date": "2026-08-26",
+        "value": 2.34
+       },
+       {
+        "observation_date": "2026-08-27",
+        "value": 2.34
+       },
+       {
+        "observation_date": "2026-08-28",
+        "value": 2.42
+       },
+       {
+        "observation_date": "2026-08-31",
+        "value": 2.44
+       },
+       {
+        "observation_date": "2026-09-01",
+        "value": 2.44
+       },
+       {
+        "observation_date": "2026-09-02",
+        "value": 2.45
+       },
+       {
+        "observation_date": "2026-09-03",
+        "value": 2.42
+       },
+       {
+        "observation_date": "2026-09-04",
+        "value": 2.43
+       },
+       {
+        "observation_date": "2026-09-08",
+        "value": 2.43
+       },
+       {
+        "observation_date": "2026-09-09",
+        "value": 2.46
+       },
+       {
+        "observation_date": "2026-09-10",
+        "value": 2.55
+       },
+       {
+        "observation_date": "2026-09-11",
+        "value": 2.6
+       },
+       {
+        "observation_date": "2026-09-14",
+        "value": 2.6
+       },
+       {
+        "observation_date": "2026-09-15",
+        "value": 2.62
+       },
+       {
+        "observation_date": "2026-09-16",
+        "value": 2.68
+       },
+       {
+        "observation_date": "2026-09-17",
+        "value": 2.61
+       },
+       {
+        "observation_date": "2026-09-18",
+        "value": 2.68
+       }
+      ]
+     }
+    }
+   },
+   {
+    "id": "rates:UST_REAL_5Y:2026-09-18",
+    "type": "RATES_MOVEMENT",
+    "world": "rates",
+    "concepts": [
+     "UST_REAL_5Y"
+    ],
+    "effective_period": "2026-09-18",
+    "recorded_at": "2026-09-20T00:06:45.423250Z",
+    "published_at": null,
+    "knowledge_basis": "OBSERVED",
+    "basis": "METHODOLOGY_DERIVED",
+    "methodology": {
+     "methodology_id": "rates_v1.0",
+     "data_basis": "latest_published_data"
+    },
+    "evidence": [
+     {
+      "concept_id": "UST_REAL_5Y",
+      "provider": "TREASURY",
+      "provider_series_id": "UST_REAL_5Y",
+      "observation_date": "2026-09-18",
+      "value": 2.55
+     }
+    ],
+    "relations": [
+     {
+      "kind": "CONCERNS_CONCEPT",
+      "target": "UST_REAL_5Y"
+     },
+     {
+      "kind": "AFFECTS_WORLD",
+      "target": "rates"
+     }
+    ],
+    "limitations": [
+     "Carries no significance claim: rates_v1.0 defines no notability threshold, so this reports the movement and its own historical position, not that the movement matters.",
+     "Change windows are counted in trading SESSIONS, never calendar days.",
+     "Treasury observations are stored under MacroChipz's own series identifiers, so `provider_series_id` here is the stored identifier rather than Treasury's own XML field name; that field is recorded in observation_provenance.source_series_field. See docs/architecture/economic-concept-identity.md section 6."
+    ],
+    "contract_version": "intelligence_v1",
+    "payload": {
+     "series_title": "5-Year Treasury Par Real Yield (TIPS)",
+     "latest_value": 2.55,
+     "changes": [
+      {
+       "window": "1_SESSION",
+       "sessions": 1,
+       "available": true,
+       "change_basis_points": 9.0,
+       "from_date": "2026-09-17",
+       "from_value": 2.46
+      },
+      {
+       "window": "5_SESSIONS",
+       "sessions": 5,
+       "available": true,
+       "change_basis_points": 17.0,
+       "from_date": "2026-09-11",
+       "from_value": 2.38
+      },
+      {
+       "window": "21_SESSIONS",
+       "sessions": 21,
+       "available": true,
+       "change_basis_points": 48.0,
+       "from_date": "2026-08-19",
+       "from_value": 2.07
+      },
+      {
+       "window": "63_SESSIONS",
+       "sessions": 63,
+       "available": true,
+       "change_basis_points": 59.0,
+       "from_date": "2026-06-18",
+       "from_value": 1.96
+      }
+     ],
+     "historical_percentile_rank": 0.831858,
+     "historical_magnitude_percentile_rank": 0.831858,
+     "historical_observation_count": 113,
+     "visual_evidence": {
+      "kind": "TIME_SERIES",
+      "concept_id": "UST_REAL_5Y",
+      "unit": "Percent",
+      "requested_sessions": 63,
+      "available_sessions": 63,
+      "points": [
+       {
+        "observation_date": "2026-06-22",
+        "value": 2.01
+       },
+       {
+        "observation_date": "2026-06-23",
+        "value": 2.03
+       },
+       {
+        "observation_date": "2026-06-24",
+        "value": 1.98
+       },
+       {
+        "observation_date": "2026-06-25",
+        "value": 1.92
+       },
+       {
+        "observation_date": "2026-06-26",
+        "value": 1.91
+       },
+       {
+        "observation_date": "2026-06-29",
+        "value": 1.9
+       },
+       {
+        "observation_date": "2026-06-30",
+        "value": 1.93
+       },
+       {
+        "observation_date": "2026-07-01",
+        "value": 1.98
+       },
+       {
+        "observation_date": "2026-07-02",
+        "value": 1.99
+       },
+       {
+        "observation_date": "2026-07-06",
+        "value": 1.94
+       },
+       {
+        "observation_date": "2026-07-07",
+        "value": 1.99
+       },
+       {
+        "observation_date": "2026-07-08",
+        "value": 2.0
+       },
+       {
+        "observation_date": "2026-07-09",
+        "value": 1.99
+       },
+       {
+        "observation_date": "2026-07-10",
+        "value": 2.02
+       },
+       {
+        "observation_date": "2026-07-13",
+        "value": 2.06
+       },
+       {
+        "observation_date": "2026-07-14",
+        "value": 2.03
+       },
+       {
+        "observation_date": "2026-07-15",
+        "value": 2.01
+       },
+       {
+        "observation_date": "2026-07-16",
+        "value": 2.04
+       },
+       {
+        "observation_date": "2026-07-17",
+        "value": 2.01
+       },
+       {
+        "observation_date": "2026-07-20",
+        "value": 2.05
+       },
+       {
+        "observation_date": "2026-07-21",
+        "value": 2.09
+       },
+       {
+        "observation_date": "2026-07-22",
+        "value": 2.11
+       },
+       {
+        "observation_date": "2026-07-23",
+        "value": 2.17
+       },
+       {
+        "observation_date": "2026-07-24",
+        "value": 2.19
+       },
+       {
+        "observation_date": "2026-07-27",
+        "value": 2.22
+       },
+       {
+        "observation_date": "2026-07-28",
+        "value": 2.19
+       },
+       {
+        "observation_date": "2026-07-29",
+        "value": 2.13
+       },
+       {
+        "observation_date": "2026-07-30",
+        "value": 2.14
+       },
+       {
+        "observation_date": "2026-07-31",
+        "value": 2.19
+       },
+       {
+        "observation_date": "2026-08-03",
+        "value": 2.17
+       },
+       {
+        "observation_date": "2026-08-04",
+        "value": 2.14
+       },
+       {
+        "observation_date": "2026-08-05",
+        "value": 2.15
+       },
+       {
+        "observation_date": "2026-08-06",
+        "value": 2.17
+       },
+       {
+        "observation_date": "2026-08-07",
+        "value": 2.13
+       },
+       {
+        "observation_date": "2026-08-10",
+        "value": 2.16
+       },
+       {
+        "observation_date": "2026-08-11",
+        "value": 2.16
+       },
+       {
+        "observation_date": "2026-08-12",
+        "value": 2.14
+       },
+       {
+        "observation_date": "2026-08-13",
+        "value": 2.11
+       },
+       {
+        "observation_date": "2026-08-14",
+        "value": 2.12
+       },
+       {
+        "observation_date": "2026-08-17",
+        "value": 2.13
+       },
+       {
+        "observation_date": "2026-08-18",
+        "value": 2.1
+       },
+       {
+        "observation_date": "2026-08-19",
+        "value": 2.07
+       },
+       {
+        "observation_date": "2026-08-20",
+        "value": 2.05
+       },
+       {
+        "observation_date": "2026-08-21",
+        "value": 2.09
+       },
+       {
+        "observation_date": "2026-08-24",
+        "value": 2.09
+       },
+       {
+        "observation_date": "2026-08-25",
+        "value": 2.04
+       },
+       {
+        "observation_date": "2026-08-26",
+        "value": 2.06
+       },
+       {
+        "observation_date": "2026-08-27",
+        "value": 2.07
+       },
+       {
+        "observation_date": "2026-08-28",
+        "value": 2.18
+       },
+       {
+        "observation_date": "2026-08-31",
+        "value": 2.18
+       },
+       {
+        "observation_date": "2026-09-01",
+        "value": 2.18
+       },
+       {
+        "observation_date": "2026-09-02",
+        "value": 2.19
+       },
+       {
+        "observation_date": "2026-09-03",
+        "value": 2.15
+       },
+       {
+        "observation_date": "2026-09-04",
+        "value": 2.17
+       },
+       {
+        "observation_date": "2026-09-08",
+        "value": 2.17
+       },
+       {
+        "observation_date": "2026-09-09",
+        "value": 2.2
+       },
+       {
+        "observation_date": "2026-09-10",
+        "value": 2.29
+       },
+       {
+        "observation_date": "2026-09-11",
+        "value": 2.38
+       },
+       {
+        "observation_date": "2026-09-14",
+        "value": 2.4
+       },
+       {
+        "observation_date": "2026-09-15",
+        "value": 2.42
+       },
+       {
+        "observation_date": "2026-09-16",
+        "value": 2.51
+       },
+       {
+        "observation_date": "2026-09-17",
+        "value": 2.46
+       },
+       {
+        "observation_date": "2026-09-18",
+        "value": 2.55
+       }
+      ]
+     }
+    }
+   },
+   {
+    "id": "rates:UST_NOMINAL_10Y:2026-09-18",
+    "type": "RATES_MOVEMENT",
+    "world": "rates",
+    "concepts": [
+     "UST_NOMINAL_10Y"
+    ],
+    "effective_period": "2026-09-18",
+    "recorded_at": "2026-09-20T00:04:54.461189Z",
+    "published_at": null,
+    "knowledge_basis": "OBSERVED",
+    "basis": "METHODOLOGY_DERIVED",
+    "methodology": {
+     "methodology_id": "rates_v1.0",
+     "data_basis": "latest_published_data"
+    },
+    "evidence": [
+     {
+      "concept_id": "UST_NOMINAL_10Y",
+      "provider": "TREASURY",
+      "provider_series_id": "UST_NOMINAL_10Y",
+      "observation_date": "2026-09-18",
+      "value": 5.01
+     }
+    ],
+    "relations": [
+     {
+      "kind": "CONCERNS_CONCEPT",
+      "target": "UST_NOMINAL_10Y"
+     },
+     {
+      "kind": "AFFECTS_WORLD",
+      "target": "rates"
+     }
+    ],
+    "limitations": [
+     "Carries no significance claim: rates_v1.0 defines no notability threshold, so this reports the movement and its own historical position, not that the movement matters.",
+     "Change windows are counted in trading SESSIONS, never calendar days.",
+     "Treasury observations are stored under MacroChipz's own series identifiers, so `provider_series_id` here is the stored identifier rather than Treasury's own XML field name; that field is recorded in observation_provenance.source_series_field. See docs/architecture/economic-concept-identity.md section 6."
+    ],
+    "contract_version": "intelligence_v1",
+    "payload": {
+     "series_title": "10-Year Treasury Par Yield (Nominal)",
+     "latest_value": 5.01,
+     "changes": [
+      {
+       "window": "1_SESSION",
+       "sessions": 1,
+       "available": true,
+       "change_basis_points": 7.0,
+       "from_date": "2026-09-17",
+       "from_value": 4.94
+      },
+      {
+       "window": "5_SESSIONS",
+       "sessions": 5,
+       "available": true,
+       "change_basis_points": 5.0,
+       "from_date": "2026-09-11",
+       "from_value": 4.96
+      },
+      {
+       "window": "21_SESSIONS",
+       "sessions": 21,
+       "available": true,
+       "change_basis_points": 36.0,
+       "from_date": "2026-08-19",
+       "from_value": 4.65
+      },
+      {
+       "window": "63_SESSIONS",
+       "sessions": 63,
+       "available": true,
+       "change_basis_points": 55.0,
+       "from_date": "2026-06-18",
+       "from_value": 4.46
+      }
+     ],
+     "historical_percentile_rank": 0.566372,
+     "historical_magnitude_percentile_rank": 0.39823,
+     "historical_observation_count": 113,
+     "visual_evidence": {
+      "kind": "TIME_SERIES",
+      "concept_id": "UST_NOMINAL_10Y",
+      "unit": "Percent",
+      "requested_sessions": 63,
+      "available_sessions": 63,
+      "points": [
+       {
+        "observation_date": "2026-06-22",
+        "value": 4.51
+       },
+       {
+        "observation_date": "2026-06-23",
+        "value": 4.5
+       },
+       {
+        "observation_date": "2026-06-24",
+        "value": 4.41
+       },
+       {
+        "observation_date": "2026-06-25",
+        "value": 4.4
+       },
+       {
+        "observation_date": "2026-06-26",
+        "value": 4.38
+       },
+       {
+        "observation_date": "2026-06-29",
+        "value": 4.38
+       },
+       {
+        "observation_date": "2026-06-30",
+        "value": 4.44
+       },
+       {
+        "observation_date": "2026-07-01",
+        "value": 4.48
+       },
+       {
+        "observation_date": "2026-07-02",
+        "value": 4.49
+       },
+       {
+        "observation_date": "2026-07-06",
+        "value": 4.48
+       },
+       {
+        "observation_date": "2026-07-07",
+        "value": 4.55
+       },
+       {
+        "observation_date": "2026-07-08",
+        "value": 4.56
+       },
+       {
+        "observation_date": "2026-07-09",
+        "value": 4.54
+       },
+       {
+        "observation_date": "2026-07-10",
+        "value": 4.56
+       },
+       {
+        "observation_date": "2026-07-13",
+        "value": 4.62
+       },
+       {
+        "observation_date": "2026-07-14",
+        "value": 4.58
+       },
+       {
+        "observation_date": "2026-07-15",
+        "value": 4.55
+       },
+       {
+        "observation_date": "2026-07-16",
+        "value": 4.57
+       },
+       {
+        "observation_date": "2026-07-17",
+        "value": 4.55
+       },
+       {
+        "observation_date": "2026-07-20",
+        "value": 4.6
+       },
+       {
+        "observation_date": "2026-07-21",
+        "value": 4.63
+       },
+       {
+        "observation_date": "2026-07-22",
+        "value": 4.67
+       },
+       {
+        "observation_date": "2026-07-23",
+        "value": 4.71
+       },
+       {
+        "observation_date": "2026-07-24",
+        "value": 4.69
+       },
+       {
+        "observation_date": "2026-07-27",
+        "value": 4.65
+       },
+       {
+        "observation_date": "2026-07-28",
+        "value": 4.61
+       },
+       {
+        "observation_date": "2026-07-29",
+        "value": 4.67
+       },
+       {
+        "observation_date": "2026-07-30",
+        "value": 4.68
+       },
+       {
+        "observation_date": "2026-07-31",
+        "value": 4.75
+       },
+       {
+        "observation_date": "2026-08-03",
+        "value": 4.7
+       },
+       {
+        "observation_date": "2026-08-04",
+        "value": 4.63
+       },
+       {
+        "observation_date": "2026-08-05",
+        "value": 4.63
+       },
+       {
+        "observation_date": "2026-08-06",
+        "value": 4.69
+       },
+       {
+        "observation_date": "2026-08-07",
+        "value": 4.65
+       },
+       {
+        "observation_date": "2026-08-10",
+        "value": 4.72
+       },
+       {
+        "observation_date": "2026-08-11",
+        "value": 4.7
+       },
+       {
+        "observation_date": "2026-08-12",
+        "value": 4.68
+       },
+       {
+        "observation_date": "2026-08-13",
+        "value": 4.63
+       },
+       {
+        "observation_date": "2026-08-14",
+        "value": 4.68
+       },
+       {
+        "observation_date": "2026-08-17",
+        "value": 4.72
+       },
+       {
+        "observation_date": "2026-08-18",
+        "value": 4.71
+       },
+       {
+        "observation_date": "2026-08-19",
+        "value": 4.65
+       },
+       {
+        "observation_date": "2026-08-20",
+        "value": 4.69
+       },
+       {
+        "observation_date": "2026-08-21",
+        "value": 4.74
+       },
+       {
+        "observation_date": "2026-08-24",
+        "value": 4.7
+       },
+       {
+        "observation_date": "2026-08-25",
+        "value": 4.64
+       },
+       {
+        "observation_date": "2026-08-26",
+        "value": 4.66
+       },
+       {
+        "observation_date": "2026-08-27",
+        "value": 4.67
+       },
+       {
+        "observation_date": "2026-08-28",
+        "value": 4.73
+       },
+       {
+        "observation_date": "2026-08-31",
+        "value": 4.75
+       },
+       {
+        "observation_date": "2026-09-01",
+        "value": 4.79
+       },
+       {
+        "observation_date": "2026-09-02",
+        "value": 4.79
+       },
+       {
+        "observation_date": "2026-09-03",
+        "value": 4.77
+       },
+       {
+        "observation_date": "2026-09-04",
+        "value": 4.78
+       },
+       {
+        "observation_date": "2026-09-08",
+        "value": 4.8
+       },
+       {
+        "observation_date": "2026-09-09",
+        "value": 4.83
+       },
+       {
+        "observation_date": "2026-09-10",
+        "value": 4.95
+       },
+       {
+        "observation_date": "2026-09-11",
+        "value": 4.96
+       },
+       {
+        "observation_date": "2026-09-14",
+        "value": 4.97
+       },
+       {
+        "observation_date": "2026-09-15",
+        "value": 5.0
+       },
+       {
+        "observation_date": "2026-09-16",
+        "value": 5.01
+       },
+       {
+        "observation_date": "2026-09-17",
+        "value": 4.94
+       },
+       {
+        "observation_date": "2026-09-18",
+        "value": 5.01
+       }
+      ]
+     }
+    }
+   },
+   {
+    "id": "rates:UST_NOMINAL_2Y:2026-09-18",
+    "type": "RATES_MOVEMENT",
+    "world": "rates",
+    "concepts": [
+     "UST_NOMINAL_2Y"
+    ],
+    "effective_period": "2026-09-18",
+    "recorded_at": "2026-09-20T00:04:54.461189Z",
+    "published_at": null,
+    "knowledge_basis": "OBSERVED",
+    "basis": "METHODOLOGY_DERIVED",
+    "methodology": {
+     "methodology_id": "rates_v1.0",
+     "data_basis": "latest_published_data"
+    },
+    "evidence": [
+     {
+      "concept_id": "UST_NOMINAL_2Y",
+      "provider": "TREASURY",
+      "provider_series_id": "UST_NOMINAL_2Y",
+      "observation_date": "2026-09-18",
+      "value": 4.76
+     }
+    ],
+    "relations": [
+     {
+      "kind": "CONCERNS_CONCEPT",
+      "target": "UST_NOMINAL_2Y"
+     },
+     {
+      "kind": "AFFECTS_WORLD",
+      "target": "rates"
+     }
+    ],
+    "limitations": [
+     "Carries no significance claim: rates_v1.0 defines no notability threshold, so this reports the movement and its own historical position, not that the movement matters.",
+     "Change windows are counted in trading SESSIONS, never calendar days.",
+     "Treasury observations are stored under MacroChipz's own series identifiers, so `provider_series_id` here is the stored identifier rather than Treasury's own XML field name; that field is recorded in observation_provenance.source_series_field. See docs/architecture/economic-concept-identity.md section 6."
+    ],
+    "contract_version": "intelligence_v1",
+    "payload": {
+     "series_title": "2-Year Treasury Par Yield (Nominal)",
+     "latest_value": 4.76,
+     "changes": [
+      {
+       "window": "1_SESSION",
+       "sessions": 1,
+       "available": true,
+       "change_basis_points": 9.0,
+       "from_date": "2026-09-17",
+       "from_value": 4.67
+      },
+      {
+       "window": "5_SESSIONS",
+       "sessions": 5,
+       "available": true,
+       "change_basis_points": 13.0,
+       "from_date": "2026-09-11",
+       "from_value": 4.63
+      },
+      {
+       "window": "21_SESSIONS",
+       "sessions": 21,
+       "available": true,
+       "change_basis_points": 57.0,
+       "from_date": "2026-08-19",
+       "from_value": 4.19
+      },
+      {
+       "window": "63_SESSIONS",
+       "sessions": 63,
+       "available": true,
+       "change_basis_points": 57.0,
+       "from_date": "2026-06-18",
+       "from_value": 4.19
+      }
+     ],
+     "historical_percentile_rank": 0.831858,
+     "historical_magnitude_percentile_rank": 0.80531,
+     "historical_observation_count": 113,
+     "visual_evidence": {
+      "kind": "TIME_SERIES",
+      "concept_id": "UST_NOMINAL_2Y",
+      "unit": "Percent",
+      "requested_sessions": 63,
+      "available_sessions": 63,
+      "points": [
+       {
+        "observation_date": "2026-06-22",
+        "value": 4.24
+       },
+       {
+        "observation_date": "2026-06-23",
+        "value": 4.16
+       },
+       {
+        "observation_date": "2026-06-24",
+        "value": 4.11
+       },
+       {
+        "observation_date": "2026-06-25",
+        "value": 4.09
+       },
+       {
+        "observation_date": "2026-06-26",
+        "value": 4.07
+       },
+       {
+        "observation_date": "2026-06-29",
+        "value": 4.1
+       },
+       {
+        "observation_date": "2026-06-30",
+        "value": 4.14
+       },
+       {
+        "observation_date": "2026-07-01",
+        "value": 4.17
+       },
+       {
+        "observation_date": "2026-07-02",
+        "value": 4.14
+       },
+       {
+        "observation_date": "2026-07-06",
+        "value": 4.13
+       },
+       {
+        "observation_date": "2026-07-07",
+        "value": 4.19
+       },
+       {
+        "observation_date": "2026-07-08",
+        "value": 4.21
+       },
+       {
+        "observation_date": "2026-07-09",
+        "value": 4.16
+       },
+       {
+        "observation_date": "2026-07-10",
+        "value": 4.21
+       },
+       {
+        "observation_date": "2026-07-13",
+        "value": 4.26
+       },
+       {
+        "observation_date": "2026-07-14",
+        "value": 4.18
+       },
+       {
+        "observation_date": "2026-07-15",
+        "value": 4.13
+       },
+       {
+        "observation_date": "2026-07-16",
+        "value": 4.16
+       },
+       {
+        "observation_date": "2026-07-17",
+        "value": 4.18
+       },
+       {
+        "observation_date": "2026-07-20",
+        "value": 4.21
+       },
+       {
+        "observation_date": "2026-07-21",
+        "value": 4.26
+       },
+       {
+        "observation_date": "2026-07-22",
+        "value": 4.31
+       },
+       {
+        "observation_date": "2026-07-23",
+        "value": 4.37
+       },
+       {
+        "observation_date": "2026-07-24",
+        "value": 4.33
+       },
+       {
+        "observation_date": "2026-07-27",
+        "value": 4.31
+       },
+       {
+        "observation_date": "2026-07-28",
+        "value": 4.26
+       },
+       {
+        "observation_date": "2026-07-29",
+        "value": 4.22
+       },
+       {
+        "observation_date": "2026-07-30",
+        "value": 4.23
+       },
+       {
+        "observation_date": "2026-07-31",
+        "value": 4.28
+       },
+       {
+        "observation_date": "2026-08-03",
+        "value": 4.25
+       },
+       {
+        "observation_date": "2026-08-04",
+        "value": 4.2
+       },
+       {
+        "observation_date": "2026-08-05",
+        "value": 4.18
+       },
+       {
+        "observation_date": "2026-08-06",
+        "value": 4.25
+       },
+       {
+        "observation_date": "2026-08-07",
+        "value": 4.19
+       },
+       {
+        "observation_date": "2026-08-10",
+        "value": 4.25
+       },
+       {
+        "observation_date": "2026-08-11",
+        "value": 4.22
+       },
+       {
+        "observation_date": "2026-08-12",
+        "value": 4.2
+       },
+       {
+        "observation_date": "2026-08-13",
+        "value": 4.15
+       },
+       {
+        "observation_date": "2026-08-14",
+        "value": 4.17
+       },
+       {
+        "observation_date": "2026-08-17",
+        "value": 4.19
+       },
+       {
+        "observation_date": "2026-08-18",
+        "value": 4.19
+       },
+       {
+        "observation_date": "2026-08-19",
+        "value": 4.19
+       },
+       {
+        "observation_date": "2026-08-20",
+        "value": 4.19
+       },
+       {
+        "observation_date": "2026-08-21",
+        "value": 4.24
+       },
+       {
+        "observation_date": "2026-08-24",
+        "value": 4.24
+       },
+       {
+        "observation_date": "2026-08-25",
+        "value": 4.17
+       },
+       {
+        "observation_date": "2026-08-26",
+        "value": 4.19
+       },
+       {
+        "observation_date": "2026-08-27",
+        "value": 4.2
+       },
+       {
+        "observation_date": "2026-08-28",
+        "value": 4.34
+       },
+       {
+        "observation_date": "2026-08-31",
+        "value": 4.34
+       },
+       {
+        "observation_date": "2026-09-01",
+        "value": 4.39
+       },
+       {
+        "observation_date": "2026-09-02",
+        "value": 4.39
+       },
+       {
+        "observation_date": "2026-09-03",
+        "value": 4.34
+       },
+       {
+        "observation_date": "2026-09-04",
+        "value": 4.37
+       },
+       {
+        "observation_date": "2026-09-08",
+        "value": 4.39
+       },
+       {
+        "observation_date": "2026-09-09",
+        "value": 4.43
+       },
+       {
+        "observation_date": "2026-09-10",
+        "value": 4.56
+       },
+       {
+        "observation_date": "2026-09-11",
+        "value": 4.63
+       },
+       {
+        "observation_date": "2026-09-14",
+        "value": 4.65
+       },
+       {
+        "observation_date": "2026-09-15",
+        "value": 4.67
+       },
+       {
+        "observation_date": "2026-09-16",
+        "value": 4.74
+       },
+       {
+        "observation_date": "2026-09-17",
+        "value": 4.67
+       },
+       {
+        "observation_date": "2026-09-18",
+        "value": 4.76
+       }
+      ]
+     }
+    }
+   },
+   {
+    "id": "rates:UST_NOMINAL_30Y:2026-09-18",
+    "type": "RATES_MOVEMENT",
+    "world": "rates",
+    "concepts": [
+     "UST_NOMINAL_30Y"
+    ],
+    "effective_period": "2026-09-18",
+    "recorded_at": "2026-09-20T00:04:54.461189Z",
+    "published_at": null,
+    "knowledge_basis": "OBSERVED",
+    "basis": "METHODOLOGY_DERIVED",
+    "methodology": {
+     "methodology_id": "rates_v1.0",
+     "data_basis": "latest_published_data"
+    },
+    "evidence": [
+     {
+      "concept_id": "UST_NOMINAL_30Y",
+      "provider": "TREASURY",
+      "provider_series_id": "UST_NOMINAL_30Y",
+      "observation_date": "2026-09-18",
+      "value": 5.34
+     }
+    ],
+    "relations": [
+     {
+      "kind": "CONCERNS_CONCEPT",
+      "target": "UST_NOMINAL_30Y"
+     },
+     {
+      "kind": "AFFECTS_WORLD",
+      "target": "rates"
+     }
+    ],
+    "limitations": [
+     "Carries no significance claim: rates_v1.0 defines no notability threshold, so this reports the movement and its own historical position, not that the movement matters.",
+     "Change windows are counted in trading SESSIONS, never calendar days.",
+     "Treasury observations are stored under MacroChipz's own series identifiers, so `provider_series_id` here is the stored identifier rather than Treasury's own XML field name; that field is recorded in observation_provenance.source_series_field. See docs/architecture/economic-concept-identity.md section 6."
+    ],
+    "contract_version": "intelligence_v1",
+    "payload": {
+     "series_title": "30-Year Treasury Par Yield (Nominal)",
+     "latest_value": 5.34,
+     "changes": [
+      {
+       "window": "1_SESSION",
+       "sessions": 1,
+       "available": true,
+       "change_basis_points": 5.0,
+       "from_date": "2026-09-17",
+       "from_value": 5.29
+      },
+      {
+       "window": "5_SESSIONS",
+       "sessions": 5,
+       "available": true,
+       "change_basis_points": -1.0,
+       "from_date": "2026-09-11",
+       "from_value": 5.35
+      },
+      {
+       "window": "21_SESSIONS",
+       "sessions": 21,
+       "available": true,
+       "change_basis_points": 15.0,
+       "from_date": "2026-08-19",
+       "from_value": 5.19
+      },
+      {
+       "window": "63_SESSIONS",
+       "sessions": 63,
+       "available": true,
+       "change_basis_points": 44.0,
+       "from_date": "2026-06-18",
+       "from_value": 4.9
+      }
+     ],
+     "historical_percentile_rank": 0.327434,
+     "historical_magnitude_percentile_rank": 0.035398,
+     "historical_observation_count": 113,
+     "visual_evidence": {
+      "kind": "TIME_SERIES",
+      "concept_id": "UST_NOMINAL_30Y",
+      "unit": "Percent",
+      "requested_sessions": 63,
+      "available_sessions": 63,
+      "points": [
+       {
+        "observation_date": "2026-06-22",
+        "value": 4.95
+       },
+       {
+        "observation_date": "2026-06-23",
+        "value": 4.94
+       },
+       {
+        "observation_date": "2026-06-24",
+        "value": 4.86
+       },
+       {
+        "observation_date": "2026-06-25",
+        "value": 4.86
+       },
+       {
+        "observation_date": "2026-06-26",
+        "value": 4.87
+       },
+       {
+        "observation_date": "2026-06-29",
+        "value": 4.86
+       },
+       {
+        "observation_date": "2026-06-30",
+        "value": 4.91
+       },
+       {
+        "observation_date": "2026-07-01",
+        "value": 4.97
+       },
+       {
+        "observation_date": "2026-07-02",
+        "value": 4.98
+       },
+       {
+        "observation_date": "2026-07-06",
+        "value": 4.99
+       },
+       {
+        "observation_date": "2026-07-07",
+        "value": 5.05
+       },
+       {
+        "observation_date": "2026-07-08",
+        "value": 5.06
+       },
+       {
+        "observation_date": "2026-07-09",
+        "value": 5.05
+       },
+       {
+        "observation_date": "2026-07-10",
+        "value": 5.06
+       },
+       {
+        "observation_date": "2026-07-13",
+        "value": 5.1
+       },
+       {
+        "observation_date": "2026-07-14",
+        "value": 5.08
+       },
+       {
+        "observation_date": "2026-07-15",
+        "value": 5.08
+       },
+       {
+        "observation_date": "2026-07-16",
+        "value": 5.09
+       },
+       {
+        "observation_date": "2026-07-17",
+        "value": 5.06
+       },
+       {
+        "observation_date": "2026-07-20",
+        "value": 5.11
+       },
+       {
+        "observation_date": "2026-07-21",
+        "value": 5.13
+       },
+       {
+        "observation_date": "2026-07-22",
+        "value": 5.15
+       },
+       {
+        "observation_date": "2026-07-23",
+        "value": 5.17
+       },
+       {
+        "observation_date": "2026-07-24",
+        "value": 5.16
+       },
+       {
+        "observation_date": "2026-07-27",
+        "value": 5.12
+       },
+       {
+        "observation_date": "2026-07-28",
+        "value": 5.09
+       },
+       {
+        "observation_date": "2026-07-29",
+        "value": 5.2
+       },
+       {
+        "observation_date": "2026-07-30",
+        "value": 5.21
+       },
+       {
+        "observation_date": "2026-07-31",
+        "value": 5.27
+       },
+       {
+        "observation_date": "2026-08-03",
+        "value": 5.23
+       },
+       {
+        "observation_date": "2026-08-04",
+        "value": 5.18
+       },
+       {
+        "observation_date": "2026-08-05",
+        "value": 5.17
+       },
+       {
+        "observation_date": "2026-08-06",
+        "value": 5.22
+       },
+       {
+        "observation_date": "2026-08-07",
+        "value": 5.19
+       },
+       {
+        "observation_date": "2026-08-10",
+        "value": 5.25
+       },
+       {
+        "observation_date": "2026-08-11",
+        "value": 5.24
+       },
+       {
+        "observation_date": "2026-08-12",
+        "value": 5.24
+       },
+       {
+        "observation_date": "2026-08-13",
+        "value": 5.21
+       },
+       {
+        "observation_date": "2026-08-14",
+        "value": 5.25
+       },
+       {
+        "observation_date": "2026-08-17",
+        "value": 5.31
+       },
+       {
+        "observation_date": "2026-08-18",
+        "value": 5.28
+       },
+       {
+        "observation_date": "2026-08-19",
+        "value": 5.19
+       },
+       {
+        "observation_date": "2026-08-20",
+        "value": 5.23
+       },
+       {
+        "observation_date": "2026-08-21",
+        "value": 5.27
+       },
+       {
+        "observation_date": "2026-08-24",
+        "value": 5.23
+       },
+       {
+        "observation_date": "2026-08-25",
+        "value": 5.17
+       },
+       {
+        "observation_date": "2026-08-26",
+        "value": 5.18
+       },
+       {
+        "observation_date": "2026-08-27",
+        "value": 5.19
+       },
+       {
+        "observation_date": "2026-08-28",
+        "value": 5.22
+       },
+       {
+        "observation_date": "2026-08-31",
+        "value": 5.25
+       },
+       {
+        "observation_date": "2026-09-01",
+        "value": 5.27
+       },
+       {
+        "observation_date": "2026-09-02",
+        "value": 5.27
+       },
+       {
+        "observation_date": "2026-09-03",
+        "value": 5.25
+       },
+       {
+        "observation_date": "2026-09-04",
+        "value": 5.24
+       },
+       {
+        "observation_date": "2026-09-08",
+        "value": 5.25
+       },
+       {
+        "observation_date": "2026-09-09",
+        "value": 5.28
+       },
+       {
+        "observation_date": "2026-09-10",
+        "value": 5.37
+       },
+       {
+        "observation_date": "2026-09-11",
+        "value": 5.35
+       },
+       {
+        "observation_date": "2026-09-14",
+        "value": 5.34
+       },
+       {
+        "observation_date": "2026-09-15",
+        "value": 5.36
+       },
+       {
+        "observation_date": "2026-09-16",
+        "value": 5.35
+       },
+       {
+        "observation_date": "2026-09-17",
+        "value": 5.29
+       },
+       {
+        "observation_date": "2026-09-18",
+        "value": 5.34
+       }
+      ]
+     }
+    }
+   },
+   {
+    "id": "rates:UST_NOMINAL_5Y:2026-09-18",
+    "type": "RATES_MOVEMENT",
+    "world": "rates",
+    "concepts": [
+     "UST_NOMINAL_5Y"
+    ],
+    "effective_period": "2026-09-18",
+    "recorded_at": "2026-09-20T00:04:54.461189Z",
+    "published_at": null,
+    "knowledge_basis": "OBSERVED",
+    "basis": "METHODOLOGY_DERIVED",
+    "methodology": {
+     "methodology_id": "rates_v1.0",
+     "data_basis": "latest_published_data"
+    },
+    "evidence": [
+     {
+      "concept_id": "UST_NOMINAL_5Y",
+      "provider": "TREASURY",
+      "provider_series_id": "UST_NOMINAL_5Y",
+      "observation_date": "2026-09-18",
+      "value": 4.86
+     }
+    ],
+    "relations": [
+     {
+      "kind": "CONCERNS_CONCEPT",
+      "target": "UST_NOMINAL_5Y"
+     },
+     {
+      "kind": "AFFECTS_WORLD",
+      "target": "rates"
+     }
+    ],
+    "limitations": [
+     "Carries no significance claim: rates_v1.0 defines no notability threshold, so this reports the movement and its own historical position, not that the movement matters.",
+     "Change windows are counted in trading SESSIONS, never calendar days.",
+     "Treasury observations are stored under MacroChipz's own series identifiers, so `provider_series_id` here is the stored identifier rather than Treasury's own XML field name; that field is recorded in observation_provenance.source_series_field. See docs/architecture/economic-concept-identity.md section 6."
+    ],
+    "contract_version": "intelligence_v1",
+    "payload": {
+     "series_title": "5-Year Treasury Par Yield (Nominal)",
+     "latest_value": 4.86,
+     "changes": [
+      {
+       "window": "1_SESSION",
+       "sessions": 1,
+       "available": true,
+       "change_basis_points": 8.0,
+       "from_date": "2026-09-17",
+       "from_value": 4.78
+      },
+      {
+       "window": "5_SESSIONS",
+       "sessions": 5,
+       "available": true,
+       "change_basis_points": 8.0,
+       "from_date": "2026-09-11",
+       "from_value": 4.78
+      },
+      {
+       "window": "21_SESSIONS",
+       "sessions": 21,
+       "available": true,
+       "change_basis_points": 51.0,
+       "from_date": "2026-08-19",
+       "from_value": 4.35
+      },
+      {
+       "window": "63_SESSIONS",
+       "sessions": 63,
+       "available": true,
+       "change_basis_points": 63.0,
+       "from_date": "2026-06-18",
+       "from_value": 4.23
+      }
+     ],
+     "historical_percentile_rank": 0.681416,
+     "historical_magnitude_percentile_rank": 0.539823,
+     "historical_observation_count": 113,
+     "visual_evidence": {
+      "kind": "TIME_SERIES",
+      "concept_id": "UST_NOMINAL_5Y",
+      "unit": "Percent",
+      "requested_sessions": 63,
+      "available_sessions": 63,
+      "points": [
+       {
+        "observation_date": "2026-06-22",
+        "value": 4.29
+       },
+       {
+        "observation_date": "2026-06-23",
+        "value": 4.27
+       },
+       {
+        "observation_date": "2026-06-24",
+        "value": 4.17
+       },
+       {
+        "observation_date": "2026-06-25",
+        "value": 4.15
+       },
+       {
+        "observation_date": "2026-06-26",
+        "value": 4.12
+       },
+       {
+        "observation_date": "2026-06-29",
+        "value": 4.14
+       },
+       {
+        "observation_date": "2026-06-30",
+        "value": 4.19
+       },
+       {
+        "observation_date": "2026-07-01",
+        "value": 4.24
+       },
+       {
+        "observation_date": "2026-07-02",
+        "value": 4.23
+       },
+       {
+        "observation_date": "2026-07-06",
+        "value": 4.21
+       },
+       {
+        "observation_date": "2026-07-07",
+        "value": 4.27
+       },
+       {
+        "observation_date": "2026-07-08",
+        "value": 4.31
+       },
+       {
+        "observation_date": "2026-07-09",
+        "value": 4.27
+       },
+       {
+        "observation_date": "2026-07-10",
+        "value": 4.3
+       },
+       {
+        "observation_date": "2026-07-13",
+        "value": 4.37
+       },
+       {
+        "observation_date": "2026-07-14",
+        "value": 4.31
+       },
+       {
+        "observation_date": "2026-07-15",
+        "value": 4.26
+       },
+       {
+        "observation_date": "2026-07-16",
+        "value": 4.28
+       },
+       {
+        "observation_date": "2026-07-17",
+        "value": 4.28
+       },
+       {
+        "observation_date": "2026-07-20",
+        "value": 4.33
+       },
+       {
+        "observation_date": "2026-07-21",
+        "value": 4.37
+       },
+       {
+        "observation_date": "2026-07-22",
+        "value": 4.41
+       },
+       {
+        "observation_date": "2026-07-23",
+        "value": 4.46
+       },
+       {
+        "observation_date": "2026-07-24",
+        "value": 4.43
+       },
+       {
+        "observation_date": "2026-07-27",
+        "value": 4.4
+       },
+       {
+        "observation_date": "2026-07-28",
+        "value": 4.35
+       },
+       {
+        "observation_date": "2026-07-29",
+        "value": 4.37
+       },
+       {
+        "observation_date": "2026-07-30",
+        "value": 4.38
+       },
+       {
+        "observation_date": "2026-07-31",
+        "value": 4.45
+       },
+       {
+        "observation_date": "2026-08-03",
+        "value": 4.4
+       },
+       {
+        "observation_date": "2026-08-04",
+        "value": 4.33
+       },
+       {
+        "observation_date": "2026-08-05",
+        "value": 4.33
+       },
+       {
+        "observation_date": "2026-08-06",
+        "value": 4.4
+       },
+       {
+        "observation_date": "2026-08-07",
+        "value": 4.35
+       },
+       {
+        "observation_date": "2026-08-10",
+        "value": 4.41
+       },
+       {
+        "observation_date": "2026-08-11",
+        "value": 4.39
+       },
+       {
+        "observation_date": "2026-08-12",
+        "value": 4.38
+       },
+       {
+        "observation_date": "2026-08-13",
+        "value": 4.32
+       },
+       {
+        "observation_date": "2026-08-14",
+        "value": 4.36
+       },
+       {
+        "observation_date": "2026-08-17",
+        "value": 4.38
+       },
+       {
+        "observation_date": "2026-08-18",
+        "value": 4.37
+       },
+       {
+        "observation_date": "2026-08-19",
+        "value": 4.35
+       },
+       {
+        "observation_date": "2026-08-20",
+        "value": 4.39
+       },
+       {
+        "observation_date": "2026-08-21",
+        "value": 4.43
+       },
+       {
+        "observation_date": "2026-08-24",
+        "value": 4.41
+       },
+       {
+        "observation_date": "2026-08-25",
+        "value": 4.35
+       },
+       {
+        "observation_date": "2026-08-26",
+        "value": 4.37
+       },
+       {
+        "observation_date": "2026-08-27",
+        "value": 4.38
+       },
+       {
+        "observation_date": "2026-08-28",
+        "value": 4.48
+       },
+       {
+        "observation_date": "2026-08-31",
+        "value": 4.49
+       },
+       {
+        "observation_date": "2026-09-01",
+        "value": 4.55
+       },
+       {
+        "observation_date": "2026-09-02",
+        "value": 4.54
+       },
+       {
+        "observation_date": "2026-09-03",
+        "value": 4.52
+       },
+       {
+        "observation_date": "2026-09-04",
+        "value": 4.54
+       },
+       {
+        "observation_date": "2026-09-08",
+        "value": 4.57
+       },
+       {
+        "observation_date": "2026-09-09",
+        "value": 4.61
+       },
+       {
+        "observation_date": "2026-09-10",
+        "value": 4.75
+       },
+       {
+        "observation_date": "2026-09-11",
+        "value": 4.78
+       },
+       {
+        "observation_date": "2026-09-14",
+        "value": 4.8
+       },
+       {
+        "observation_date": "2026-09-15",
+        "value": 4.83
+       },
+       {
+        "observation_date": "2026-09-16",
+        "value": 4.86
+       },
+       {
+        "observation_date": "2026-09-17",
+        "value": 4.78
+       },
+       {
+        "observation_date": "2026-09-18",
+        "value": 4.86
+       }
+      ]
+     }
+    }
+   }
+  ],
+  "total": 6,
+  "limit": 50,
+  "offset": 0,
+  "contract_version": "intelligence_v1"
+ }
+}

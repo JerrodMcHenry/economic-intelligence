@@ -15049,3 +15049,117 @@ unexplained verdict into an auditable one, and cost nothing but a rectangle.
 
 Worth asking of every monitor: which field decides the answer, and can the
 reader see it?
+
+## #52A — the second curve that had been arriving all along
+
+The brief said: explore a Treasury yield curve if the API supports comparable
+maturity observations for the same date.
+
+It does. And `/rates` has drawn one since #49B, six weeks ago.
+
+So the honest first move was to say so, and then ask the narrower question that
+was actually left: **given the curve is already there, what is the page still
+throwing away?**
+
+### The answer was in a field I had already read twice
+
+Every maturity's response carries `changes[]` — four session windows, each with
+`change_basis_points`. I had rendered those in #49B. What I had never looked at
+was the two fields beside them: `from_date` and `from_value`.
+
+Four maturities, each publishing a value and a date. And when I checked whether
+the dates lined up:
+
+```
+1 session   2026-09-17  4.67 4.78 4.94 5.29   aligned
+5 sessions  2026-09-11  4.63 4.78 4.96 5.35   aligned
+21 sessions 2026-08-19  4.19 4.35 4.65 5.19   aligned
+63 sessions 2026-06-18  4.19 4.23 4.46 4.90   aligned
+```
+
+**Four published values on one published date is a curve.** The page was
+receiving four complete past curves in every response and rendering them as
+sixteen scattered basis-point figures.
+
+What that costs is not abstract. Over 21 sessions two different things happened
+at once: every maturity **rose** (2Y +57 bp), and the gap between the 2-year and
+the 30-year **narrowed**, 1.00 points to 0.58. A single-date chart can show
+neither. A reader sees an upward line and no hint that it both lifted and
+flattened.
+
+### The constraint turned out to be the design
+
+`no-rates-calculation.test.ts` forbids the frontend from subtracting one yield
+from another. That looked like it would block the "narrower" sentence — until I
+noticed the `2s30s` spread publishes its own `from_value` and `to_value` for the
+same four windows. So "wider or narrower" is a comparison of two published
+fields, not a subtraction of two yields.
+
+**The guard did not need routing around. It pointed at the field I should have
+been reading.** Same lesson as #49B, arrived at from the opposite direction: that
+time the guard caught me converting a fraction to a percentage and the fix was
+`lib/cssUnits.ts`; this time it would have caught a spread I never had to
+compute.
+
+### The trap I avoided by construction instead of by memory
+
+#48B turned SVG circles into ellipses under `preserveAspectRatio="none"`. #51B
+did it again. Both times I found it in a screenshot after shipping the bug.
+
+This time every dot is an HTML element positioned at a percentage. **A round HTML
+dot cannot be distorted by a viewBox at all.** The catalogue entry finally became
+a construction rule rather than something to check for afterwards.
+
+The two polylines stay in SVG with `vector-effect="non-scaling-stroke"`, which is
+the same idea applied to stroke weight.
+
+### Two things measurement caught that review would not have
+
+**The y-axis label landed on a data point.** `4.19%` on the axis, centred on the
+2Y "then" dot, whose own label also read `4.19`. Eight points on the board, eight
+printed values — the axis was repeating a number already on screen *and*
+colliding with it. Removed, not repositioned.
+
+**The desktop board measured 3.26:1.** 1110×340 at 1440. Any curve drawn that
+wide reads as flat, which is a problem when the shape is the entire argument. The
+comparison is still honest — both curves stretch identically — but the reader
+should not have to squint. At ≥1024 the card now splits: plot left, the
+Level/Shape reading right. Board drops to 2.02:1, and the desktop dead space the
+audit had measured on the current page starts doing work.
+
+And a smaller one: the "then" value labels used the same grey as the dashed line
+and measured **4.57:1**. That passes, barely. But the line is a graphical object
+at 3:1 and the number beside it is 12.5px text at 4.5:1 — **the same colour
+serving two different requirements**. The text got its own lighter step, 6.67:1.
+
+### What the audit had to record as absent
+
+No spread history series — four candidate ids, four 404s. No
+`/monitors/rates/history` — 422, the route accepts only `inflation` and `labor`,
+so Rates structurally cannot replay a past conclusion the way Inflation and Jobs
+can, and `IntelligenceHistorySection` is not reusable because it consumes a
+different contract. No `/monitors/rates/changes`. Ten maturities not ingested.
+
+All of it documented as a future dependency. None of it filled in.
+
+### And one thing that renders nowhere
+
+`/api/v1/intelligence?world=rates` returns six `RATES_MOVEMENT` records. The
+Rates page shows none of them. Their own limitation text is better than anything
+I would have written:
+
+> "Carries no significance claim: rates_v1.0 defines no notability threshold, so
+> this reports the movement and its own historical position, not that the
+> movement matters."
+
+### Lesson
+
+**A field I have already rendered is not a field I have already read.**
+
+I shipped `changes[].change_basis_points` in #49B and never looked at the two
+fields sitting next to it in the same object. The most valuable thing in the
+response was not missing, not undocumented and not new — it was adjacent to
+something I had already used, which is the one place I had stopped looking.
+
+Worth asking of every response the product already consumes: not "what is
+missing", but **"what is next to what I took?"**
