@@ -375,3 +375,72 @@ class TestDockerfileWebCommandExecutes:
         assert argv[argv.index("--port") + 1] == "10000"
         assert argv[argv.index("--forwarded-allow-ips") + 1] == "10.0.0.1,10.0.0.2"
         assert len(argv) == 8, f"unexpected extra arguments reached uvicorn: {argv}"
+
+
+class TestContainerWorkflowValidatesNeverDeploys:
+    """#55A: `.github/workflows/container.yml` migrates and runs the real
+    image, so it must be held to the same line as `ci.yml` (ADR-028) --
+    stated for THIS workflow's shape: it may migrate, but only the
+    job-local service database; it may build an image, but never publish
+    one; and it never touches a repository secret."""
+
+    _WORKFLOW = Path(".github/workflows/container.yml")
+
+    def _workflow(self) -> dict:
+        import yaml
+
+        return yaml.safe_load(_source(self._WORKFLOW))
+
+    def _executable_text(self) -> str:
+        import yaml
+
+        return yaml.safe_dump(self._workflow())
+
+    def test_never_references_a_repository_secret(self):
+        assert "secrets." not in self._executable_text()
+
+    def test_never_logs_in_to_or_pushes_to_a_registry(self):
+        content = self._executable_text()
+        for forbidden in ("docker push", "docker login", "docker/login-action", "docker/build-push-action"):
+            assert forbidden not in content, forbidden
+
+    def test_has_no_deploy_job(self):
+        for name in self._workflow()["jobs"]:
+            assert "deploy" not in name.lower()
+
+    def test_the_only_database_is_the_job_local_service(self):
+        job = self._workflow()["jobs"]["image"]
+        assert job["env"]["DATABASE_URL"] == "postgresql://postgres@localhost:5432/macrochipz_container_ci"
+        assert job["services"]["postgres"]["env"]["POSTGRES_DB"] == "macrochipz_container_ci"
+        # No step may point the release command anywhere else.
+        for step in job["steps"]:
+            assert "DATABASE_URL=" not in step.get("run", ""), step.get("name")
+
+    def test_generated_credentials_are_masked_before_use(self):
+        steps = self._workflow()["jobs"]["image"]["steps"]
+        generate = next(step for step in steps if "credentials" in step.get("name", "").lower())
+        assert "::add-mask::" in generate["run"]
+        assert steps.index(generate) < next(i for i, step in enumerate(steps) if "docker build" in step.get("run", ""))
+
+
+class TestImageCarriesTheFrontend:
+    """#55A: the image builds the frontend in a discarded stage and
+    serves only its output."""
+
+    def test_node_stage_matches_the_repository_node_contract(self):
+        nvmrc = (REPO_ROOT / ".nvmrc").read_text().strip()
+        assert f"ARG NODE_VERSION={nvmrc}" in _source(_DOCKERFILE)
+
+    def test_final_stage_copies_only_the_built_client(self):
+        code = _code_only(_DOCKERFILE)
+        from_frontend = [line for line in code.splitlines() if "--from=frontend" in line]
+        assert from_frontend == ["COPY --from=frontend /frontend/build/client ./frontend_dist"]
+        assert "ENV FRONTEND_DIST_DIR=/app/frontend_dist" in code
+
+    def test_frontend_build_is_same_origin_and_unindexed(self):
+        assert "RUN VITE_API_BASE_URL= VITE_SITE_URL= npm run build" in _code_only(_DOCKERFILE)
+
+    def test_dockerignore_keeps_local_frontend_output_and_env_files_out(self):
+        content = _source(_DOCKERIGNORE)
+        for required in ("frontend/node_modules/", "frontend/build/", "**/.env"):
+            assert required in content, required

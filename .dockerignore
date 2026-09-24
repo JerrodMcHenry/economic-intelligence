@@ -18,15 +18,23 @@ __pycache__/
 .env
 .env.*
 !.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
 # Test/local databases and dumps never belong in an image.
 *.sql
 *.dump
 
-# Frontend: an independently-built, independently-deployed static
-# artifact (see #26D's own §6 packaging decision) -- never bundled into
-# this backend image at all.
-frontend/
+# Frontend (#55A): the SOURCES are now needed by the image's build
+# stage, which produces the static bundle the web process serves behind
+# the access gate. Local build output and dependencies are not: the
+# stage installs from package-lock.json and builds from scratch, so a
+# stale local build can never leak into the image.
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.react-router/
 
 # Research data (already excluded from version control for the same
 # "regenerable, not committed" reason -- see .gitignore).

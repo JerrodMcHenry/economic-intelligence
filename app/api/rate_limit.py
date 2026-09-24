@@ -61,6 +61,19 @@ class FixedWindowRateLimiter:
             events.append(moment)
             return True
 
+    def is_limited(self, key: str, now: float | None = None) -> bool:
+        """Whether `key` has exhausted its budget, WITHOUT recording an
+        attempt (#55A). The access gate needs this: it counts only
+        failed logins, and it must refuse a locked-out client before
+        checking credentials -- otherwise a correct guess would still
+        be distinguishable from a wrong one."""
+        moment = time.monotonic() if now is None else now
+        with self._lock:
+            events = self._events.get(key)
+            if not events:
+                return False
+            return sum(1 for moment_seen in events if moment_seen > moment - self._window) >= self._limit
+
     def retry_after_seconds(self, key: str, now: float | None = None) -> int:
         """Whole seconds until the oldest event in the window expires --
         what a caller should wait before retrying."""

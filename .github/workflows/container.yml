@@ -1,0 +1,130 @@
+# Increment #55A — build and exercise the REAL production image.
+#
+# `ci.yml` tests the code; nothing tested the artifact. #54A found two
+# defects that only appear when the image's own command runs against a
+# platform-shaped DATABASE_URL, and no development machine on this
+# project has a Docker daemon. This workflow is where the image is
+# verified: it builds this repository's Dockerfile unmodified, then runs
+# the release command, the web command and the smoke test from that
+# image against an isolated, ephemeral PostgreSQL service.
+#
+# Validation only, never deployment (ADR-028): no registry login, no
+# push, no deploy job, no `secrets.` reference. The database is the
+# job-local service container below and is discarded with the job. The
+# access password and operator token are generated per run, masked, and
+# exist only for this job's lifetime -- they protect nothing real.
+# tests/test_release_architecture.py enforces all of this.
+name: Container
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: macrochipz_container_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      IMAGE: macrochipz:ci
+      # Deliberately the driverless form a managed platform issues
+      # (#54A defect D2) -- the image must accept it as-is.
+      DATABASE_URL: postgresql://postgres@localhost:5432/macrochipz_container_ci
+      ACCESS_USERNAME: reviewer
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Generate per-run credentials (masked, job-local)
+        run: |
+          access_password="$(openssl rand -hex 24)"
+          operator_token="$(openssl rand -hex 32)"
+          echo "::add-mask::${access_password}"
+          echo "::add-mask::${operator_token}"
+          echo "ACCESS_PASSWORD=${access_password}" >> "$GITHUB_ENV"
+          echo "OPERATOR_TOKEN=${operator_token}" >> "$GITHUB_ENV"
+
+      - name: Build the production image
+        run: docker build --build-arg APP_VERSION="${GITHUB_SHA}" --tag "$IMAGE" .
+
+      - name: Image contents
+        run: |
+          docker image inspect "$IMAGE" --format 'image size: {{.Size}} bytes'
+          test "$(docker run --rm --entrypoint id "$IMAGE" -u)" != "0"
+          docker run --rm "$IMAGE" python -c "import importlib.util, sys; sys.exit(importlib.util.find_spec('pytest') is not None)"
+          docker run --rm "$IMAGE" sh -c '
+            test -f /app/frontend_dist/index.html &&
+            test -f /app/frontend_dist/__spa-fallback.html &&
+            test ! -e /app/frontend_dist/sitemap.xml &&
+            test ! -e /app/frontend &&
+            test ! -e /app/.env &&
+            ! command -v node'
+          echo "non-root user, no dev dependencies, frontend built in, no sitemap, no sources, no Node"
+
+      - name: Migrate the isolated database (fresh, then idempotent)
+        run: |
+          docker run --rm --network host -e DATABASE_URL "$IMAGE" python -m app.operations.release preflight | tee preflight.txt
+          grep -q "Status: SCHEMA_UNINITIALIZED" preflight.txt
+          docker run --rm --network host -e DATABASE_URL "$IMAGE" python -m app.operations.release migrate | tee migrate.txt
+          grep -q "Migration verified: database is COMPATIBLE." migrate.txt
+          docker run --rm --network host -e DATABASE_URL "$IMAGE" python -m app.operations.release migrate | tee migrate2.txt
+          grep -q "Already at head -- nothing to migrate." migrate2.txt
+
+      - name: Start the web command in production mode
+        run: |
+          # Only the variable NAMES appear here; values come from the
+          # job environment. CORS_ALLOWED_ORIGINS is intentionally
+          # absent: the frontend is same-origin.
+          docker run --detach --name web --network host \
+            -e PORT=10000 -e ENVIRONMENT=production \
+            -e DATABASE_URL -e ACCESS_USERNAME -e ACCESS_PASSWORD -e OPERATOR_TOKEN \
+            "$IMAGE"
+          for attempt in $(seq 1 30); do
+            curl --silent --fail --output /dev/null http://localhost:10000/health && exit 0
+            sleep 1
+          done
+          echo "web command never answered /health"; docker logs web; exit 1
+
+      - name: Container checks
+        run: python3 .github/scripts/verify_container.py --base-url http://localhost:10000 --expect-version "${GITHUB_SHA}"
+
+      - name: Smoke test from the image (restricted)
+        run: docker run --rm --network host -e ACCESS_USERNAME -e ACCESS_PASSWORD "$IMAGE" python -m app.operations.smoke_test --base-url http://localhost:10000 --restricted
+
+      - name: Startup log is clean and never contains a credential
+        run: |
+          docker logs web > web.log 2>&1
+          if grep -q "production configuration problem" web.log; then grep "production configuration problem" web.log; exit 1; fi
+          if grep -qF "$ACCESS_PASSWORD" web.log || grep -qF "$OPERATOR_TOKEN" web.log; then echo "a credential reached the log"; exit 1; fi
+          echo "no configuration problems reported; no credential in $(wc -l < web.log) log lines"
+
+      - name: Misconfigured production fails closed
+        run: |
+          docker run --detach --name web-misconfigured --network host \
+            -e PORT=10001 -e ENVIRONMENT=production -e DATABASE_URL \
+            "$IMAGE"
+          for attempt in $(seq 1 30); do
+            curl --silent --fail --output /dev/null http://localhost:10001/health && break
+            sleep 1
+          done
+          python3 .github/scripts/verify_container.py --base-url http://localhost:10001 --misconfigured
+          docker logs web-misconfigured > misconfigured.log 2>&1
+          grep -q "ACCESS_PASSWORD is not set" misconfigured.log
+          grep -q "OPERATOR_TOKEN is not set" misconfigured.log
+
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          docker logs web 2>&1 | tail -100 || true
+          docker logs web-misconfigured 2>&1 | tail -50 || true

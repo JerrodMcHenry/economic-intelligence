@@ -17,6 +17,16 @@ start bootstrap completeness is #26F's own separate concern, never
 this command's) -- only an unexpected `5xx`, an unready `/readiness`,
 or any other non-2xx status fails this smoke test.
 
+Restricted deployments (#55A): with `--restricted`, credentials are
+read from the operator's own `ACCESS_USERNAME`/`ACCESS_PASSWORD`
+environment variables -- never a command-line argument, which would
+land in shell history and `ps` output -- and sent as HTTP Basic auth.
+The run then also PROVES the boundary rather than assuming it: an
+anonymous request for economic data, the frontend and the sitemap must
+each be refused, `/health` must stay open, and the authenticated
+frontend must return HTML. The Rates and Housing reads are checked
+alongside the original Inflation/Labor suite, since all four worlds ship.
+
 Safety: never prints a connection string, host, username, or password
 -- the base URL argument itself is the one thing this script does
 print, and it is a public API endpoint address, never a secret
@@ -25,6 +35,7 @@ URLs are configuration, not secrets").
 """
 
 import argparse
+import os
 import sys
 
 import httpx
@@ -36,7 +47,13 @@ _ROUTES = (
     "/api/v1/monitors/labor",
     "/api/v1/since-last-visit",
     "/api/v1/releases",
+    "/api/v1/monitors/rates",
+    "/api/v1/housing",
 )
+
+#: Must be refused without credentials on a restricted deployment:
+#: economic data, the frontend shell, and generated metadata.
+_MUST_BE_GATED = ("/api/v1/monitors/inflation", "/", "/sitemap.xml")
 
 _TIMEOUT_SECONDS = 10.0
 
@@ -75,23 +92,67 @@ def main(argv: list[str] | None = None) -> int:
         description="Read-only post-deploy smoke test (docs/product/production-reliability-deployment-v1.md #26B §48).",
     )
     parser.add_argument("--base-url", default="http://localhost:8000", help="The deployed API's own base URL.")
+    parser.add_argument(
+        "--restricted",
+        action="store_true",
+        help="Authenticate with ACCESS_USERNAME/ACCESS_PASSWORD from the environment and verify the access boundary.",
+    )
     args = parser.parse_args(argv)
 
+    auth: httpx.BasicAuth | None = None
+    if args.restricted:
+        password = os.environ.get("ACCESS_PASSWORD")
+        if not password:
+            print("--restricted requires ACCESS_PASSWORD in the environment.", file=sys.stderr)
+            return 2
+        auth = httpx.BasicAuth(os.environ.get("ACCESS_USERNAME") or "macrochipz", password)
+
     print(f"Smoke testing: {args.base_url}")
-    failures: list[str] = []
-    with httpx.Client(base_url=args.base_url) as client:
-        for path in _ROUTES:
-            ok, message = _check_route(client, path)
-            print(message)
-            if not ok:
-                failures.append(message)
+    results: list[tuple[bool, str]] = []
+    if args.restricted:
+        with httpx.Client(base_url=args.base_url) as anonymous:
+            results.extend(_check_boundary(anonymous))
+    with httpx.Client(base_url=args.base_url, auth=auth) as client:
+        results.extend(_check_route(client, path) for path in _ROUTES)
+        if args.restricted:
+            results.append(_check_frontend(client))
+
+    failures = [message for ok, message in results if not ok]
+    for _, message in results:
+        print(message)
 
     if failures:
-        print(f"Smoke test FAILED: {len(failures)} of {len(_ROUTES)} checks failed.", file=sys.stderr)
+        print(f"Smoke test FAILED: {len(failures)} of {len(results)} checks failed.", file=sys.stderr)
         return 1
 
-    print(f"Smoke test passed: {len(_ROUTES)} of {len(_ROUTES)} checks succeeded.")
+    print(f"Smoke test passed: {len(results)} of {len(results)} checks succeeded.")
     return 0
+
+
+def _check_boundary(anonymous: httpx.Client) -> list[tuple[bool, str]]:
+    results: list[tuple[bool, str]] = []
+    for path in _MUST_BE_GATED:
+        try:
+            status = anonymous.get(path, timeout=_TIMEOUT_SECONDS).status_code
+        except httpx.HTTPError as exc:
+            results.append((False, f"anonymous {path}: could not connect ({type(exc).__name__})"))
+            continue
+        results.append((status == 401, f"anonymous {path}: {status} (expected 401)"))
+    try:
+        status = anonymous.get("/health", timeout=_TIMEOUT_SECONDS).status_code
+    except httpx.HTTPError as exc:
+        return [*results, (False, f"anonymous /health: could not connect ({type(exc).__name__})")]
+    results.append((status == 200, f"anonymous /health: {status} (expected 200)"))
+    return results
+
+
+def _check_frontend(client: httpx.Client) -> tuple[bool, str]:
+    try:
+        response = client.get("/", timeout=_TIMEOUT_SECONDS)
+    except httpx.HTTPError as exc:
+        return False, f"/ (frontend): could not connect ({type(exc).__name__})"
+    is_html = response.headers.get("content-type", "").startswith("text/html")
+    return response.status_code == 200 and is_html, f"/ (frontend): {response.status_code} {'html' if is_html else 'not html'}"
 
 
 if __name__ == "__main__":  # pragma: no cover

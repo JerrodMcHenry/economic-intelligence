@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.access_gate import AccessGateMiddleware
 from app.api.ai import router as ai_router
 from app.api.analysis import router as analysis_router
 from app.api.analyst import router as analyst_router
@@ -23,6 +24,7 @@ from app.core.logging import configure_logging
 from app.core.schema_compatibility import SchemaCompatibilityStatus, check_schema_compatibility
 from app.core.version import application_version
 from app.models.readiness import ReadinessReason, ReadinessResponse
+from app.web.frontend import build_frontend_router
 
 configure_logging()
 logger = logging.getLogger("app.main")
@@ -49,6 +51,12 @@ app = FastAPI(
 # runs first. Body-size limiting must run before anything buffers a body,
 # and request context must wrap everything so even a rejected request is
 # logged and carries an id.
+#
+# The access gate (#55A) is registered first, i.e. innermost of these:
+# it runs before every route -- API and frontend alike -- while its own
+# 401/429/503 responses still pass back out through the security-header
+# and request-id middleware.
+app.add_middleware(AccessGateMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(BodySizeLimitMiddleware)
 app.add_middleware(RequestContextMiddleware)
@@ -154,3 +162,10 @@ def readiness() -> JSONResponse:
         version=application_version(),
     )
     return JSONResponse(status_code=200 if result.compatible else 503, content=body.model_dump())
+
+# The built frontend (#55A), served by this process so the access gate
+# covers it. Registered LAST: its catch-all route must never shadow an
+# API route or `/health`/`/readiness` above. Absent locally, where the
+# Vite dev server serves the frontend and proxies `/api` here.
+if settings.frontend_dist_dir:
+    app.include_router(build_frontend_router(settings.frontend_dist_dir))

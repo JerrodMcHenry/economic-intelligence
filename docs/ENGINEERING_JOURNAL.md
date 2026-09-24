@@ -15596,3 +15596,124 @@ contact. Nothing about either needed Docker or Render to find. They
 needed someone to run the exact string, with the exact input the
 platform will supply, instead of the input the developer always
 happens to have.
+
+## #55A — a static site cannot keep a secret
+
+#55A changed the question #54A had answered. The first deployment is now
+a **restricted demonstration of all four worlds**, not a public launch
+of two. Inflation and Jobs are still FRED-sourced (#54B is audited but
+not approved), so the requirement was absolute: nothing the deployment
+holds reaches anyone who has not authenticated. That covers the
+frontend, generated share pages, the sitemap, static assets and every
+API response.
+
+### What the platform offers, checked rather than assumed
+
+Render's documentation was read for any way to put a password in front
+of a site. There isn't one:
+
+- No visitor authentication for static sites or web services. Every
+  authentication feature it documents protects the *dashboard*.
+- IP rules for web services require the Scale plan, at $499 a month,
+  and are allowlists anyway.
+- Render's own blog suggests client-side page encryption for static
+  sites. That would protect the HTML and leave public the API the HTML
+  calls.
+- Cloudflare Access would work, but Cloudflare's documentation requires
+  the origin to validate its token regardless, and it needs a domain
+  this project does not have.
+
+So the decision (ADR-042) was structural before it was about
+authentication. **The Render Static Site goes.** The Docker image now
+builds the frontend in a discarded Node stage, and the web process
+serves it. That puts the frontend behind the same middleware as the API,
+makes every browser call same-origin (no CORS, `connect-src 'self'`),
+and removes the build-time dependency on a reachable API that #46B
+spent a section on. Share pages cannot unfurl behind a password, and for
+a restricted demo that is correct.
+
+The gate is HTTP Basic, in front of every route, with `/health` as the
+only exemption. Production is always restricted: there is no setting
+that makes it public, and a missing or short password yields 503
+everywhere, never an open site.
+
+### The test that could not find the routes
+
+The test I cared about enumerates every route the application exposes
+and asserts each one refuses an anonymous request. That makes it
+impossible to add an ungated endpoint later without the suite noticing.
+Its first run found **five** routes. I had put a floor of thirty in the
+test for exactly this reason, and it fired.
+
+This FastAPI version wraps each included router in a private
+`_IncludedRouter`, so `app.routes` shows only what is declared directly
+on the app. A guard that walked it would have passed while checking
+almost nothing. The enumeration now comes from FastAPI's own OpenAPI
+generator, which is the supported view of the effective routes, and
+finds 33. The same wrapping explains #54A's observation that logged
+route templates lack the `/api/v1` prefix.
+
+### The lockout that locked out the right person
+
+The gate counts failed sign-ins per client and stops checking
+credentials after ten, so a correct guess cannot be told apart from a
+wrong one. The container checks' own anonymous probes then locked out
+the authenticated checks that followed.
+
+The checks were not at fault. A request carrying **no** credentials is
+the first half of the Basic handshake: it is what every browser sends
+first, and what link unfurlers and uptime monitors send forever. If
+anonymous requests count, a Slack preview on a reviewer's office network
+locks the reviewer out. Only presented-and-wrong credentials count now,
+and a test pins it.
+
+### Running the image's checks without Docker
+
+This machine still has no Docker daemon, so `container.yml` (build the
+real image, check its contents, migrate an isolated Postgres from it,
+start it in production mode, verify, smoke test, and start it again
+misconfigured) runs for the first time on the next push. **It has no
+result yet, and the deployment waits for one.**
+
+Its HTTP checks live in a standard-library script so they could be run
+here against the image-equivalent process: the production-only venv,
+the Dockerfile's own `CMD`, a plain `postgresql://` URL, and a restored
+copy of the dev database so all four worlds had data.
+
+- 41/41 checks pass configured, 5/5 misconfigured.
+- The restricted smoke test passes 13/13.
+- The startup log reports nothing, and contains neither generated
+  credential.
+
+In a real browser the same frontend and CSP rendered Inflation, Jobs,
+`/revisions` and a share page with live data. There were no
+cross-origin requests and no CSP violations. The browser's Basic prompt
+itself was not exercised, because I do not enter passwords into
+browsers. That check is in the procedure as a deploy-time step.
+
+### Two corrections to #54A
+
+- #54A's static-site rewrite (`/*` → `/index.html`) was wrong. React
+  Router's own changelog: with `ssr: false` prerendering, `index.html` is
+  the prerendered *home page* and does not hydrate on other paths.
+  Non-prerendered routes need `__spa-fallback.html`.
+- #54A's backup fingerprint assumed `psql` in a Render Shell. The image
+  has none, so the fingerprint is now Python, run through the image's
+  own environment and verified locally.
+
+### Found, not fixed
+
+The repository is public and contains real FRED-derived API captures
+under `docs/product/mockups/v50a` and `v51a`. No route serves them and
+the image excludes `docs/`, but they are outside any access boundary.
+Deleting them from the tree is easy. Deleting them from history
+rewrites public history, which is not a decision to make inside a
+preparation increment.
+
+### Lesson
+
+**Access control is a property of the serving path, not of the page.**
+
+The frontend was the most sensitive thing in the deployment and the one
+piece the platform could not protect. No login screen could have fixed
+that. The fix was moving the frontend to where a check could run.

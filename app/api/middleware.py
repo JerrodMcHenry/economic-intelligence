@@ -38,9 +38,8 @@ REQUEST_ID_HEADER = "X-Request-ID"
 #: responses protects nothing. The CSP that matters belongs to the
 #: static host serving the frontend, and pretending to set it here would
 #: be theatre -- it is specified instead in the deployment document.
-#: `Strict-Transport-Security` is likewise omitted: TLS terminates at
-#: the platform edge, which issues HSTS itself, and an origin server
-#: behind that proxy asserting HSTS adds nothing.
+#: `Strict-Transport-Security` is sent in production only -- see
+#: `STRICT_TRANSPORT_SECURITY` below (#55A reversed #34's omission).
 SECURITY_HEADERS = {
     # Browsers must not sniff a JSON body into something executable.
     "X-Content-Type-Options": "nosniff",
@@ -159,6 +158,14 @@ def _too_large(limit: int) -> JSONResponse:
     )
 
 
+#: Production only (#55A). #34 omitted HSTS on the assumption that the
+#: platform edge issues it; #55A's review of Render's documentation found
+#: no such statement, so the application sends it. Safe because Render
+#: redirects every HTTP request to HTTPS before it arrives here. No
+#: `includeSubDomains`: the default host is a subdomain of onrender.com.
+STRICT_TRANSPORT_SECURITY = ("Strict-Transport-Security", "max-age=31536000")
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Attach `SECURITY_HEADERS` to every response, including errors."""
 
@@ -168,4 +175,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # means a route that deliberately sets its own value wins.
         for name, value in SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
+        if settings.is_production:
+            response.headers.setdefault(*STRICT_TRANSPORT_SECURITY)
         return response

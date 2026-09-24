@@ -4,17 +4,48 @@
 # images. See docs/product/production-reliability-deployment-v1.md
 # (#26B) §4/§40-41 and docs/runbook/production-release-runbook.md.
 #
-# NOT build-verified in this development environment (no Docker daemon
-# available here, honestly disclosed rather than pretended — see the
-# runbook and #26D's own final report). Written to be correct by direct,
-# careful review against this repository's own real dependency list and
-# existing, already-verified local run commands (README.md), not
-# guessed at.
+# Increment #55A: built and exercised by CI on every push --
+# `.github/workflows/container.yml` builds this exact file, migrates an
+# isolated PostgreSQL, starts the web command in production mode and
+# checks /health, /readiness and the access boundary. No development
+# machine used for this project has a Docker daemon, so that workflow is
+# where this image is verified.
+#
+# Increment #55A: the image also carries the built frontend. A restricted
+# deployment must authenticate EVERY response, and a separate static
+# site cannot (docs/adr/042-restricted-demo-access-gate.md), so the web
+# process serves `frontend/build/client` behind the same access gate as
+# the API.
+
+# ---------------------------------------------------------------------
+# Stage 1: build the frontend. Discarded after its output is copied --
+# Node, node_modules and the frontend sources never reach the final
+# image. The Node version is the repository's single runtime contract
+# (/.nvmrc); tests/test_release_architecture.py pins the two together.
+# ---------------------------------------------------------------------
+ARG NODE_VERSION=24.21.0
+FROM node:${NODE_VERSION}-slim AS frontend
+
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+# Same-origin build: an empty API base makes every browser call relative
+# to the page's own origin (frontend/src/api/client.ts), which is this
+# process. No site URL: behind authentication there is nothing for a
+# crawler to index, so no sitemap or absolute canonical is generated.
+# Both are cleared explicitly so a platform-injected build argument can
+# never change what this stage produces.
+RUN VITE_API_BASE_URL= VITE_SITE_URL= npm run build
+
+# ---------------------------------------------------------------------
+# Stage 2: the production image.
 #
 # Pins Python 3.12, matching this repository's own frozen
 # `requires-python = ">=3.12"` (pyproject.toml) and the exact local
 # development interpreter (Python 3.12.5) this whole project has been
 # built and tested against all session.
+# ---------------------------------------------------------------------
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -88,6 +119,11 @@ ENV APP_VERSION=${APP_VERSION}
 # Increment #34: run as a non-root user. Nothing in this image needs
 # root at runtime -- the application writes no files, binds an
 # unprivileged port, and owns no system state.
+# Increment #55A: the built frontend, served by the web command behind
+# the access gate (app/web/frontend.py).
+COPY --from=frontend /frontend/build/client ./frontend_dist
+ENV FRONTEND_DIST_DIR=/app/frontend_dist
+
 RUN useradd --create-home --uid 10001 macrochipz \
     && chown -R macrochipz:macrochipz /app
 USER macrochipz

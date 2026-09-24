@@ -34,6 +34,12 @@ load_dotenv()
 #: with development defaults.
 PRODUCTION_ENVIRONMENT = "production"
 
+#: Shortest `ACCESS_PASSWORD` accepted. Anything shorter is treated as
+#: unset (the gate then refuses everyone). The password is shared with a
+#: handful of reviewers and is guessable online only through the
+#: rate-limited gate, so length is the property that matters.
+MIN_ACCESS_PASSWORD_LENGTH = 16
+
 
 def _split_csv(raw: str | None) -> list[str]:
     return [item.strip() for item in (raw or "").split(",") if item.strip()]
@@ -171,6 +177,35 @@ class Settings:
     operator_token: str | None = os.environ.get("OPERATOR_TOKEN")
 
     # -----------------------------------------------------------------
+    # Restricted access (Increment #55A)
+    # -----------------------------------------------------------------
+
+    #: HTTP Basic credentials required for EVERY response except
+    #: `/health` -- the API, the frontend, share pages and static files
+    #: alike. See `app/api/access_gate.py` and ADR-042.
+    access_username: str = (os.environ.get("ACCESS_USERNAME") or "macrochipz").strip()
+    access_password: str | None = os.environ.get("ACCESS_PASSWORD")
+
+    @property
+    def access_gate_required(self) -> bool:
+        """Production is ALWAYS restricted; there is deliberately no
+        public switch while Inflation and Jobs depend on FRED data whose
+        redistribution terms are unresolved. Locally the gate is off
+        unless a password is set, so development is unchanged."""
+        return self.is_production or bool(self.access_password)
+
+    @property
+    def access_password_usable(self) -> bool:
+        """A password too short to resist guessing counts as absent, so a
+        weak value fails CLOSED rather than protecting nothing."""
+        return len(self.access_password or "") >= MIN_ACCESS_PASSWORD_LENGTH
+
+    #: The built frontend (`frontend/build/client`), served by this same
+    #: process so the access gate covers it. Set by the Docker image;
+    #: unset locally, where Vite serves the frontend.
+    frontend_dist_dir: str | None = os.environ.get("FRONTEND_DIST_DIR") or None
+
+    # -----------------------------------------------------------------
     # Analyst cost controls (Increment #34)
     # -----------------------------------------------------------------
 
@@ -240,11 +275,21 @@ def production_configuration_errors(current: Settings | None = None) -> list[str
     errors: list[str] = []
     if not active.database_url:
         errors.append("DATABASE_URL is required in production.")
-    if not active.cors_allowed_origins:
+    if not active.cors_allowed_origins and not active.frontend_dist_dir:
+        # Required only when the frontend lives on another origin. When
+        # this process serves it (#55A), every browser call is
+        # same-origin and no CORS header is ever needed.
         errors.append(
             "CORS_ALLOWED_ORIGINS is required in production: the frontend is served from a separate origin, "
             "so without it every browser request from the deployed UI fails."
         )
+    if not active.access_password_usable:
+        errors.append(
+            f"ACCESS_PASSWORD is not set or is shorter than {MIN_ACCESS_PASSWORD_LENGTH} characters: "
+            "every request except /health will be refused."
+        )
+    if active.frontend_dist_dir and not os.path.isfile(os.path.join(active.frontend_dist_dir, "index.html")):
+        errors.append("FRONTEND_DIST_DIR does not contain a built frontend (index.html is missing).")
     if any(origin == "*" for origin in active.cors_allowed_origins):
         errors.append("CORS_ALLOWED_ORIGINS must name exact origins; '*' is never accepted.")
     if not active.operator_token:
