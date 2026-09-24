@@ -165,27 +165,34 @@ class TestInvariantEDualBindings:
             assert sum(1 for b in all_bindings if b.active) == 1
 
     def test_a_second_inactive_binding_does_not_change_the_active_one(self) -> None:
-        """The dual-binding shape a future BLS migration uses: two
-        bindings for one concept, exactly one active, and resolution
-        unaffected until the flag flips."""
-        from dataclasses import replace
-
+        """The dual-binding shape the BLS migration uses -- now REAL, not
+        hypothetical (#56A added it): two bindings for one concept,
+        exactly one active, and resolution unaffected until #56B flips
+        the flag."""
         concept_id = "us.nonfarm.payroll-employment.sa.monthly"
-        current = active_binding(concept_id)
-        candidate = replace(
-            current,
-            provider="BLS",
-            provider_series_id="CES0000000001",
-            storage_series_id="BLS_CES0000000001",
-            equivalence_basis="Hypothetical migration candidate used only by this test.",
-            active=False,
-        )
-        pool = (*BINDINGS, candidate)
+        pair = bindings_for_concept(concept_id)
 
-        actives = [b for b in pool if b.concept_id == concept_id and b.active]
-        assert len(actives) == 1
-        assert actives[0].provider == "FRED"
-        assert len([b for b in pool if b.concept_id == concept_id]) == 2
+        assert sorted((b.provider, b.active) for b in pair) == [("BLS", False), ("FRED", True)]
+        assert active_binding(concept_id).provider == "FRED"
+        assert active_binding(concept_id).storage_series_id == "PAYEMS"
+        # Separate rows, so FRED history is never relabelled.
+        assert {b.storage_series_id for b in pair} == {"PAYEMS", concept_id}
+
+    def test_every_first_party_binding_is_inactive_until_activation(self) -> None:
+        """#56A populates BLS/BEA rows without changing what any reader
+        resolves. The day this fails, #56B has flipped a flag -- and
+        every other guarantee of that increment must hold with it."""
+        first_party = [b for b in BINDINGS if b.provider in {"BLS", "BEA"}]
+        assert len(first_party) == 6
+        assert not any(b.active for b in first_party)
+        for binding in first_party:
+            assert binding.storage_series_id == binding.concept_id
+            fred = [b for b in bindings_for_concept(binding.concept_id) if b.provider == "FRED"]
+            assert len(fred) == 1 and fred[0].active
+            # Native units and factors identical to FRED's, so the
+            # methodologies cannot tell the two rows apart.
+            assert binding.provider_native_unit == fred[0].provider_native_unit
+            assert binding.canonical_unit_factor == fred[0].canonical_unit_factor
 
 
 class TestAmbiguityCannotSilentlySucceed:

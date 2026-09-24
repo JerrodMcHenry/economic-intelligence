@@ -33,11 +33,21 @@ def test_driverless_platform_url_resolves_to_the_installed_psycopg_driver(raw):
     assert dialect.driver == "psycopg"
 
 
-def test_driverless_url_would_otherwise_resolve_to_the_uninstalled_psycopg2():
-    """The other direction: proves the rewrite is load-bearing, not
-    cosmetic. If SQLAlchemy ever stops defaulting to psycopg2, this
-    fails and the normalisation can be reconsidered."""
-    assert make_url("postgresql://u@h/db").get_dialect().driver == "psycopg2"
+def test_the_rewrite_is_load_bearing_on_every_sqlalchemy_the_image_can_install():
+    """The other direction: proves the rewrite is not cosmetic.
+
+    #54A pinned "`postgresql://` resolves to psycopg2" and said the test
+    would fail the day that stopped being true. It did: SQLAlchemy 2.1
+    (installed by CI on 2026-09-24, dependencies being unpinned) defaults
+    to psycopg 3, and `main` went red (#56A). The rewrite is still
+    needed, for two reasons that hold on every version: `postgres://`
+    has no dialect at all, and `postgresql://` means psycopg2 on any
+    2.0 release -- which an unpinned build may still resolve to."""
+    from sqlalchemy.exc import NoSuchModuleError
+
+    with pytest.raises(NoSuchModuleError):
+        make_url("postgres://u@h/db").get_dialect()
+    assert make_url("postgresql://u@h/db").get_dialect().driver in {"psycopg2", "psycopg"}
 
 
 @pytest.mark.parametrize(

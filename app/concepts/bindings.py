@@ -130,15 +130,53 @@ def _census_resconst(
     )
 
 
-#: Every binding MacroChipz currently has. Eighteen, matching the
-#: eighteen series actually persisted -- six FRED, six Treasury, six
-#: Census.
+def _first_party(
+    concept_obj: EconomicConcept,
+    provider: str,
+    provider_series_id: str,
+    native_unit: str,
+    factor: float,
+    basis: str,
+) -> ProviderBinding:
+    """A BLS or BEA binding for an Inflation or Jobs concept (Increment
+    #56A, audited in #54B).
+
+    INACTIVE by construction: the FRED binding for the same concept
+    stays the one every reader resolves until #56B moves release
+    processing and the calendar across and flips the flag. Until then
+    these rows are populated by `app.operations.import_first_party` and
+    read by nothing but parity checks.
+
+    `storage_series_id` is the concept id, as for Census: a provider
+    added after #38 has no legacy rows to preserve. FRED's rows keep
+    their own ids and their own history; nothing is relabelled.
+
+    Values are stored in the provider's NATIVE unit, exactly as the
+    FRED binding for the same concept does, so the conversion factor --
+    and therefore `labor_v1.0`'s golden vectors -- is identical across
+    the two. (Census converts at write time; copying that here would
+    double-convert payrolls.)
+    """
+    return ProviderBinding(
+        concept_id=concept_obj.concept_id,
+        provider=provider,
+        provider_series_id=provider_series_id,
+        storage_series_id=concept_obj.concept_id,
+        provider_native_unit=native_unit,
+        canonical_unit_factor=factor,
+        equivalence_basis=basis,
+        active=False,
+    )
+
+
+#: Every binding MacroChipz currently has: six FRED, six Treasury and
+#: six Census (all active), and six BLS/BEA (inactive until #56B).
 #:
-#: No speculative BLS or BEA bindings appear here. Their identifiers and
-#: unit semantics have not been verified against the agencies' own
-#: documentation, and inventing them would be exactly the fabricated
-#: equivalence this module exists to prevent. #M2/#M3 add them, with
-#: evidence.
+#: The BLS and BEA bindings at the end were added by #56A only after
+#: #54B verified each identifier against the agency's own documentation
+#: and every stored value against the agency's own data -- not from the
+#: names. Unverified bindings would be exactly the fabricated equivalence
+#: this module exists to prevent.
 BINDINGS: tuple[ProviderBinding, ...] = (
     _fred(
         CONCEPTS["us.pce.core.price-index.sa.monthly"],
@@ -281,6 +319,74 @@ BINDINGS: tuple[ProviderBinding, ...] = (
         "COMPLETIONS",
         "Census `resconst` category COMPLETIONS, data type TOTAL, seasonally_adj=no. The same universe as the "
         "ACOMPLETIONS binding, published as the month's actual count. Distinct concept, same reasoning.",
+    ),
+    # ----------------------------------------------------------------
+    # First-party BLS and BEA (Increment #56A). INACTIVE -- see
+    # `_first_party`. Each basis records what #54B verified: the
+    # agency's own identifier and definition, and an exact value match
+    # against every stored FRED observation (358 of 358, including the
+    # October 2025 gaps), because FRED redistributes exactly these series.
+    # ----------------------------------------------------------------
+    _first_party(
+        CONCEPTS["us.cpi.headline.price-index.sa.monthly"],
+        "BLS",
+        "CUSR0000SA0",
+        "Index 1982-1984=100",
+        1.0,
+        "BLS CPI series CUSR0000SA0: CPI-U, U.S. city average, all items, seasonally adjusted (S), monthly (R), "
+        "1982-84=100 (bls.gov/help/hlpforma.htm series format). The series FRED republishes as CPIAUCSL: all 60 "
+        "stored months match exactly, including the October 2025 month BLS did not collect.",
+    ),
+    _first_party(
+        CONCEPTS["us.cpi.core.price-index.sa.monthly"],
+        "BLS",
+        "CUSR0000SA0L1E",
+        "Index 1982-1984=100",
+        1.0,
+        "BLS CPI series CUSR0000SA0L1E: CPI-U, all items less food and energy (item SA0L1E), seasonally "
+        "adjusted, monthly, 1982-84=100. Republished by FRED as CPILFESL; all 60 stored months match exactly.",
+    ),
+    _first_party(
+        CONCEPTS["us.nonfarm.payroll-employment.sa.monthly"],
+        "BLS",
+        "CES0000000001",
+        "Thousands of Persons",
+        # Same native unit and factor as the PAYEMS binding: CES publishes
+        # total nonfarm employment in thousands (159075 = 159,075,000 jobs).
+        1000.0,
+        "BLS CES series CES0000000001: Current Employment Statistics, total nonfarm, all employees (data type "
+        "01), seasonally adjusted, in thousands. The establishment survey's JOBS count -- the same universe as "
+        "the concept, not the household survey. Republished by FRED as PAYEMS; all 60 stored months match.",
+    ),
+    _first_party(
+        CONCEPTS["us.unemployment-rate.sa.monthly"],
+        "BLS",
+        "LNS14000000",
+        "Percent",
+        1.0,
+        "BLS CPS series LNS14000000: Current Population Survey unemployment rate (U-3), 16 years and over, "
+        "seasonally adjusted, percent. Republished by FRED as UNRATE; all 60 stored months match, including "
+        "October 2025, which CPS did not collect.",
+    ),
+    _first_party(
+        CONCEPTS["us.pce.headline.price-index.sa.monthly"],
+        "BEA",
+        "DPCERG",
+        "Index 2017=100",
+        1.0,
+        "BEA NIPA Table 2.8.4 line 1, series DPCERG: chain-type (Fisher) price index for personal consumption "
+        "expenditures, seasonally adjusted, monthly, 2017=100 (BEA SeriesRegister). FRED cites the same account "
+        "code for PCEPI; all 59 stored months match exactly.",
+    ),
+    _first_party(
+        CONCEPTS["us.pce.core.price-index.sa.monthly"],
+        "BEA",
+        "DPCCRG",
+        "Index 2017=100",
+        1.0,
+        "BEA NIPA Table 2.8.4 line 25, series DPCCRG: PCE excluding food and energy, chain-type price index, "
+        "seasonally adjusted, monthly, 2017=100 (BEA SeriesRegister). Republished by FRED as PCEPILFE; all 59 "
+        "stored months match exactly.",
     ),
 )
 

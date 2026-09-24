@@ -23,7 +23,7 @@ from tests.conftest import migrate_schema_drift_database, reset_schema_drift_dat
 pytestmark = pytest.mark.integration
 
 _BEFORE_VERSIONS = "b7c41d92e8a3"
-_HEAD = "e7b3d51c8a94"
+_HEAD = "a6f1c3d95e20"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

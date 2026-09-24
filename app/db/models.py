@@ -527,6 +527,49 @@ class HousingIngestionRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class ProviderIngestionRun(Base):
+    """Increment #56A: one first-party (BLS or BEA) ingestion attempt.
+
+    This is the provider-neutral run audit `HousingIngestionRun`'s
+    docstring named as deferred work. It is used by the NEW providers
+    only; Rates and Housing keep their own tables, because migrating
+    their existing rows into this one is a refactor with no purpose here.
+
+    As with every run table: counts, a status, modes and an exception
+    CLASS NAME -- never a message, a URL, a response body or a key.
+
+    `access_mode` records HOW the provider was reached (BLS keyless v1,
+    BLS keyed v2, BEA flat file), because the limits and the verified
+    status of each differ. `source_published_at` is the provider's own
+    vintage instant where it states one (BEA's `Last-Modified`), and NULL
+    where it does not -- never a guess.
+    """
+
+    __tablename__ = "provider_ingestion_runs"
+    __table_args__ = (Index("ix_provider_ingestion_runs_provider_started_at", "provider", "started_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    dataset: Mapped[str] = mapped_column(String(64), nullable=False)
+    access_mode: Mapped[str] = mapped_column(String(24), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    import_mode: Mapped[str] = mapped_column(String(24), nullable=False)
+    window_start: Mapped[date] = mapped_column(Date, nullable=False)
+    window_end: Mapped[date] = mapped_column(Date, nullable=False)
+    source_published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    series_requested: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    observations_received: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    observations_inserted: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    observations_revised: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    observations_unchanged: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    observations_unavailable: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    error_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class ObservationVersion(Base):
     """Increment #31: the append-only SYSTEM-TIME history of every value
     MacroChipz has held for one canonical observation.

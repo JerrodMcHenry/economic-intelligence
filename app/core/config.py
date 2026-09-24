@@ -131,6 +131,12 @@ class Settings:
         """
         return bool(self.census_api_key)
 
+    # The BLS Public Data API (Increment #56A) works WITHOUT a key (v1:
+    # 25 queries/day, 10 years per query). A registered key moves the
+    # client to v2 (500/day, 20 years). Optional; never logged; sent only
+    # in a POST body. BEA's NIPA flat file needs no key at all.
+    bls_api_key: str | None = os.environ.get("BLS_API_KEY") or None
+
     database_url: str | None = _normalise_database_url(os.environ.get("DATABASE_URL"))
 
     # No hardcoded default: the model is not baked into architecture, so an

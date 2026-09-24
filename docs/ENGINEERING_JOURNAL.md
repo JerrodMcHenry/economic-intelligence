@@ -15717,3 +15717,119 @@ preparation increment.
 The frontend was the most sensitive thing in the deployment and the one
 piece the platform could not protect. No login screen could have fixed
 that. The fix was moving the frontend to where a check could run.
+
+## #56A — six series, one query, and a test that said it would fail
+
+### First, main was red
+
+The push of `404a983` (#55A) produced one green workflow and one red.
+The new Container workflow passed: the real image built, migrated,
+started in production mode, gated every path and failed closed, all
+first time. The existing CI backend job failed.
+
+The suite passed locally, and it passed again in a clean export with no
+`.env`. The difference was the dependencies. `pyproject.toml` pins
+nothing, and between the last green run and this one **SQLAlchemy 2.1
+was released**. It changed the default driver for `postgresql://` from
+psycopg2 to psycopg 3. A fresh virtualenv resolving exactly what CI
+resolves reproduced the one failure:
+
+```
+test_driverless_url_would_otherwise_resolve_to_the_uninstalled_psycopg2
+```
+
+That was my #54A test. Its docstring says it exists to fail the day the
+default changes, and it did. The normalisation it protects is still
+needed on every version: `postgres://` has no dialect anywhere, and an
+unpinned build may still resolve SQLAlchemy 2.0. So the test now states
+that version-independent reason instead of pinning one release's
+default. It passes under 2.0 and 2.1, and the other 2,595 tests already
+passed under 2.1.
+
+The lesson is uncomfortable, but it is the right one. An unpinned
+dependency set means CI tests a different program every day. #34 wrote
+that down as a known limitation. This is the first day it cost
+something.
+
+### The ingestion
+
+#56A implements the first half of the #54B plan: first-party BLS and
+BEA ingestion into **new, concept-keyed rows**, behind **inactive**
+bindings. Nothing reads those rows yet. Every monitor, API and
+intelligence object still resolves FRED through `active_binding()`, so
+the increment could not change a single response even if it wanted to.
+A test proves that the strong way. It imports full BLS/BEA history
+while the FRED rows are empty, and asserts that eight public responses
+are byte-identical before and after. A mutation that flips the bindings
+the way #56B will makes that test fail. My first version of the test
+did *not* fail under a weaker mutation (one binding flipped), and I only
+found that because I tried it.
+
+Shape, briefly:
+
+- **One bounded transport** for both providers:
+  - the byte cap is enforced while streaming, not after buffering;
+  - one retry, only for timeout, transport failure or 5xx;
+  - 429 is never retried;
+  - errors are raised `from None`, so no chained httpx exception can
+    print a URL.
+- **BLS** works keyless on v1: one POST, four series, ten years, which
+  is exactly v1's per-query maximum. An optional `BLS_API_KEY` moves it
+  to v2, and the key travels in the POST body, never a URL.
+- **BEA** is keyless via the NIPA monthly flat file, streamed and
+  filtered. About 1.48 million lines are read and about 230 kept. The
+  keyed BEA API was deliberately not built: it needs a UserID and there
+  is no recorded response to test a client against. A client I cannot
+  verify is not a feature.
+- Values are stored in **native units**, as FRED's are. The payroll
+  ×1000 stays in the binding, so `labor_v1.0`'s golden vectors cannot
+  tell the rows apart.
+
+### Verified against the real providers, on an isolated database
+
+The import was run from the production-only environment with a cleared
+environment and no keys:
+
+```
+BLS [KEYLESS_V1] SUCCEEDED BASELINE_BACKFILL 2017-01-01..2026-09-24   464 inserted, 3 unavailable
+BEA [FLAT_FILE]  SUCCEEDED BASELINE_BACKFILL, source published 2026-08-26T12:30:02Z   230 inserted
+5.1 s
+```
+
+- **Value parity against the development database's FRED rows** (read
+  only): **358 of 358 overlapping months exactly equal**, and the NULL
+  months are identical: October 2025 for both CPIs and for
+  unemployment.
+- **Calculation parity:** both monitors computed over the new rows (in
+  a scratch process with the bindings flipped) differ from the
+  FRED-based results in **zero fields** other than provider identity.
+- **Versions:** all 694 are `NEW`, backfilled, and share one instant
+  per provider. There are no revisions.
+- **Provenance:** every observation has exactly one provenance row,
+  naming the agency's own series id and a landing page, never an API
+  endpoint.
+- **Re-run against the live providers:** everything unchanged, 0
+  inserted, 0 revised.
+- **The isolated database contains zero FRED-sourced rows.**
+
+That comparison also showed #56B's first job concretely. With the
+bindings flipped, evidence would print `series_id =
+us.cpi.headline.price-index.sa.monthly` where it should print
+`CUSR0000SA0`. `SeriesRepository.get_identity` takes the provider id
+from the storage row. That was harmless while storage and provider ids
+were equal, and it is wrong for concept-keyed rows. It must be fixed
+before activation.
+
+### Lesson
+
+**A test that has never failed has not been tested.**
+
+Three times in this increment, a test was only as good as the attempt
+to break it:
+
+- #54A's driver test, which failed on schedule;
+- the inertness test, which passed a mutation it should have caught;
+- the byte-cap test, whose BEA case turned out to be exercised by the
+  declared `Content-Length` rather than the streaming path.
+
+Each was found by making the code wrong on purpose and watching.
