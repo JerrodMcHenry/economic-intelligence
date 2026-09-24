@@ -23,6 +23,8 @@ import {
   buildTarget,
   buildWhatChanged,
 } from "../test/fixtures/inflation";
+import { buildCorePceObservations } from "../test/fixtures/inflation";
+import { getCorePceObservations } from "../api/series";
 import { buildEmptyHistoryResponse } from "../test/fixtures/monitorHistory";
 import { buildStateDurationAvailable, buildStateDurationCurrentInsufficient } from "../test/fixtures/stateDuration";
 import { InflationPage } from "./Inflation";
@@ -35,12 +37,17 @@ vi.mock("../api/inflation", () => ({
 
 vi.mock("../api/analyst", () => ({ getAnalystAvailability: vi.fn() }));
 vi.mock("../api/monitorHistory", () => ({ getInflationHistory: vi.fn() }));
+// #50B: the price level is a fifth independent resource. Mocked with a
+// resolved default for the same reason as the others -- no pre-existing
+// test should hang on, or see an error from, a section it is not about.
+vi.mock("../api/series", () => ({ getCorePceObservations: vi.fn() }));
 
 const mockedGetMonitor = vi.mocked(getInflationMonitor);
 const mockedGetWhatChanged = vi.mocked(getInflationWhatChanged);
 const mockedGetStateDuration = vi.mocked(getInflationStateDuration);
 const mockedGetAnalyst = vi.mocked(getAnalystAvailability);
 const mockedGetHistory = vi.mocked(getInflationHistory);
+const mockedGetClimb = vi.mocked(getCorePceObservations);
 
 beforeEach(() => {
   mockedGetMonitor.mockReset();
@@ -51,6 +58,8 @@ beforeEach(() => {
   // dedicated describe block below; unrelated tests must never hang
   // or crash on this third, independent resource.
   mockedGetStateDuration.mockResolvedValue(buildStateDurationCurrentInsufficient());
+  mockedGetClimb.mockReset();
+  mockedGetClimb.mockResolvedValue(buildCorePceObservations());
   // Increment #32's Intelligence History is a fourth independent
   // resource; the same rule applies -- a resolved default here so no
   // pre-existing test hangs on, or sees an error alert from, a section
@@ -157,6 +166,8 @@ describe("State Duration V1 (Increment #24D)", () => {
   it("renders the exact frozen CURRENT_INSUFFICIENT copy, never a fabricated duration", async () => {
     resolveBoth();
     mockedGetStateDuration.mockResolvedValue(buildStateDurationCurrentInsufficient());
+  mockedGetClimb.mockReset();
+  mockedGetClimb.mockResolvedValue(buildCorePceObservations());
     renderPage();
 
     expect(
@@ -669,10 +680,71 @@ describe("accessibility basics", () => {
     renderPage();
 
     await screen.findByRole("heading", { name: "What changed" });
-    expect(screen.getByRole("heading", { level: 1, name: "Inflation" })).toBeInTheDocument();
-    for (const name of ["Underlying momentum", "What changed", "Core PCE momentum", "Target / level", "Confirmation", "Headline context"]) {
+    // #50B: the h1 is the distinction rather than the world's name,
+    // and the name survives as the kicker above it.
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Prices are a level. Inflation is its slope." }),
+    ).toBeInTheDocument();
+    for (const name of [
+      "The climb",
+      "What that actually means",
+      "Headline context",
+      "How MacroChipz classifies this",
+      "What this cannot tell you",
+      "What changed",
+    ]) {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     }
+  });
+});
+
+describe("the price series fails independently (#50B verification)", () => {
+  it("states the price level is unavailable rather than drawing an empty chart", async () => {
+    resolveBoth();
+    mockedGetClimb.mockRejectedValue(new ApiError("network", "boom"));
+    renderPage();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The price level could not be loaded.");
+    expect(within(alert).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    // Not an empty chart, and not a chart drawn from nothing.
+    expect(document.querySelector('svg[role="img"]')).toBeNull();
+  });
+
+  it("shows NO illustrative percentage when the climb has not loaded", async () => {
+    // Found in the #50B browser verification: with the monitor
+    // resolved and the price series failed, a reader saw "The price
+    // level could not be loaded" and an inch below it "6% to 3%".
+    // The example exists to contrast with the level the climb draws.
+    resolveBoth();
+    mockedGetClimb.mockRejectedValue(new ApiError("network", "boom"));
+    renderPage();
+
+    await screen.findByRole("alert");
+    expect(screen.queryByText(/6% to 3%/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/For example, not a current reading/)).not.toBeInTheDocument();
+    // The lesson itself still renders — it just carries no figures.
+    expect(
+      screen.getByText(/Correct\. Inflation is the rate prices are rising/),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps every other measure rendered and correctly attributed", async () => {
+    // Failure isolation: one resource failing must not blank, or
+    // silently re-attribute, the ones that succeeded.
+    resolveBoth();
+    mockedGetClimb.mockRejectedValue(new ApiError("network", "boom"));
+    renderPage();
+
+    await screen.findByRole("alert");
+    const headline = await screen.findByRole("region", { name: "Headline context" });
+    // Each companion measure keeps its own series id and its own
+    // period. `PCEPI` also appears inside `PCEPILFE`, so this matches
+    // the rendered "(PCEPI)" exactly rather than as a substring.
+    expect(within(headline).getByText(/\(PCEPI\)/)).toBeInTheDocument();
+    expect(within(headline).getByText(/\(CPIAUCSL\)/)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "How MacroChipz classifies this" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "What changed" })).toBeInTheDocument();
   });
 });
 

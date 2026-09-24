@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en" data-surface="cinematic">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Inflation World — MacroChipz #50A prototype</title>
+<!--
+  ================================================================
+  INFLATION WORLD PROTOTYPE — increment #50A
+  ================================================================
+
+  A STANDALONE REVIEW ARTEFACT. It modifies no production file.
+
+  ----------------------------------------------------------------
+  THE ONE IDEA
+  ----------------------------------------------------------------
+  The current /inflation page renders 41 percentages and ZERO charts,
+  and never once shows the price LEVEL — even though the API's own
+  evidence carries it (126.43 -> 130.658). So a reader is given the
+  rate of change and never the thing that is changing, which is
+  precisely why "inflation is falling" gets read as "prices are
+  falling".
+
+  This prototype leads with THE CLIMB: the actual Core PCE index, 59
+  real monthly observations, rising from 109.641 to 130.658. The line
+  never comes down. Selecting a window brackets that span and states
+  the rate the methodology computed for it.
+
+  A RATE IS A SLOPE. A LEVEL IS A HEIGHT. One chart, both visible.
+
+  ----------------------------------------------------------------
+  THE RULES IT HOLDS ITSELF TO
+  ----------------------------------------------------------------
+  1. NO INVENTED FIGURE. Every number is `window.INFLATION`, captured
+     from four real endpoints.
+  2. NOTHING IS CALCULATED HERE. No rate, no annualisation, no gap to
+     target, no state. `inflation_v1.0` computed all of it.
+  3. NO RATE HISTORY. The API publishes rates for ONE period and
+     states for twelve. Deriving a rate series from the index levels
+     would be client-side economics. The gap is documented, not
+     simulated.
+  4. NO PERSONAL BASKET. National indexes describe a national average
+     and the page says so in its own section rather than in a footnote.
+-->
+<style>
+  :root {
+    --mc-brand: #9facf1;
+    --mc-focus: #a2b0ff;
+    --mc-fg: #e9ebef;
+    --mc-fg-secondary: #bdc1c8;
+    --mc-fg-muted: #979ca3;
+
+    --lx-char: #121317;
+    --lx-char-2: #191b21;
+    --lx-mid: #0e1422;
+    --lx-line: #2a2d35;
+    --lx-line-2: #363a45;
+    --lx-bloom-a: rgba(124, 96, 240, .34);
+    --lx-bloom-b: rgba(162, 176, 255, .24);
+    --lx-card-hi: rgba(255,255,255,.14);
+    --lx-card-lo: rgba(255,255,255,.075);
+    --lx-selected: rgba(124, 96, 240, .30);
+
+    /* INFLATION'S OWN CHARACTER. Rates is a thin line and four points;
+       this is a MASS that accumulates. Same violet family, different
+       form — the identity is shared, the shape is not. */
+    --in-climb-hi: #b9a6ff;
+    --in-climb-lo: rgba(124, 96, 240, .30);
+    --in-dim: rgba(159, 172, 241, .30);
+
+    /* editorial warm accent — NEVER on a data element (#27B) */
+    --ed-amber: #c9954a;
+
+    --sans: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--lx-char); -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; color: var(--mc-fg); font-family: var(--sans); font-size: 16px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(120% 640px at 82% -60px, var(--lx-bloom-a) 0%, transparent 62%),
+      radial-gradient(90% 520px at 4% 560px, var(--lx-bloom-b) 0%, transparent 66%),
+      linear-gradient(180deg, var(--lx-mid) 0px, var(--lx-char) 760px),
+      var(--lx-char);
+    background-repeat: no-repeat;
+  }
+  .wrap { max-width: 1216px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+  @media (min-width: 640px) { .wrap { padding-left: 24px; padding-right: 24px; } }
+  @media (min-width: 1024px) { .wrap { padding-left: 32px; padding-right: 32px; } }
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--mc-focus); outline-offset: 2px; }
+
+  .bar { display: flex; align-items: center; min-height: 54px; background: #0d0e11; border-bottom: 1px solid var(--lx-line); position: relative; z-index: 3; }
+  .bar .in { display: flex; align-items: center; gap: 16px; width: 100%; }
+  .wm { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+  .wm span { color: var(--mc-brand); }
+  .bar nav { display: none; gap: 2px; margin-left: auto; }
+  @media (min-width: 720px) { .bar nav { display: flex; } }
+  .bar nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 9px; border-radius: 8px; font-size: 13px; color: var(--mc-fg-secondary); text-decoration: none; }
+  .bar nav a[aria-current] { color: var(--mc-fg); background: rgba(255,255,255,.07); font-weight: 600; }
+
+  .snap { background: rgba(201,149,74,.10); border-bottom: 1px solid rgba(201,149,74,.30); font-size: 12.5px; line-height: 1.45; color: var(--mc-fg-secondary); }
+  .snap .in { padding: 9px 0; }
+  .snap b { color: var(--ed-amber); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; font-size: 11px; }
+
+  .hero .in { padding-top: 24px; padding-bottom: 6px; }
+  .kicker { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: var(--ed-amber); }
+  h1 { margin: 10px 0 0; font-size: 27px; line-height: 1.12; font-weight: 700; letter-spacing: -.03em; text-wrap: balance; }
+  @media (min-width: 640px) { h1 { font-size: 35px; } }
+  @media (min-width: 1024px) { h1 { font-size: 41px; } }
+  .sub { margin: 10px 0 0; max-width: 62ch; font-size: 15px; color: var(--mc-fg-secondary); }
+  @media (min-width: 1024px) { .sub { font-size: 16.5px; } }
+  .asof { margin: 14px 0 0; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 12.5px; color: var(--mc-fg-muted); }
+  .pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--lx-line-2); background: rgba(255,255,255,.03); }
+  .pill i { width: 6px; height: 6px; border-radius: 999px; background: var(--mc-brand); font-style: normal; }
+
+  section { padding-top: 32px; }
+  .sec { margin: 0 0 14px; font-size: 11px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: var(--ed-amber); display: flex; align-items: center; gap: 10px; }
+  .sec::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(201,149,74,.45), transparent); }
+  .card { background: linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.028) 100%), #1b1d26; border: 1px solid var(--lx-card-lo); border-radius: 14px; box-shadow: inset 0 1px 0 0 var(--lx-card-hi), 0 18px 40px -22px rgba(0,0,0,.95); }
+
+  /* ---------- THE CLIMB ---------- */
+  .climbWrap { padding: 16px 14px 14px; }
+  @media (min-width: 640px) { .climbWrap { padding: 20px 18px 16px; } }
+  .board { position: relative; width: 100%; height: 250px; }
+  @media (min-width: 640px) { .board { height: 320px; } }
+  .board svg { display: block; width: 100%; height: 100%; }
+  .ylab { position: absolute; left: 0; transform: translateY(-50%); font-size: 11px; color: var(--mc-fg-muted); font-variant-numeric: tabular-nums; }
+  .xlab { position: absolute; bottom: 0; transform: translateX(-50%); font-size: 11px; color: var(--mc-fg-muted); white-space: nowrap; }
+  .endlab { position: absolute; transform: translate(-50%,-100%); font-size: 12px; font-weight: 700; color: #eef0ff; white-space: nowrap; font-variant-numeric: tabular-nums;
+            background: rgba(10,8,20,.72); border: 1px solid rgba(162,176,255,.34); border-radius: 7px; padding: 2px 7px; }
+
+  /* window selector */
+  .wins { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .win {
+    min-height: 44px; padding: 0 14px; border-radius: 10px; cursor: pointer;
+    font-size: 13.5px; font-weight: 600; color: var(--mc-fg-secondary);
+    background: rgba(255,255,255,.04); border: 1px solid var(--lx-line-2);
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: background-color .15s, border-color .15s, color .15s;
+  }
+  .win[aria-pressed="true"] { color: #eef0ff; background: var(--lx-selected); border-color: rgba(162,176,255,.45); }
+  .win .r { font-variant-numeric: tabular-nums; opacity: .85; }
+  .win[disabled] { cursor: not-allowed; opacity: .5; }
+
+  /* the reading */
+  .read { margin-top: 16px; border-top: 1px solid var(--lx-line); padding-top: 16px; }
+  .read .big { margin: 0; font-size: 40px; line-height: 1; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+  @media (min-width: 640px) { .read .big { font-size: 48px; } }
+  .read .cap { margin: 8px 0 0; font-size: 13.5px; color: var(--mc-fg-muted); }
+  .read .say { margin: 12px 0 0; font-size: 15px; color: var(--mc-fg-secondary); max-width: 58ch; }
+  .read .lv { margin: 12px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; font-size: 14px; color: var(--mc-fg-secondary); font-variant-numeric: tabular-nums; }
+  .read .lv b { font-weight: 700; color: #eef0ff; }
+
+  /* ---------- the lesson ---------- */
+  .lesson { padding: 18px; }
+  @media (min-width: 640px) { .lesson { padding: 22px; } }
+  .lesson h3 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+  .lesson p { margin: 10px 0 0; font-size: 14.5px; color: var(--mc-fg-secondary); max-width: 62ch; }
+  .lesson .q { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--mc-brand); }
+
+  /* ---------- compare ---------- */
+  .grid2 { display: grid; gap: 12px; }
+  @media (min-width: 720px) { .grid2 { grid-template-columns: repeat(3, 1fr); } }
+  .m { padding: 16px; }
+  .m .name { font-size: 13.5px; font-weight: 700; }
+  .m .v { margin: 8px 0 0; font-size: 28px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .m .meta { margin: 4px 0 0; font-size: 12px; color: var(--mc-fg-muted); }
+
+  /* ---------- state strip ---------- */
+  .strip { display: flex; gap: 4px; margin-top: 6px; }
+  .strip div { flex: 1; min-width: 0; }
+  .strip .bar2 { height: 30px; border-radius: 5px; border: 1px solid var(--lx-line-2); }
+  .strip .lbl { margin-top: 5px; font-size: 9.5px; color: var(--mc-fg-muted); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .legend { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--mc-fg-muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 11px; height: 11px; border-radius: 3px; border: 1px solid var(--lx-line-2); font-style: normal; }
+
+  /* ---------- limits ---------- */
+  .limits { padding: 18px; }
+  .limits ul { margin: 10px 0 0; padding-left: 18px; }
+  .limits li { margin-top: 7px; font-size: 14.5px; color: var(--mc-fg-secondary); max-width: 60ch; }
+
+  details { border-top: 1px solid var(--lx-line); }
+  summary { display: flex; align-items: center; gap: 9px; min-height: 44px; cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--mc-fg-secondary); list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary .chev { transition: transform .15s; color: var(--mc-fg-muted); }
+  details[open] summary .chev { transform: rotate(90deg); }
+  .dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 16px; font-size: 13px; padding-bottom: 14px; }
+  .dl dt { color: var(--mc-fg-muted); }
+  .dl dd { margin: 0; color: var(--mc-fg-secondary); overflow-wrap: anywhere; }
+
+  .links { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .links a { display: flex; align-items: center; min-height: 44px; font-size: 14px; color: var(--mc-fg-secondary); text-decoration: none; }
+  .links a:hover { color: var(--mc-fg); text-decoration: underline; text-underline-offset: 4px; }
+
+  footer { margin-top: 44px; border-top: 1px solid var(--lx-line); background: #0b0c0f; }
+  footer .in { padding-top: 20px; padding-bottom: 28px; display: grid; gap: 10px; }
+  footer .c { font-size: 11.5px; line-height: 1.6; color: var(--mc-fg-muted); }
+
+  .demo { margin-top: 26px; border: 1px dashed var(--lx-line-2); border-radius: 12px; padding: 12px 14px; }
+  .demo p { margin: 0 0 9px; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--mc-fg-muted); font-weight: 700; }
+  .demo button { min-height: 44px; padding: 0 14px; margin: 0 8px 8px 0; border-radius: 9px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--mc-fg-secondary); background: rgba(255,255,255,.04); border: 1px solid var(--lx-line-2); }
+  .demo button[aria-pressed="true"] { color: #eef0ff; background: var(--lx-selected); border-color: rgba(162,176,255,.42); }
+
+  .skel { background: linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,.08), rgba(255,255,255,.04)); border-radius: 8px; }
+  .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="bar"><div class="wrap in">
+  <span class="wm">Macro<span>Chipz</span></span>
+  <nav><a href="#">Home</a><a href="#" aria-current="page">Inflation</a><a href="#">Jobs</a><a href="#">Rates</a><a href="#">Housing</a><a href="#">Calendar</a></nav>
+</div></div>
+
+<div class="snap"><div class="wrap in"><b>Prototype</b> &middot; <span id="snapText"></span></div></div>
+
+<header class="hero"><div class="wrap in">
+  <p class="kicker">Inflation</p>
+  <h1 id="heroH"></h1>
+  <p class="sub" id="heroSub"></p>
+  <div class="asof">
+    <span class="pill"><i></i><span id="asOf"></span></span>
+    <span id="src"></span>
+  </div>
+</div></header>
+
+<main>
+<section class="wrap" aria-labelledby="climb-h">
+  <h2 class="sec" id="climb-h">The climb</h2>
+  <div class="card climbWrap">
+    <div class="board" id="board">
+      <svg id="climb" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-labelledby="climbDesc"></svg>
+      <div id="layer" style="position:absolute;inset:0;pointer-events:none"></div>
+    </div>
+    <p id="climbDesc" class="sr"></p>
+
+    <div class="wins" id="wins" role="group" aria-label="Choose a window"></div>
+
+    <div class="read" id="read" aria-live="polite"></div>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="lesson-h">
+  <h2 class="sec" id="lesson-h">What that actually means</h2>
+  <div class="card lesson">
+    <p class="q">Wait, inflation falling doesn&rsquo;t mean prices are falling?</p>
+    <h3 id="lessonA"></h3>
+    <p id="lessonB"></p>
+    <p id="lessonC"></p>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="cmp-h">
+  <h2 class="sec" id="cmp-h">Three published measures</h2>
+  <div class="grid2" id="measures"></div>
+  <div class="card lesson" style="margin-top:12px">
+    <p class="q">Why do economists strip out food and energy?</p>
+    <h3 id="coreA"></h3>
+    <p id="coreB"></p>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="hist-h">
+  <h2 class="sec" id="hist-h">How MacroChipz has classified it</h2>
+  <div class="card lesson">
+    <div class="strip" id="strip"></div>
+    <div class="legend" id="legend"></div>
+    <p id="histNote" style="margin-top:14px"></p>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="lim-h">
+  <h2 class="sec" id="lim-h">What this cannot tell you</h2>
+  <div class="card limits">
+    <ul id="limits"></ul>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="meth-h">
+  <h2 class="sec" id="meth-h">Evidence &amp; methodology</h2>
+  <div class="card" style="padding:0 16px">
+    <details><summary><span class="chev" aria-hidden="true">&rsaquo;</span>Where these numbers come from</summary>
+      <dl class="dl" id="meth"></dl>
+    </details>
+  </div>
+
+  <div class="demo">
+    <p>Prototype controls &mdash; not part of the product</p>
+    <button type="button" id="dNormal" aria-pressed="true">Data available</button>
+    <button type="button" id="dLoading" aria-pressed="false">Loading</button>
+    <button type="button" id="dMissing" aria-pressed="false">1-month window unavailable</button>
+    <span class="sr" id="dNote"></span>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="und-h">
+  <h2 class="sec" id="und-h">Understand this</h2>
+  <ul class="links" id="understand"></ul>
+</section>
+</main>
+
+<footer><div class="wrap in">
+  <p class="c" id="attrib"></p>
+  <p class="c">Source data: U.S. Department of the Treasury; FRED&reg;, Federal Reserve Bank of St. Louis; U.S. Census Bureau and U.S. Department of Housing and Urban Development. This product uses the Census Bureau Data API but is not endorsed or certified by the Census Bureau.</p>
+</div></footer>
+
+<script src="data.js"></script>
+<script>
+(function () {
+  "use strict";
+  var D = window.INFLATION;
+  var $ = function (id) { return document.getElementById(id); };
+  var NS = "http://www.w3.org/2000/svg";
+  function el(t, a, p) { var n = document.createElementNS(NS, t); for (var k in a) n.setAttribute(k, a[k]); if (p) p.appendChild(n); return n; }
+
+  var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  function fmtMonth(iso) { var p = iso.split("-"); return MONTHS[Number(p[1]) - 1] + " " + p[0]; }
+  function pct(v) { return v === null || v === undefined ? null : v.toFixed(2) + "%"; }
+
+  /* ================================================================
+     COPY. Every consumer sentence is either reviewed explainer copy
+     reused VERBATIM or a composition of backend fields. Nothing new is
+     written about the economy.
+     ================================================================ */
+  var HERO_H = "Prices are a level. Inflation is its slope.";
+  /* `explain.inflation-vs-prices`, verbatim. */
+  var HERO_SUB = "Inflation measures change, not level. An inflation rate dropping from 6% to 3% means prices rose half as fast this year as last year. It does not mean anything got cheaper.";
+  var LESSON_A = "Correct. Inflation is the rate prices are rising. When inflation falls, prices are still going up — just more slowly than before.";
+  var LESSON_B = "Falling inflation is often read as falling prices. It means prices are rising more slowly.";
+  var LESSON_C = "If news reports say inflation is cooling and your shopping still costs more than it used to, both things are true at once. Cooling describes the speed of the increase, not a reversal of it.";
+  var CORE_A = "Not because food and energy do not matter — they obviously do — but because their prices swing so sharply month to month that they can hide the underlying trend.";
+  var CORE_B = "Headline inflation includes everything. Core inflation excludes food and energy. MacroChipz tracks both, and leads with core when judging momentum.";
+
+  var UNDERSTAND = [
+    "Wait, inflation falling doesn’t mean prices are falling?",
+    "Why do economists strip out food and energy?",
+    "Why are there two different inflation numbers?"
+  ];
+
+  /* The index series is the PROVIDER'S OWN observations. */
+  var SERIES = D.level_series.core_pce;
+  var OBS = SERIES.observations;
+  var EV = D.momentum.evidence;
+
+  var WINDOWS = [
+    { key: "1m",  label: "1 month",   rate: D.momentum.r_1m_annualized,  ev: EV["1m"],  annualised: true },
+    { key: "3m",  label: "3 months",  rate: D.momentum.r_3m_annualized,  ev: EV["3m"],  annualised: true },
+    { key: "6m",  label: "6 months",  rate: D.momentum.r_6m_annualized,  ev: EV["6m"],  annualised: true },
+    { key: "12m", label: "12 months", rate: D.momentum.r_12m,            ev: EV["12m"], annualised: false }
+  ];
+
+  var state = { win: "12m", mode: "normal" };
+
+  function activeWindows() {
+    return WINDOWS.map(function (w) {
+      if (state.mode === "missing" && w.key === "1m") {
+        return { key: w.key, label: w.label, rate: null, ev: null, annualised: w.annualised };
+      }
+      return w;
+    });
+  }
+  function current() {
+    var list = activeWindows();
+    var found = list.filter(function (w) { return w.key === state.win; })[0];
+    return found && found.ev ? found : list.filter(function (w) { return w.ev; })[0];
+  }
+
+  /* ---------- header ---------- */
+  $("snapText").textContent = "Snapshot of " + D._endpoints.length + " MacroChipz endpoints, captured " +
+    D._captured_at.slice(0, 10) + ". Real values, real observation dates, not live. Nothing here is estimated.";
+  $("heroH").textContent = HERO_H;
+  $("heroSub").textContent = HERO_SUB;
+  $("asOf").textContent = "Core PCE through " + fmtMonth(D.momentum.calculation_period);
+  $("src").textContent = SERIES.source + " · " + SERIES.units + " · " + D.methodology_id;
+  $("attrib").textContent = SERIES.title + " (" + SERIES.series_id + "), " + SERIES.units +
+    ", source " + SERIES.source + ". Methodology " + D.methodology_id + " · " + D.data_basis + ".";
+
+  /* ================================================================
+     THE CLIMB.
+
+     The index level, every observation the provider published. The
+     line is an AREA because the point is accumulation: what a reader
+     needs to see is that the mass under it only ever grows.
+
+     The SVG carries the shape. Every label is HTML, so an 11px axis
+     label stays 11px whatever the board is scaled to.
+     ================================================================ */
+  var PAD = { top: 14, right: 5, bottom: 18, left: 13 };
+
+  function layout() {
+    var vals = OBS.map(function (o) { return o.value; });
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    var pad = (hi - lo) * 0.12;
+    var min = lo - pad, max = hi + pad;
+    return {
+      min: min, max: max,
+      x: function (i) { return PAD.left + (i / (OBS.length - 1)) * (100 - PAD.left - PAD.right); },
+      y: function (v) { return PAD.top + (100 - PAD.top - PAD.bottom) * (1 - (v - min) / (max - min)); }
+    };
+  }
+
+  function indexOfDate(iso) {
+    for (var i = 0; i < OBS.length; i++) if (OBS[i].date === iso) return i;
+    return -1;
+  }
+
+  function renderClimb() {
+    var L = layout(), svg = $("climb"), layer = $("layer");
+    svg.innerHTML = ""; layer.innerHTML = "";
+
+    if (state.mode === "loading") {
+      layer.innerHTML = '<div class="skel" style="position:absolute;inset:8px"></div>';
+      $("climbDesc").textContent = "Loading the price level series.";
+      return;
+    }
+
+    var defs = el("defs", {}, svg);
+    var g = el("linearGradient", { id: "climbFill", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+    el("stop", { offset: "0%", "stop-color": "rgba(124,96,240,.42)" }, g);
+    el("stop", { offset: "100%", "stop-color": "rgba(124,96,240,.02)" }, g);
+
+    /* gridlines */
+    [L.min, (L.min + L.max) / 2, L.max].forEach(function (v) {
+      el("line", { x1: PAD.left, x2: 100 - PAD.right, y1: L.y(v), y2: L.y(v),
+                   stroke: "rgba(255,255,255,.08)", "stroke-width": .4, "vector-effect": "non-scaling-stroke" }, svg);
+      var yl = document.createElement("span");
+      yl.className = "ylab"; yl.textContent = v.toFixed(0);
+      yl.style.top = L.y(v) + "%";
+      layer.appendChild(yl);
+    });
+
+    /* the accumulated mass, then the line on top of it */
+    var line = OBS.map(function (o, i) { return (i ? "L" : "M") + " " + L.x(i) + " " + L.y(o.value); }).join(" ");
+    el("path", { d: line + " L " + L.x(OBS.length - 1) + " " + (100 - PAD.bottom) + " L " + L.x(0) + " " + (100 - PAD.bottom) + " Z",
+                 fill: "url(#climbFill)", stroke: "none" }, svg);
+    el("path", { d: line, fill: "none", stroke: "var(--in-dim)", "stroke-width": 1.6,
+                 "stroke-linejoin": "round", "vector-effect": "non-scaling-stroke" }, svg);
+
+    /* the selected window, lit */
+    var w = current();
+    if (w && w.ev) {
+      var a = indexOfDate(w.ev.endpoint_date_past), b = indexOfDate(w.ev.endpoint_date_current);
+      if (a >= 0 && b >= 0) {
+        var seg = OBS.slice(a, b + 1).map(function (o, i) { return (i ? "L" : "M") + " " + L.x(a + i) + " " + L.y(o.value); }).join(" ");
+        el("path", { d: seg, fill: "none", stroke: "var(--in-climb-hi)", "stroke-width": 3.2,
+                     "stroke-linecap": "round", "stroke-linejoin": "round", "vector-effect": "non-scaling-stroke" }, svg);
+        /* the RISE, drawn as a vertical bracket: this is the height the
+           rate describes, and it is what a rate alone never shows. */
+        el("line", { x1: L.x(b), x2: L.x(b), y1: L.y(OBS[a].value), y2: L.y(OBS[b].value),
+                     stroke: "var(--in-climb-hi)", "stroke-width": 1, "stroke-dasharray": "2 2",
+                     "vector-effect": "non-scaling-stroke" }, svg);
+        el("line", { x1: L.x(a), x2: L.x(b), y1: L.y(OBS[a].value), y2: L.y(OBS[a].value),
+                     stroke: "var(--in-climb-hi)", "stroke-width": 1, "stroke-dasharray": "2 2",
+                     "vector-effect": "non-scaling-stroke" }, svg);
+        /*
+         * ENDPOINT MARKERS IN HTML, NOT SVG.
+         *
+         * The board uses `preserveAspectRatio="none"` so the 100x100
+         * viewBox reaches the real plot area at any width — which
+         * stretches an SVG <circle> into an ellipse. At 1440 these
+         * rendered as wide ovals. A CSS-positioned dot is round
+         * because its own box is square, whatever the board does.
+         */
+        [[a, OBS[a].value], [b, OBS[b].value]].forEach(function (p) {
+          var dot = document.createElement("span");
+          dot.style.cssText = "position:absolute;width:9px;height:9px;border-radius:999px;background:#eef0ff;" +
+            "transform:translate(-50%,-50%);left:" + L.x(p[0]) + "%;top:" + L.y(p[1]) + "%";
+          layer.appendChild(dot);
+        });
+        var lab = document.createElement("span");
+        lab.className = "endlab";
+        lab.textContent = OBS[b].value.toFixed(3);
+        lab.style.left = L.x(b) + "%"; lab.style.top = "calc(" + L.y(OBS[b].value) + "% - 10px)";
+        layer.appendChild(lab);
+      }
+    }
+
+    /* x labels: first, last, and the selected window's start */
+    [[0, OBS[0].date], [OBS.length - 1, OBS[OBS.length - 1].date]].forEach(function (p) {
+      var xl = document.createElement("span");
+      xl.className = "xlab"; xl.textContent = fmtMonth(p[1]);
+      xl.style.left = Math.min(94, Math.max(6, L.x(p[0]))) + "%";
+      layer.appendChild(xl);
+    });
+
+    $("climbDesc").textContent =
+      SERIES.title + ", " + SERIES.units + ", " + OBS.length + " monthly observations from " +
+      fmtMonth(OBS[0].date) + " to " + fmtMonth(OBS[OBS.length - 1].date) + ". The index rises from " +
+      OBS[0].value + " to " + OBS[OBS.length - 1].value + " and does not fall over this period." +
+      (w && w.ev ? " The highlighted span is the " + w.label + " window: " + w.ev.endpoint_value_past +
+        " on " + fmtMonth(w.ev.endpoint_date_past) + " to " + w.ev.endpoint_value_current + " on " +
+        fmtMonth(w.ev.endpoint_date_current) + "." : "");
+  }
+
+  /* ---------- window buttons ---------- */
+  function renderWins() {
+    var host = $("wins"); host.innerHTML = "";
+    activeWindows().forEach(function (w) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "win";
+      b.setAttribute("aria-pressed", String(w.key === state.win && !!w.ev));
+      if (!w.ev) b.disabled = true;
+      b.innerHTML = "<span>" + w.label + "</span>" +
+        (w.ev ? '<span class="r">' + pct(w.rate) + "</span>" : '<span class="r">n/a</span>');
+      b.addEventListener("click", function () {
+        if (!w.ev) return;
+        state.win = w.key; renderClimb(); renderWins(); renderRead();
+        var next = host.querySelector('[aria-pressed="true"]'); if (next) next.focus();
+      });
+      host.appendChild(b);
+    });
+  }
+
+  /* ---------- the reading ---------- */
+  function renderRead() {
+    var host = $("read");
+    if (state.mode === "loading") {
+      host.innerHTML = '<div class="skel" style="height:46px;width:60%"></div>' +
+        '<div class="skel" style="height:16px;width:80%;margin-top:12px"></div>';
+      return;
+    }
+    var w = current();
+    if (!w || !w.ev) {
+      host.innerHTML = '<p class="cap">This window has not been computed for the latest period, so no rate is shown for it. Nothing is estimated in its place.</p>';
+      return;
+    }
+    var e = w.ev;
+    var basis = w.annualised
+      ? "annualised — the pace of the last " + w.label + ", expressed as a yearly rate"
+      : "the change over twelve months";
+    host.innerHTML =
+      '<p class="big">' + pct(w.rate) + "</p>" +
+      '<p class="cap">' + SERIES.title.split("(")[0].trim() + " · " + w.label + ", " + basis + "</p>" +
+      '<p class="lv">The index went <b>' + e.endpoint_value_past + "</b> on " + fmtMonth(e.endpoint_date_past) +
+      " <span aria-hidden=\"true\">→</span><span class=\"sr\">to</span> <b>" + e.endpoint_value_current +
+      "</b> on " + fmtMonth(e.endpoint_date_current) + ".</p>" +
+      '<p class="say">Both numbers describe the same thing: the left one is how far prices climbed, the right one is how steep that climb was.</p>';
+  }
+
+  /* ---------- three published measures ---------- */
+  (function measures() {
+    var host = $("measures");
+    [
+      { n: "Core PCE", v: D.momentum.r_12m, p: D.momentum.calculation_period, s: D.momentum.series_id, note: "Excludes food and energy. The series MacroChipz leads with." },
+      { n: "Headline PCE", v: D.headline.pce.r_12m, p: D.headline.pce.calculation_period, s: D.headline.pce.series_id, note: "Includes everything." },
+      { n: "Headline CPI", v: D.headline.cpi.r_12m, p: D.headline.cpi.calculation_period, s: D.headline.cpi.series_id, note: "A different agency, a different survey, a different month." }
+    ].forEach(function (m) {
+      var d = document.createElement("div");
+      d.className = "card m";
+      d.innerHTML = '<p class="name">' + m.n + "</p>" +
+        '<p class="v">' + (m.v === null ? "n/a" : pct(m.v)) + "</p>" +
+        '<p class="meta">12 months to ' + fmtMonth(m.p) + " · " + m.s + "</p>" +
+        '<p class="meta" style="margin-top:8px">' + m.note + "</p>";
+      host.appendChild(d);
+    });
+  })();
+  $("coreA").textContent = CORE_A;
+  $("coreB").textContent = CORE_B;
+  $("lessonA").textContent = LESSON_A;
+  $("lessonB").textContent = LESSON_B;
+  $("lessonC").textContent = LESSON_C;
+
+  /* ---------- recorded states ---------- */
+  (function states() {
+    var TONE = { COOLING: "rgba(124,160,240,.45)", HEATING: "rgba(201,149,74,.45)",
+                 MIXED: "rgba(159,172,241,.28)", STABLE: "rgba(140,190,160,.35)",
+                 INSUFFICIENT_DATA: "rgba(255,255,255,.08)" };
+    var host = $("strip");
+    var entries = D.state_history.slice().reverse();
+    entries.forEach(function (e) {
+      var d = document.createElement("div");
+      d.innerHTML = '<div class="bar2" style="background:' + (TONE[e.state] || TONE.MIXED) + '"></div>' +
+        '<div class="lbl">' + MONTHS[Number(e.evaluation_period.split("-")[1]) - 1] + "</div>";
+      d.title = fmtMonth(e.evaluation_period) + ": " + e.state;
+      host.appendChild(d);
+    });
+    var seen = [];
+    entries.forEach(function (e) { if (seen.indexOf(e.state) < 0) seen.push(e.state); });
+    $("legend").innerHTML = seen.map(function (s) {
+      return '<span><i style="background:' + (TONE[s] || TONE.MIXED) + '"></i>' + s.charAt(0) + s.slice(1).toLowerCase().replace("_", " ") + "</span>";
+    }).join("");
+    $("histNote").textContent =
+      "Twelve recorded classifications, " + fmtMonth(entries[0].evaluation_period) + " to " +
+      fmtMonth(entries[entries.length - 1].evaluation_period) +
+      ". These are states MacroChipz recorded at the time, not rates — the API publishes no rate history, so none is drawn.";
+    $("histNote").style.fontSize = "13.5px";
+    $("histNote").style.color = "var(--mc-fg-muted)";
+  })();
+
+  /* ---------- what this cannot tell you ---------- */
+  (function limits() {
+    [
+      "This is a national average. It is not your cost of living, and MacroChipz does not estimate one — what you actually spend depends on what you buy, which this data does not know.",
+      "There are no category figures here: no groceries, rent, fuel or transport. The index is published as one number and MacroChipz does not break it apart.",
+      "A falling rate is not a falling price level. For the index above to come down, the rate would have to go below zero — a different thing, with a different name.",
+      "Values are the latest revised data (" + D.data_basis + "), so a figure can change after it is first published. What changed is recorded rather than overwritten.",
+      "Core PCE runs through " + fmtMonth(D.momentum.calculation_period) + " and Headline CPI through " +
+        fmtMonth(D.headline.cpi.calculation_period) + ". They are not the same month, and comparing them directly compares two different periods."
+    ].forEach(function (t) {
+      var li = document.createElement("li"); li.textContent = t; $("limits").appendChild(li);
+    });
+  })();
+
+  /* ---------- methodology ---------- */
+  (function meth() {
+    [
+      ["Methodology", D.methodology_id],
+      ["Data basis", D.data_basis],
+      ["Primary series", D.momentum.series_id + " — " + SERIES.title],
+      ["Units", SERIES.units],
+      ["Source", SERIES.source],
+      ["Observations", OBS.length + " monthly, " + fmtMonth(OBS[0].date) + " to " + fmtMonth(OBS[OBS.length - 1].date)],
+      ["Latest common period", D.periods.latest_common_period],
+      ["Data through", D.periods.data_through],
+      ["Neutral band", "±" + D.momentum.neutral_band_pp + " pp around the 12-month rate (" +
+        D.momentum.lower_boundary.toFixed(2) + "% to " + D.momentum.upper_boundary.toFixed(2) + "%)"],
+      ["Windows", "1, 3 and 6 month rates are annualised; the 12-month rate is not. MacroChipz does not relabel one as the other."],
+      ["Endpoints captured", D._endpoints.join("  ·  ")]
+    ].forEach(function (row) {
+      var dt = document.createElement("dt"), dd = document.createElement("dd");
+      dt.textContent = row[0]; dd.textContent = row[1];
+      $("meth").appendChild(dt); $("meth").appendChild(dd);
+    });
+  })();
+
+  UNDERSTAND.forEach(function (q) {
+    var li = document.createElement("li");
+    li.innerHTML = '<a href="#">' + q + " →</a>";
+    $("understand").appendChild(li);
+  });
+
+  /* ---------- prototype controls ---------- */
+  function setMode(mode) {
+    state.mode = mode;
+    if (mode === "missing" && state.win === "1m") state.win = "12m";
+    $("dNormal").setAttribute("aria-pressed", String(mode === "normal"));
+    $("dLoading").setAttribute("aria-pressed", String(mode === "loading"));
+    $("dMissing").setAttribute("aria-pressed", String(mode === "missing"));
+    $("dNote").textContent = mode === "loading" ? "Showing the loading state."
+      : mode === "missing" ? "Showing the 1-month window as not computed. No figure is invented for it."
+      : "Showing every window as published.";
+    renderClimb(); renderWins(); renderRead();
+  }
+  $("dNormal").addEventListener("click", function () { setMode("normal"); });
+  $("dLoading").addEventListener("click", function () { setMode("loading"); });
+  $("dMissing").addEventListener("click", function () { setMode("missing"); });
+
+  renderClimb(); renderWins(); renderRead();
+  window.addEventListener("resize", renderClimb);
+})();
+</script>
+</body>
+</html>

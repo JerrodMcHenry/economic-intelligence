@@ -22,7 +22,7 @@ import { LATEST_REVISED_DATA, STATE_DURATION_DISCLOSURE } from "../../content/ex
  */
 export function DataBasisNote() {
   return (
-    <Disclosure summary="Latest revised data">
+    <Disclosure summaryClassName="min-h-11" summary="Latest revised data">
       <p className="max-w-prose text-sm text-fg-muted">{LATEST_REVISED_DATA.definition}</p>
       <p className="mt-2 max-w-prose text-sm text-fg-muted">{LATEST_REVISED_DATA.whyItMatters}</p>
       <p className="mt-2 max-w-prose text-sm text-fg-muted">{STATE_DURATION_DISCLOSURE.definition}</p>

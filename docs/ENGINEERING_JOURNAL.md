@@ -14710,3 +14710,213 @@ measurement "failed" in a way that turned out to be the instrument, not the code
 The one that worries me is the third, because it is the only one that would have
 failed silently in the other direction: a measurement that cannot see a fix can
 equally fail to see a defect.
+
+---
+
+## #50A — the page that measures a thing and never shows it
+
+**2026-09-23.** Audit and prototype for the Inflation world. **No production
+frontend or backend file was modified.**
+
+### Forty-one percentages, zero charts, and no prices
+
+`document.querySelectorAll('main svg[role="img"]').length` on `/inflation`
+returns **0**. Twenty SVG elements on the page, every one an icon.
+
+The page renders 41 percentage values. It renders the word "Mixed" fourteen
+times. It does not, anywhere, render a price.
+
+And the price is already in the response. `evidence_12m` carries
+`endpoint_value_past: 126.43` and `endpoint_value_current: 130.658` — the index
+at both ends of the window whose rate is printed four times. Both numbers appear
+nowhere in the DOM.
+
+So the page shows the rate of change and never the thing that is changing. That
+is not a presentation preference; it is the exact mechanism by which "inflation
+is falling" gets heard as "prices are falling". **A page about inflation that
+never shows a price cannot teach the one thing its readers most need.**
+
+### The data was there the whole time
+
+`GET /api/v1/series/PCEPILFE/observations` returns **59 monthly observations**,
+Sep 2021 → Jul 2026, 109.641 → 130.658, units `Index 2017=100`, source FRED. No
+new endpoint, no new field, no new calculation.
+
+The prototype draws it as an area, because the subject is accumulation. Selecting
+a window brackets that span and reports the rate the backend computed for it
+alongside the two index values at its ends.
+
+Selecting "1 month" lights a sliver at the end of a five-year ascent and says
+2.99%. Selecting "12 months" lights a longer span and says 3.34%. **A smaller
+rate on a line that is still going up** — the misconception dismantled by
+geometry instead of by being told it is wrong.
+
+### The gap I did not fill
+
+The obvious next line is the rate over time: watch 6% fall to 3% while the level
+keeps climbing. That is the whole lesson in one frame.
+
+The API does not publish it. `/monitors/inflation` gives rates for **one**
+period; `/monitors/inflation/history` gives twelve **states** and no rates. I
+have 59 index levels and could compute a rate series from them in four lines.
+
+That is client-side economics, and the product forbids it for good reasons — so
+the prototype has no rate line, and the specification records the dependency
+instead. **The most persuasive version of this page is the one I am not allowed
+to build yet, and saying so is more useful than faking it.**
+
+### A correction I had to make mid-audit
+
+I first queried `/monitors/inflation/history` without parameters, got
+`entries: []`, and was about to record "history is empty" as a finding. The app
+passes `?limit=12&offset=0`, which returns twelve entries.
+
+An endpoint that returns an empty page for an unparameterised request is not an
+empty endpoint. Checking what the application actually calls took ten seconds
+and would have turned a false finding into a published one.
+
+### The ellipse, again
+
+The climb's endpoint markers were SVG `<circle>`s on a board with
+`preserveAspectRatio="none"`. At 1440 they rendered as wide ovals.
+
+I documented this exact trap in #48B — *"`preserveAspectRatio="none"` … would
+have turned an SVG circle into an ellipse"* — while writing a different
+component, and then walked into it three increments later. Writing the lesson
+down is not the same as having learned it. Moved to HTML dots, which are round
+because their own box is square whatever the board does.
+
+### Lesson
+
+**The audit's best finding was an absence, and absences do not show up in any
+measurement I routinely take.** Overflow, target size, contrast, document height
+— every one of those examines something that is on the page. Nothing in that
+toolkit can report "the most important quantity in this domain is missing".
+
+What found it was reading the API response next to the rendered page and asking
+which fields never made it across.
+
+---
+
+## #50B — the labelled example that still had to be hidden
+
+**2026-09-23.** The Inflation world rebuilt around the price level. 1,982 tests,
+typecheck, lint and production build pass. `inflation_v1.0` untouched; no rate is
+computed in the frontend.
+
+### The page now shows a price
+
+`/inflation` rendered 41 percentages and zero charts, and never once showed the
+index — while `GET /api/v1/series/PCEPILFE/observations` had been serving 59
+monthly observations of it the whole time.
+
+It now leads with the climb: the index rising 109.641 → 130.658 as an area,
+because the subject is accumulation. Selecting a window brackets that span and
+reports the backend's rate beside **the two real index values at its ends**.
+Selecting "1 month" lights a sliver at the end of a five-year ascent and reports
+2.99%; "12 months" lights a longer span and reports 3.34%. A smaller rate on a
+line that is still going up.
+
+**One chart, and the misconception is a shape rather than a sentence.**
+
+### A guard I did not expect to fire
+
+The reviewed explainer's *"an inflation rate dropping from 6% to 3%"* is an
+illustration. I rendered it with the label **"For example, not a current
+reading"** and considered the ambiguity handled.
+
+The page's own loading test disagreed: no percentage may appear before data
+arrives. It failed, and it was right. On an otherwise empty Inflation page, "6%
+to 3%" is a reading no matter what the sentence beside it says — a reader
+skimming a loading page sees two numbers and a percent sign, not a caveat.
+
+**A label is a claim about how something should be read. It is not a guarantee
+that it will be.** The illustration now waits for the data it is meant to
+contrast with.
+
+### The prototype's short month names hid a defect
+
+The climb's axis labels were centred on 6% and 94%. That worked in the prototype,
+which wrote "Sep 2021". Production uses the shared `formatPeriod`, which writes
+"September 2021" — and centred on 6%, that starts **8px outside the card**.
+
+Document-level overflow was still zero, so every check I run by habit passed. It
+took comparing the label's rect against its own card's rect to see it.
+
+**A prototype that formats its own copy is not testing the component that will
+render it.**
+
+### Three measurements that lie, now catalogued
+
+While verifying this page I hit all three in one session:
+
+1. `getBoundingClientRect` cannot see a `::before`, so twelve 44px triggers read
+   as 16px.
+2. Sections inside a **closed** `<details>` still report their old rects, so a
+   collapsed disclosure looks like it collapsed nothing.
+3. Document-level overflow is blind to an element escaping its own card.
+
+Each has now bitten twice. The pattern is the same every time: **the instrument
+answers a narrower question than the one I am asking**, and it does not say so.
+
+### Lesson
+
+**The best thing in this increment was already in the API.** No new endpoint, no
+new field, no new calculation — the price level had been one request away since
+before the page was built, and nobody had asked what the response contained that
+the page was not using.
+
+That question is cheap and I almost never ask it.
+
+---
+
+## #50B verification — the gate that was one condition short
+
+**2026-09-23.** Final browser verification of the Inflation world. 1,985 tests,
+typecheck, lint and build pass.
+
+### Simulating failure without touching the code
+
+Both states were produced in the real production frontend by patching
+`window.fetch` at runtime for `/api/v1/series/` and then navigating client-side
+so the page re-fetched. No build flag, no mock server, no application change —
+the running app, with one request made to hang or reject.
+
+Worth keeping: it is the only way I have found to see a *partial* failure state
+in a real page, where one resource fails and the others are genuinely live.
+
+### The defect the earlier fix did not cover
+
+Two turns ago the page's loading test caught an illustrative "6% to 3%"
+appearing before any data arrived, and I gated it on
+`monitor.status === "success"`. That looked complete.
+
+It was one condition short. With the monitor resolved and the **price series**
+failed, a reader saw:
+
+> The price level could not be loaded.
+>
+> …
+>
+> For example, not a current reading: an inflation rate dropping from 6% to 3%…
+
+The illustration exists to contrast with the level the climb draws. With no
+climb, it has nothing to anchor to, and two percentages sitting under an error
+message read as a reading no matter what the label says.
+
+**I had fixed the case the test exercised, not the condition the guard was
+about.** The test asked "does anything show before data arrives"; the real
+question was "does the example ever appear without the thing it illustrates".
+Those coincide when everything fails together, and diverge the moment one
+resource fails alone — which is the whole point of this codebase's failure
+isolation.
+
+### Lesson
+
+**A guard written to satisfy a failing test tends to encode the test's scenario
+rather than the rule.** The first fix passed, shipped, and was still wrong in a
+state nothing had exercised.
+
+The check that would have caught it immediately is cheap and I did not run it:
+for each independently-loaded resource, fail exactly that one and look at the
+page. Five resources, five looks.

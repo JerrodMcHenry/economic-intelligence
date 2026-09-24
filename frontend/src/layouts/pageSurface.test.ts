@@ -5,16 +5,17 @@ import { join } from "node:path";
 import { surfaceForPath } from "./pageSurface";
 
 describe("page surfaces", () => {
-  it("gives the homepage and the Rates world the cinematic surface", () => {
+  it("gives the homepage and the rebuilt worlds the cinematic surface", () => {
     expect(surfaceForPath("/")).toBe("cinematic");
     // #49B: Rates joins it. The audit found a reader crossing from the
     // homepage to `/rates` arrived somewhere that looked like a
-    // different product.
+    // different product. #50B: Inflation, for the same reason.
     expect(surfaceForPath("/rates")).toBe("cinematic");
+    expect(surfaceForPath("/inflation")).toBe("cinematic");
   });
 
-  it("gives every other route no surface at all", () => {
-    for (const path of ["/inflation", "/jobs", "/housing", "/calendar", "/explain", "/revisions"]) {
+  it("gives every not-yet-rebuilt route no surface at all", () => {
+    for (const path of ["/jobs", "/housing", "/calendar", "/explain", "/revisions"]) {
       expect(surfaceForPath(path), path).toBeUndefined();
     }
   });

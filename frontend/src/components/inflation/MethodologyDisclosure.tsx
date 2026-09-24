@@ -23,7 +23,7 @@ export function MethodologyDisclosure({
         Evidence &amp; methodology
       </h2>
       <div className="mt-3">
-        <Disclosure summary="Methodology and coverage detail">
+        <Disclosure summaryClassName="min-h-11" summary="Methodology and coverage detail">
           <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm text-fg-secondary">
             {monitor && (
               <>

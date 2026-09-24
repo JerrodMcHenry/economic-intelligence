@@ -211,3 +211,33 @@ export function buildWhatChanged(overrides: Partial<InflationWhatChangedResult> 
     ...overrides,
   };
 }
+
+/**
+ * Core PCE index observations (#50B).
+ *
+ * A short, real-shaped series: the same field names and units the
+ * provider publishes, with values that climb monotonically as a price
+ * index does. Dates line up with `buildMomentum`'s evidence endpoints
+ * so the climb can bracket a window in tests.
+ */
+export function buildCorePceObservations(
+  overrides: Partial<import("../../api/series.types").SeriesObservationsResponse> = {},
+): import("../../api/series.types").SeriesObservationsResponse {
+  const observations = [
+    { date: "2025-07-01", value: 126.43 },
+    { date: "2025-10-01", value: 127.2 },
+    { date: "2026-01-01", value: 128.455 },
+    { date: "2026-04-01", value: 129.681 },
+    { date: "2026-06-01", value: 130.338 },
+    { date: "2026-07-01", value: 130.658 },
+  ];
+  return {
+    series_id: "PCEPILFE",
+    title: "Personal Consumption Expenditures Excluding Food and Energy (Chain-Type Price Index)",
+    units: "Index 2017=100",
+    source: "FRED",
+    observations,
+    pagination: { limit: 200, offset: 0, returned: observations.length, total: observations.length },
+    ...overrides,
+  };
+}

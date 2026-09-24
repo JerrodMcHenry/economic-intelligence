@@ -1,0 +1,33 @@
+import { apiGet } from "./client";
+import type { SeriesObservationsResponse } from "./series.types";
+
+/**
+ * Published observations for one canonical series (Increment #50B).
+ *
+ * The Inflation world needs the PRICE LEVEL, not another rate: #50A
+ * measured that `/inflation` rendered 41 percentages, zero charts, and
+ * never once showed a price — even though the monitor's own evidence
+ * already carried the index at both ends of every window.
+ *
+ * This is an EXISTING endpoint, already serving 59 monthly Core PCE
+ * observations. No backend change, no new contract, no new
+ * calculation: the frontend plots what the provider published.
+ */
+const MAX_OBSERVATIONS = 200;
+
+export function getSeriesObservations(seriesId: string): Promise<SeriesObservationsResponse> {
+  return apiGet<SeriesObservationsResponse>(
+    `/api/v1/series/${encodeURIComponent(seriesId)}/observations?limit=${MAX_OBSERVATIONS}`,
+  );
+}
+
+/**
+ * The series `inflation_v1.0` leads with, and therefore the one the
+ * climb draws. Named here rather than at the call site so the page
+ * never hardcodes a provider id inline.
+ */
+export const CORE_PCE_SERIES_ID = "PCEPILFE";
+
+export function getCorePceObservations(): Promise<SeriesObservationsResponse> {
+  return getSeriesObservations(CORE_PCE_SERIES_ID);
+}

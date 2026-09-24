@@ -177,7 +177,9 @@ describe("App", () => {
     // network call while still exercising the real page component.
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/inflation");
-    expect(screen.getByRole("heading", { level: 1, name: "Inflation" })).toBeInTheDocument();
+    expect(
+        screen.getByRole("heading", { level: 1, name: "Prices are a level. Inflation is its slope." }),
+      ).toBeInTheDocument();
   });
 
   it("renders the Jobs product route at /jobs", () => {

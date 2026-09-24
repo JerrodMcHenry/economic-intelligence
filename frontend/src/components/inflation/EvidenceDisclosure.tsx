@@ -16,7 +16,7 @@ export function EvidenceDisclosure({ label, evidence }: { label: string; evidenc
   }
 
   return (
-    <Disclosure
+    <Disclosure summaryClassName="min-h-11"
       summary={`View evidence: ${label}`}
       // Increment #37's headline measurement: does anyone actually
       // verify? Only the object kind is recorded -- never which metric,
