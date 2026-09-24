@@ -22,6 +22,8 @@ import {
   buildLaborWhatChanged,
   buildUnemploymentResult,
 } from "../test/fixtures/labor";
+import { buildPayrollObservations, buildUnemploymentObservations } from "../test/fixtures/labor";
+import { getPayrollObservations, getUnemploymentObservations } from "../api/series";
 import { buildEmptyHistoryResponse } from "../test/fixtures/monitorHistory";
 import { buildLatestCheck, buildReleaseProcessingStatusItem, buildReleaseProcessingStatusResponse } from "../test/fixtures/processingStatus";
 import { buildReleaseListResponse, buildReleaseOccurrenceItem } from "../test/fixtures/releases";
@@ -40,6 +42,10 @@ vi.mock("../api/releases", () => ({
 }));
 vi.mock("../api/analyst", () => ({ getAnalystAvailability: vi.fn() }));
 vi.mock("../api/monitorHistory", () => ({ getLaborHistory: vi.fn() }));
+// #51B: the two published series are a seventh and eighth independent
+// resource. Resolved defaults so no pre-existing test hangs on a
+// section it is not about.
+vi.mock("../api/series", () => ({ getPayrollObservations: vi.fn(), getUnemploymentObservations: vi.fn() }));
 
 const mockedGetMonitor = vi.mocked(getLaborMonitor);
 const mockedGetWhatChanged = vi.mocked(getLaborWhatChanged);
@@ -49,6 +55,8 @@ const mockedFetchRecent = vi.mocked(fetchRecentReleases);
 const mockedGetStateDuration = vi.mocked(getLaborStateDuration);
 const mockedGetAnalyst = vi.mocked(getAnalystAvailability);
 const mockedGetHistory = vi.mocked(getLaborHistory);
+const mockedGetPayroll = vi.mocked(getPayrollObservations);
+const mockedGetUnemploymentSeries = vi.mocked(getUnemploymentObservations);
 
 beforeEach(() => {
   mockedGetMonitor.mockReset();
@@ -59,6 +67,10 @@ beforeEach(() => {
   mockedGetStateDuration.mockReset();
   // Resolved, non-hanging default for every test unless overridden --
   // State Duration is scoped to its own dedicated describe block below.
+  mockedGetPayroll.mockReset();
+  mockedGetUnemploymentSeries.mockReset();
+  mockedGetPayroll.mockResolvedValue(buildPayrollObservations());
+  mockedGetUnemploymentSeries.mockResolvedValue(buildUnemploymentObservations());
   mockedGetStateDuration.mockResolvedValue(buildStateDurationCurrentInsufficient({ methodology_id: "labor_v1.0" }));
   // Increment #32's Intelligence History -- a seventh independent
   // resource, resolved by default so no pre-existing test hangs on or
@@ -123,12 +135,19 @@ describe("frozen 7-section hierarchy", () => {
     });
     renderPage();
 
-    await screen.findByRole("heading", { name: "Current state" });
+    await screen.findByRole("heading", { name: "Two surveys, side by side" });
     const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    // #51B: the two surveys became one switch, the state became a
+    // conclusion after the evidence, and each survey's full detail
+    // moved behind a disclosure. Nothing was removed.
     expect(headings).toEqual([
+      "Two surveys, side by side",
+      "What MacroChipz concludes",
       "Current state",
+      "Each survey in full",
       "Employment",
       "Unemployment",
+      "What this page does not have",
       "What changed",
       "Latest data detected",
       "Employment Situation release",
@@ -380,12 +399,19 @@ describe("Relate V1 composition, inside the existing WhyLaborState disclosure (I
 
     // The frozen 7-section hierarchy (see the "frozen 7-section
     // hierarchy" describe block above) gains no new heading.
-    await screen.findByRole("heading", { name: "Current state" });
+    await screen.findByRole("heading", { name: "Two surveys, side by side" });
     const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    // #51B: the two surveys became one switch, the state became a
+    // conclusion after the evidence, and each survey's full detail
+    // moved behind a disclosure. Nothing was removed.
     expect(headings).toEqual([
+      "Two surveys, side by side",
+      "What MacroChipz concludes",
       "Current state",
+      "Each survey in full",
       "Employment",
       "Unemployment",
+      "What this page does not have",
       "What changed",
       "Latest data detected",
       "Employment Situation release",
@@ -838,7 +864,9 @@ describe("failure isolation", () => {
     expect(await screen.findByText("Release-processing status is temporarily unavailable.")).toBeInTheDocument();
     expect(await screen.findByText("Upcoming releases could not be loaded.")).toBeInTheDocument();
     expect(await screen.findByText("Recent releases could not be loaded.")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "Jobs" })).toBeInTheDocument();
+    // #51B: the h1 is the two-survey distinction; the world's name
+    // survives as the kicker above it.
+    expect(screen.getByRole("heading", { level: 1, name: "Two surveys. Two answers." })).toBeInTheDocument();
   });
 });
 
@@ -847,9 +875,9 @@ describe("accessibility basics", () => {
     resolveAll();
     renderPage();
 
-    await screen.findByRole("heading", { name: "Current state" });
-    expect(screen.getByRole("heading", { level: 1, name: "Jobs" })).toBeInTheDocument();
-    for (const name of ["Current state", "Employment", "Unemployment", "What changed", "Latest data detected", "Evidence & methodology"]) {
+    await screen.findByRole("heading", { name: "Two surveys, side by side" });
+    expect(screen.getByRole("heading", { level: 1, name: "Two surveys. Two answers." })).toBeInTheDocument();
+    for (const name of ["Two surveys, side by side", "What MacroChipz concludes", "Current state", "Employment", "Unemployment", "What changed", "Latest data detected", "Evidence & methodology"]) {
       expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
     }
   });

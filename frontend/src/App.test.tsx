@@ -136,7 +136,7 @@ describe("App", () => {
     await user.click(toggle);
     await user.click(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("link", { name: "Jobs" }));
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByRole("heading", { level: 1, name: "Jobs" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Two surveys. Two answers." })).toBeInTheDocument();
   });
 
   it("renders the live economic surface at /", () => {
@@ -152,7 +152,7 @@ describe("App", () => {
     // path lands on its successor's content rather than a 404.
     it.each([
       ["/overview", "Explore the living economy."],
-      ["/labor", "Jobs"],
+      ["/labor", "Two surveys. Two answers."],
       ["/releases", "Release calendar"],
     ])("redirects %s to its successor", (from, heading) => {
       vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
@@ -188,7 +188,7 @@ describe("App", () => {
     // a dedicated, thoroughly-mocked test suite (see pages/Jobs.test.tsx).
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     renderAt("/jobs");
-    expect(screen.getByRole("heading", { level: 1, name: "Jobs" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Two surveys. Two answers." })).toBeInTheDocument();
   });
 
   it("renders the Calendar product route at /calendar", () => {

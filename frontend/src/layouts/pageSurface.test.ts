@@ -12,10 +12,11 @@ describe("page surfaces", () => {
     // different product. #50B: Inflation, for the same reason.
     expect(surfaceForPath("/rates")).toBe("cinematic");
     expect(surfaceForPath("/inflation")).toBe("cinematic");
+    expect(surfaceForPath("/jobs")).toBe("cinematic");
   });
 
   it("gives every not-yet-rebuilt route no surface at all", () => {
-    for (const path of ["/jobs", "/housing", "/calendar", "/explain", "/revisions"]) {
+    for (const path of ["/housing", "/calendar", "/explain", "/revisions"]) {
       expect(surfaceForPath(path), path).toBeUndefined();
     }
   });

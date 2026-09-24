@@ -31,3 +31,16 @@ export const CORE_PCE_SERIES_ID = "PCEPILFE";
 export function getCorePceObservations(): Promise<SeriesObservationsResponse> {
   return getSeriesObservations(CORE_PCE_SERIES_ID);
 }
+
+/** The employer survey MacroChipz plots on `/jobs` (#51B). */
+export const PAYROLL_SERIES_ID = "PAYEMS";
+/** The household survey. Carries a published gap; see `SurveyThreshold`. */
+export const UNEMPLOYMENT_SERIES_ID = "UNRATE";
+
+export function getPayrollObservations(): Promise<SeriesObservationsResponse> {
+  return getSeriesObservations(PAYROLL_SERIES_ID);
+}
+
+export function getUnemploymentObservations(): Promise<SeriesObservationsResponse> {
+  return getSeriesObservations(UNEMPLOYMENT_SERIES_ID);
+}

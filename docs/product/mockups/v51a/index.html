@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en" data-surface="cinematic">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Jobs World — MacroChipz #51A prototype</title>
+<!--
+  ================================================================
+  JOBS WORLD PROTOTYPE — increment #51A
+  ================================================================
+
+  A STANDALONE REVIEW ARTEFACT. It modifies no production file.
+
+  ----------------------------------------------------------------
+  THE VISUAL WAS CHOSEN FROM THE DATA, NOT FROM A MOODBOARD
+  ----------------------------------------------------------------
+  What the API actually has for Jobs: 60 monthly PAYEMS observations,
+  60 monthly UNRATE observations, and a monitor that classifies each
+  against an explicit DEADBAND. What it does not have: participation,
+  U-6, job openings, initial claims — every one 404s today.
+
+  A line chart of payroll employment would be the Inflation climb with
+  different numbers. So the hero is the thing this world has and the
+  others do not: a METHODOLOGY THRESHOLD made visible. Each measure is
+  shown against the deadband that classified it, so a reader can see
+  not just what the state is but why it is that state — and, switching
+  between the two surveys, that the same labour market produces two
+  different answers.
+
+  The live data makes that concrete: hiring pace roughly halved
+  (141,667 -> 71,333 a month) while the unemployment rate moved
+  0.1pp and stayed inside its band. One measure moved a long way past
+  its threshold; the other barely moved at all.
+
+  ----------------------------------------------------------------
+  THE RULES IT HOLDS ITSELF TO
+  ----------------------------------------------------------------
+  1. NO INVENTED FIGURE. Every number is `window.JOBS`.
+  2. NOTHING IS CALCULATED HERE. No average, no delta, no deadband
+     test, no state. `labor_v1.0` computed all of it.
+  3. THE RATE IS NEVER PRESENTED AS THE EXPERIENCE OF JOB-HUNTING.
+     The reviewed explainer's own sentence — "This is why the rate
+     alone does not tell you whether the jobs picture improved" — is
+     on the page, verbatim, not buried in a disclosure.
+  4. MISSING SERIES ARE DOCUMENTED, NOT SIMULATED.
+-->
+<style>
+  :root {
+    --mc-brand: #9facf1; --mc-focus: #a2b0ff;
+    --mc-fg: #e9ebef; --mc-fg-secondary: #bdc1c8; --mc-fg-muted: #979ca3;
+    --lx-char: #121317; --lx-char-2: #191b21; --lx-mid: #0e1422;
+    --lx-line: #2a2d35; --lx-line-2: #363a45;
+    --lx-bloom-a: rgba(124,96,240,.34); --lx-bloom-b: rgba(162,176,255,.24);
+    --lx-card-hi: rgba(255,255,255,.14); --lx-card-lo: rgba(255,255,255,.075);
+    --lx-selected: rgba(124,96,240,.30);
+    /* Jobs' own accent within the shared family: a cooler lavender for
+       the household survey, the brand violet for the employer survey,
+       so the two tracks are distinguishable without either reading as
+       "good" or "bad". Economic-state tones stay out of this. */
+    --jb-employer: #b9a6ff;
+    --jb-household: #8fc3e8;
+    --jb-dim: rgba(159,172,241,.28);
+    --ed-amber: #c9954a;
+    --sans: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--lx-char); -webkit-text-size-adjust: 100%; }
+  body { margin:0; color:var(--mc-fg); font-family:var(--sans); font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased;
+    background: radial-gradient(120% 640px at 82% -60px, var(--lx-bloom-a) 0%, transparent 62%),
+      radial-gradient(90% 520px at 4% 560px, var(--lx-bloom-b) 0%, transparent 66%),
+      linear-gradient(180deg, var(--lx-mid) 0px, var(--lx-char) 760px), var(--lx-char);
+    background-repeat:no-repeat; }
+  .wrap { max-width:1216px; margin:0 auto; padding-left:16px; padding-right:16px; }
+  @media (min-width:640px){ .wrap{padding-left:24px;padding-right:24px} }
+  @media (min-width:1024px){ .wrap{padding-left:32px;padding-right:32px} }
+  a { color:inherit; }
+  a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid var(--mc-focus); outline-offset:2px; }
+
+  .bar { display:flex; align-items:center; min-height:54px; background:#0d0e11; border-bottom:1px solid var(--lx-line); position:relative; z-index:3; }
+  .bar .in { display:flex; align-items:center; gap:16px; width:100%; }
+  .wm { font-size:16px; font-weight:600; letter-spacing:-.01em; } .wm span { color:var(--mc-brand); }
+  .bar nav { display:none; gap:2px; margin-left:auto; }
+  @media (min-width:720px){ .bar nav{display:flex} }
+  .bar nav a { display:inline-flex; align-items:center; min-height:44px; padding:0 9px; border-radius:8px; font-size:13px; color:var(--mc-fg-secondary); text-decoration:none; }
+  .bar nav a[aria-current] { color:var(--mc-fg); background:rgba(255,255,255,.07); font-weight:600; }
+
+  .snap { background:rgba(201,149,74,.10); border-bottom:1px solid rgba(201,149,74,.30); font-size:12.5px; line-height:1.45; color:var(--mc-fg-secondary); }
+  .snap .in { padding:9px 0; }
+  .snap b { color:var(--ed-amber); font-weight:700; letter-spacing:.04em; text-transform:uppercase; font-size:11px; }
+
+  .hero .in { padding-top:24px; padding-bottom:6px; }
+  .kicker { margin:0; font-size:11px; font-weight:700; letter-spacing:.22em; text-transform:uppercase; color:var(--ed-amber); }
+  h1 { margin:10px 0 0; font-size:27px; line-height:1.12; font-weight:700; letter-spacing:-.03em; text-wrap:balance; }
+  @media (min-width:640px){ h1{font-size:35px} } @media (min-width:1024px){ h1{font-size:41px} }
+  .sub { margin:10px 0 0; max-width:62ch; font-size:15px; color:var(--mc-fg-secondary); }
+  @media (min-width:1024px){ .sub{font-size:16.5px} }
+  .asof { margin:14px 0 0; display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; font-size:12.5px; color:var(--mc-fg-muted); }
+  .pill { display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:999px; border:1px solid var(--lx-line-2); background:rgba(255,255,255,.03); }
+  .pill i { width:6px; height:6px; border-radius:999px; background:var(--mc-brand); font-style:normal; }
+
+  section { padding-top:32px; }
+  .sec { margin:0 0 14px; font-size:11px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color:var(--ed-amber); display:flex; align-items:center; gap:10px; }
+  .sec::after { content:""; flex:1; height:1px; background:linear-gradient(90deg, rgba(201,149,74,.45), transparent); }
+  .card { background:linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.028) 100%), #1b1d26;
+    border:1px solid var(--lx-card-lo); border-radius:14px; box-shadow:inset 0 1px 0 0 var(--lx-card-hi), 0 18px 40px -22px rgba(0,0,0,.95); }
+
+  /* ---------- survey switch ---------- */
+  .switch { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .switch button {
+    min-height:44px; padding:10px 12px; border-radius:11px; cursor:pointer; text-align:left;
+    background:rgba(255,255,255,.04); border:1px solid var(--lx-line-2); color:var(--mc-fg-secondary);
+    transition:background-color .15s, border-color .15s, color .15s;
+  }
+  .switch button[aria-pressed="true"] { color:#eef0ff; background:var(--lx-selected); border-color:rgba(162,176,255,.45); }
+  .switch .who { display:block; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--mc-fg-muted); }
+  .switch .what { display:block; margin-top:3px; font-size:14px; font-weight:700; }
+
+  /* ---------- the threshold diagram ---------- */
+  .verdict { padding:16px 14px; }
+  @media (min-width:640px){ .verdict { padding:20px 18px; } }
+  .track { position:relative; height:112px; margin-top:6px; }
+  .track svg { display:block; width:100%; height:100%; }
+  .tlab { position:absolute; font-size:11px; color:var(--mc-fg-muted); white-space:nowrap; }
+  .tval { position:absolute; transform:translate(-50%,-50%); font-size:12.5px; font-weight:700; font-variant-numeric:tabular-nums;
+    background:rgba(10,8,20,.78); border:1px solid rgba(162,176,255,.32); border-radius:7px; padding:2px 7px; white-space:nowrap; }
+  .tdot { position:absolute; width:11px; height:11px; border-radius:999px; transform:translate(-50%,-50%); }
+
+  .state { margin-top:16px; display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+  .chip { display:inline-flex; align-items:center; padding:5px 12px; border-radius:999px; font-size:13px; font-weight:700;
+    border:1px solid var(--lx-line-2); background:rgba(255,255,255,.05); }
+  .because { margin:12px 0 0; font-size:14.5px; color:var(--mc-fg-secondary); max-width:60ch; }
+  .because b { color:#eef0ff; font-variant-numeric:tabular-nums; }
+
+  /* context sparkline */
+  .spark { margin-top:16px; border-top:1px solid var(--lx-line); padding-top:14px; }
+  .spark .h { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--mc-fg-muted); font-weight:700; }
+  .sparkBoard { position:relative; height:86px; margin-top:8px; }
+  .sparkBoard svg { display:block; width:100%; height:100%; }
+  .sparkEnds { margin-top:6px; display:flex; justify-content:space-between; font-size:11px; color:var(--mc-fg-muted); font-variant-numeric:tabular-nums; }
+
+  .lesson { padding:18px; } @media (min-width:640px){ .lesson{padding:22px} }
+  .lesson .q { margin:0 0 8px; font-size:11px; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--mc-brand); }
+  .lesson h3 { margin:0; font-size:16.5px; font-weight:700; letter-spacing:-.01em; }
+  .lesson p { margin:10px 0 0; font-size:14.5px; color:var(--mc-fg-secondary); max-width:62ch; }
+  .limits { padding:18px; } .limits ul { margin:10px 0 0; padding-left:18px; }
+  .limits li { margin-top:7px; font-size:14.5px; color:var(--mc-fg-secondary); max-width:60ch; }
+
+  details { border-top:1px solid var(--lx-line); }
+  summary { display:flex; align-items:center; gap:9px; min-height:44px; cursor:pointer; font-size:13.5px; font-weight:600; color:var(--mc-fg-secondary); list-style:none; }
+  summary::-webkit-details-marker { display:none; }
+  summary .chev { transition:transform .15s; color:var(--mc-fg-muted); }
+  details[open] summary .chev { transform:rotate(90deg); }
+  .dl { display:grid; grid-template-columns:max-content 1fr; gap:3px 16px; font-size:13px; padding-bottom:14px; }
+  .dl dt { color:var(--mc-fg-muted); } .dl dd { margin:0; color:var(--mc-fg-secondary); overflow-wrap:anywhere; }
+  .strip { display:flex; gap:4px; margin-top:8px; } .strip div { flex:1; min-width:0; }
+  .strip .b { height:28px; border-radius:5px; border:1px solid var(--lx-line-2); }
+  .strip .l { margin-top:5px; font-size:9.5px; color:var(--mc-fg-muted); text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .links { list-style:none; margin:0; padding:0; display:grid; gap:2px; }
+  .links a { display:flex; align-items:center; min-height:44px; font-size:14px; color:var(--mc-fg-secondary); text-decoration:none; }
+  .links a:hover { color:var(--mc-fg); text-decoration:underline; text-underline-offset:4px; }
+
+  footer { margin-top:44px; border-top:1px solid var(--lx-line); background:#0b0c0f; }
+  footer .in { padding-top:20px; padding-bottom:28px; display:grid; gap:10px; }
+  footer .c { font-size:11.5px; line-height:1.6; color:var(--mc-fg-muted); }
+
+  .demo { margin-top:26px; border:1px dashed var(--lx-line-2); border-radius:12px; padding:12px 14px; }
+  .demo p { margin:0 0 9px; font-size:11.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--mc-fg-muted); font-weight:700; }
+  .demo button { min-height:44px; padding:0 14px; margin:0 8px 8px 0; border-radius:9px; cursor:pointer; font-size:13px; font-weight:600;
+    color:var(--mc-fg-secondary); background:rgba(255,255,255,.04); border:1px solid var(--lx-line-2); }
+  .demo button[aria-pressed="true"] { color:#eef0ff; background:var(--lx-selected); border-color:rgba(162,176,255,.42); }
+  .skel { background:linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,.08), rgba(255,255,255,.04)); border-radius:8px; }
+  .alert { border:1px solid rgba(201,149,74,.45); background:rgba(201,149,74,.08); border-radius:11px; padding:14px; font-size:14px; color:var(--mc-fg-secondary); }
+  .alert button { margin-top:10px; min-height:44px; padding:0 14px; border-radius:9px; cursor:pointer; font-size:13px; font-weight:600; color:var(--mc-fg); background:rgba(255,255,255,.06); border:1px solid var(--lx-line-2); }
+
+  .sr { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+</style>
+</head>
+<body>
+
+<div class="bar"><div class="wrap in">
+  <span class="wm">Macro<span>Chipz</span></span>
+  <nav><a href="#">Home</a><a href="#">Inflation</a><a href="#" aria-current="page">Jobs</a><a href="#">Rates</a><a href="#">Housing</a><a href="#">Calendar</a></nav>
+</div></div>
+
+<div class="snap"><div class="wrap in"><b>Prototype</b> &middot; <span id="snapText"></span></div></div>
+
+<header class="hero"><div class="wrap in">
+  <p class="kicker">Jobs</p>
+  <h1 id="heroH"></h1>
+  <p class="sub" id="heroSub"></p>
+  <div class="asof">
+    <span class="pill"><i></i><span id="asOf"></span></span>
+    <span id="src"></span>
+  </div>
+</div></header>
+
+<main>
+<section class="wrap" aria-labelledby="sv-h">
+  <h2 class="sec" id="sv-h">Two surveys, side by side</h2>
+  <div class="switch" id="switch" role="group" aria-label="Choose a survey"></div>
+  <div class="card verdict" style="margin-top:12px" id="verdict" aria-live="polite"></div>
+</section>
+
+<section class="wrap" aria-labelledby="ov-h">
+  <h2 class="sec" id="ov-h">What MacroChipz concludes</h2>
+  <div class="card lesson" id="overall"></div>
+</section>
+
+<section class="wrap" aria-labelledby="l1-h">
+  <h2 class="sec" id="l1-h">Why there are two numbers</h2>
+  <div class="card lesson">
+    <p class="q" id="q1"></p><h3 id="a1"></h3><p id="b1"></p><p id="c1"></p>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="l2-h">
+  <h2 class="sec" id="l2-h">What the rate alone cannot tell you</h2>
+  <div class="card lesson">
+    <p class="q" id="q2"></p><h3 id="a2"></h3><p id="b2"></p><p id="c2"></p>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="lim-h">
+  <h2 class="sec" id="lim-h">What this page does not have</h2>
+  <div class="card limits"><ul id="limits"></ul></div>
+</section>
+
+<section class="wrap" aria-labelledby="hist-h">
+  <h2 class="sec" id="hist-h">Recorded conclusions</h2>
+  <div class="card" style="padding:0 16px">
+    <details><summary><span class="chev" aria-hidden="true">&rsaquo;</span>Twelve months of recorded states</summary>
+      <div style="padding-bottom:16px">
+        <div class="strip" id="strip"></div>
+        <p id="histNote" style="margin-top:12px;font-size:13px;color:var(--mc-fg-muted)"></p>
+      </div>
+    </details>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="meth-h">
+  <h2 class="sec" id="meth-h">Evidence &amp; methodology</h2>
+  <div class="card" style="padding:0 16px">
+    <details><summary><span class="chev" aria-hidden="true">&rsaquo;</span>Where these numbers come from</summary>
+      <dl class="dl" id="meth"></dl>
+    </details>
+  </div>
+  <div class="demo">
+    <p>Prototype controls &mdash; not part of the product</p>
+    <button type="button" id="dNormal" aria-pressed="true">Data available</button>
+    <button type="button" id="dLoading" aria-pressed="false">Loading</button>
+    <button type="button" id="dFail" aria-pressed="false">Series request failed</button>
+    <button type="button" id="dMissing" aria-pressed="false">Employment not computed</button>
+    <span class="sr" id="dNote"></span>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="und-h">
+  <h2 class="sec" id="und-h">Understand this</h2>
+  <ul class="links" id="understand"></ul>
+</section>
+</main>
+
+<footer><div class="wrap in">
+  <p class="c" id="attrib"></p>
+  <p class="c">Source data: U.S. Department of the Treasury; FRED&reg;, Federal Reserve Bank of St. Louis; U.S. Census Bureau and U.S. Department of Housing and Urban Development. This product uses the Census Bureau Data API but is not endorsed or certified by the Census Bureau.</p>
+</div></footer>
+
+<script src="data.js"></script>
+<script>
+(function () {
+  "use strict";
+  var D = window.JOBS;
+  var $ = function (id) { return document.getElementById(id); };
+  var NS = "http://www.w3.org/2000/svg";
+  function el(t,a,p){ var n=document.createElementNS(NS,t); for(var k in a) n.setAttribute(k,a[k]); if(p) p.appendChild(n); return n; }
+  var MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  function fmtMonth(iso){ var p=iso.split("-"); return MONTHS[Number(p[1])-1]+" "+p[0]; }
+  function num(n){ return n===null||n===undefined?null:Math.round(n).toLocaleString("en-US"); }
+  function pp(n){ return n===null||n===undefined?null:(n>0?"+":n<0?"−":"")+Math.abs(n).toFixed(2)+" pp"; }
+  function title(s){ return s.charAt(0)+s.slice(1).toLowerCase().replace(/_/g," "); }
+
+  /* ================ COPY — reviewed explainer text, verbatim ============ */
+  var HERO_H = "Two surveys. Two answers.";
+  var HERO_SUB = "One counts jobs on employer payrolls, the other counts people and asks whether they have work. They measure different populations, so they can disagree without either being wrong.";
+  var L1 = { q:"Wait, there are two different jobs numbers?",
+    a:"Payroll employment comes from a survey of employers. The unemployment rate comes from a survey of households. MacroChipz keeps them separate for exactly that reason.",
+    b:"The employer survey counts filled jobs, so one person holding two jobs counts twice.",
+    c:"The household survey counts people, so someone who stops looking for work leaves the count entirely rather than appearing as a job lost." };
+  var L2 = { q:"Wait, unemployment can rise without anyone losing a job?",
+    a:"Yes. The unemployment rate counts people who are out of work and looking for it — so if more people start looking, the rate can rise even when no one was laid off.",
+    b:"The reverse also happens: when people give up looking, they leave the count, and the rate can fall without anyone finding a job.",
+    c:"This is why the rate alone does not tell you whether the jobs picture improved." };
+  var UNDERSTAND = [L1.q, L2.q];
+
+  /* ================ MEASURES — each one's own units and own deadband ==== */
+  var E = D.employment, U = D.unemployment;
+  var MEASURES = [
+    { key:"employment", who:"Employer survey", what:"Payroll employment", colour:"var(--jb-employer)",
+      series:D.series.payems, seriesUnits:"Thousands of jobs",
+      current:E.current_3m_avg_jobs, prior:E.prior_3m_avg_jobs, delta:E.momentum_delta_jobs,
+      band:E.momentum_deadband_jobs, fmt:num, unit:"jobs a month",
+      currentLabel:"Last 3 months", priorLabel:"The 3 months before",
+      state:E.state, extra:[["Hiring condition",E.condition],["Momentum",E.momentum]],
+      bandLabel:"Momentum deadband ±"+num(E.momentum_deadband_jobs)+" jobs",
+      available:E.current_3m_avg_jobs!==null },
+    { key:"unemployment", who:"Household survey", what:"Unemployment rate", colour:"var(--jb-household)",
+      series:D.series.unrate, seriesUnits:"Percent",
+      current:U.current_3m_avg, prior:U.prior_year_3m_avg, delta:U.delta_pp,
+      band:U.unemployment_deadband_pp, fmt:function(v){return v===null?null:v.toFixed(2)+"%";}, unit:"",
+      currentLabel:"Last 3 months", priorLabel:"Same 3 months a year earlier",
+      state:U.state, extra:[],
+      bandLabel:"Deadband ±"+U.unemployment_deadband_pp+" pp",
+      available:U.current_3m_avg!==null }
+  ];
+
+  var state = { key:"employment", mode:"normal" };
+  function measures(){
+    return MEASURES.map(function(m){
+      if(state.mode==="missing" && m.key==="employment")
+        return Object.assign({}, m, {available:false, current:null, prior:null, delta:null});
+      return m;
+    });
+  }
+  function active(){ var l=measures(); return l.filter(function(m){return m.key===state.key;})[0] || l[0]; }
+
+  /* ---------- header ---------- */
+  $("snapText").textContent = "Snapshot of "+D._endpoints.length+" MacroChipz endpoints, captured "+
+    D._captured_at.slice(0,10)+". Real values, real observation dates, not live. Nothing here is estimated.";
+  $("heroH").textContent = HERO_H;
+  $("heroSub").textContent = HERO_SUB;
+  $("asOf").textContent = "Both surveys through "+fmtMonth(D.evaluation_period);
+  $("src").textContent = D.series.payems.source+" · "+D.methodology_id+" · "+D.data_basis;
+  $("attrib").textContent = D.series.payems.title+" ("+D.series.payems.series_id+"), "+D.series.payems.units+
+    "; "+D.series.unrate.title+" ("+D.series.unrate.series_id+"), "+D.series.unrate.units+
+    ". Source "+D.series.payems.source+". Methodology "+D.methodology_id+" · "+D.data_basis+".";
+
+  /* ---------- the survey switch ---------- */
+  function renderSwitch(){
+    var host=$("switch"); host.innerHTML="";
+    measures().forEach(function(m){
+      var b=document.createElement("button");
+      b.type="button"; b.setAttribute("aria-pressed", String(m.key===state.key));
+      b.innerHTML='<span class="who">'+m.who+'</span><span class="what">'+m.what+"</span>";
+      b.addEventListener("click", function(){
+        state.key=m.key; renderSwitch(); renderVerdict();
+        var n=host.querySelector('[aria-pressed="true"]'); if(n) n.focus();
+      });
+      host.appendChild(b);
+    });
+  }
+
+  /* ================================================================
+     THE THRESHOLD DIAGRAM.
+
+     A horizontal axis centred on NO CHANGE, with the methodology's own
+     deadband drawn as a band around it and the measure's own change
+     plotted as a point. A reader sees the classification rule and the
+     value it was applied to at the same time.
+
+     Every number is the backend's. This maps them onto a line.
+     ================================================================ */
+  function renderVerdict(){
+    var host=$("verdict");
+    if(state.mode==="loading"){
+      host.innerHTML='<div class="skel" style="height:112px"></div>'+
+        '<div class="skel" style="height:18px;width:60%;margin-top:16px"></div>'+
+        '<div class="skel" style="height:14px;width:80%;margin-top:10px"></div>';
+      return;
+    }
+    if(state.mode==="fail"){
+      host.innerHTML='<div class="alert" role="alert">The published observations for this survey could not be loaded, '+
+        'so the change over time is not shown. The classification below still comes from the monitor.'+
+        '<br><button type="button" id="retry">Retry</button></div>';
+      var r=$("retry"); if(r) r.addEventListener("click", function(){ setMode("normal"); });
+      return;
+    }
+
+    var m=active();
+    if(!m.available){
+      host.innerHTML='<p style="color:var(--mc-fg-muted);font-size:14.5px;margin:0">'+
+        m.what+" has not been computed for this period, so no comparison is shown. Nothing is estimated in its place.</p>";
+      return;
+    }
+
+    var span=Math.max(Math.abs(m.delta), m.band)*1.6;
+    var pos=function(v){ return 50 + (v/span)*50; };
+
+    host.innerHTML =
+      '<p style="margin:0;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mc-fg-muted);font-weight:700">'+
+        m.who+" · "+m.series.series_id+"</p>"+
+      '<div class="track" id="track"></div>'+
+      '<p style="margin:2px 0 0;font-size:11.5px;color:var(--mc-fg-muted)">'+
+        'The shaded band is the '+m.bandLabel.toLowerCase()+'. A change inside it is recorded as no meaningful move.</p>'+
+      '<div class="state" id="stateRow"></div>'+
+      '<p class="because" id="because"></p>'+
+      '<div class="spark"><p class="h">'+m.series.observations.length+" published observations · "+m.series.units+
+        '</p><div class="sparkBoard" id="sparkBoard"></div><div class="sparkEnds" id="sparkEnds"></div></div>';
+
+    /* the threshold track */
+    var t=$("track");
+    var svg=el("svg",{viewBox:"0 0 100 100",preserveAspectRatio:"none"},t);
+    el("rect",{x:pos(-m.band),y:38,width:pos(m.band)-pos(-m.band),height:24,
+      fill:"rgba(159,172,241,.13)",stroke:"rgba(159,172,241,.32)","stroke-width":.4,"vector-effect":"non-scaling-stroke"},svg);
+    el("line",{x1:0,x2:100,y1:50,y2:50,stroke:"rgba(255,255,255,.14)","stroke-width":.5,"vector-effect":"non-scaling-stroke"},svg);
+    el("line",{x1:50,x2:50,y1:30,y2:70,stroke:"rgba(255,255,255,.28)","stroke-width":.5,"vector-effect":"non-scaling-stroke"},svg);
+    el("line",{x1:50,x2:pos(m.delta),y1:50,y2:50,stroke:m.colour,"stroke-width":2.4,"stroke-linecap":"round","vector-effect":"non-scaling-stroke"},svg);
+
+    var dot=document.createElement("span");
+    dot.className="tdot"; dot.style.background=m.colour;
+    dot.style.left=pos(m.delta)+"%"; dot.style.top="50%";
+    t.appendChild(dot);
+    var val=document.createElement("span");
+    val.className="tval"; val.style.left=pos(m.delta)+"%"; val.style.top="22%";
+    val.textContent=(m.key==="employment"? (m.delta>0?"+":"−")+num(Math.abs(m.delta))+" jobs a month" : pp(m.delta));
+    t.appendChild(val);
+    /*
+     * "no change" is anchored to the axis because it marks a point.
+     * The DEADBAND label is a caption under the track, not a label at
+     * the band's edge: positioned at `pos(band)%` it ran off the right
+     * edge at 390 and 440, and a legend that escapes its own card is
+     * worse than one that sits plainly beneath it.
+     */
+    var zero=document.createElement("span");
+    zero.className="tlab"; zero.textContent="no change";
+    zero.style.left="50%"; zero.style.top="86%"; zero.style.transform="translateX(-50%)";
+    t.appendChild(zero);
+
+    /* the state, and why */
+    var chips=[['<span class="chip">'+title(m.state)+"</span>"]];
+    m.extra.forEach(function(x){ chips.push(['<span class="chip" style="font-weight:600">'+x[0]+": "+title(x[1])+"</span>"]); });
+    $("stateRow").innerHTML=chips.map(function(c){return c[0];}).join("");
+
+    var inside = Math.abs(m.delta) <= m.band;
+    $("because").innerHTML =
+      m.currentLabel+" averaged <b>"+m.fmt(m.current)+"</b>"+(m.unit?" "+m.unit:"")+
+      ". "+m.priorLabel+" averaged <b>"+m.fmt(m.prior)+"</b>"+(m.unit?" "+m.unit:"")+
+      ". The difference of <b>"+(m.key==="employment"?(m.delta>0?"+":"−")+num(Math.abs(m.delta)):pp(m.delta))+
+      "</b> falls "+(inside?"inside":"outside")+" the "+m.bandLabel.toLowerCase()+
+      ", which is why "+D.methodology_id+" records <b>"+title(m.state)+"</b>.";
+
+    /*
+     * The sourced series, as context rather than as the hero.
+     *
+     * A NULL OBSERVATION IS A GAP, NOT A ZERO. UNRATE carries one
+     * (2025-10-01) and the first version of this plot fed it straight
+     * into `Math.min`, where `null` coerces to 0 — which both wrecked
+     * the y-scale and drew a value the provider never published. The
+     * line is now broken at every gap, which is the convention
+     * `YieldCurveChart` already holds: a gap in the data stays a
+     * visible gap rather than being interpolated across.
+     */
+    var obs=m.series.observations;
+    var real=obs.filter(function(o){return o.value!==null;});
+    var vals=real.map(function(o){return o.value;});
+    var lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals), padv=(hi-lo)*.14;
+    var mn=lo-padv, mx=hi+padv;
+    var sb=$("sparkBoard");
+    var ssvg=el("svg",{viewBox:"0 0 100 100",preserveAspectRatio:"none"},sb);
+    var segments=[], run=[];
+    obs.forEach(function(o,i){
+      if(o.value===null){ if(run.length) segments.push(run); run=[]; return; }
+      run.push({x:2+(i/(obs.length-1))*96, y:8+84*(1-(o.value-mn)/(mx-mn))});
+    });
+    if(run.length) segments.push(run);
+    segments.forEach(function(seg){
+      el("path",{d:seg.map(function(p,i){return (i?"L":"M")+" "+p.x+" "+p.y;}).join(" "),
+        fill:"none",stroke:m.colour,"stroke-width":1.6,"stroke-linejoin":"round","vector-effect":"non-scaling-stroke"},ssvg);
+    });
+    var gaps=obs.length-real.length;
+    $("sparkEnds").innerHTML="<span>"+fmtMonth(real[0].date)+" \u00b7 "+real[0].value.toLocaleString("en-US")+"</span>"+
+      (gaps? '<span>'+gaps+" month"+(gaps>1?"s":"")+" not published</span>" : "")+
+      "<span>"+fmtMonth(real[real.length-1].date)+" \u00b7 "+real[real.length-1].value.toLocaleString("en-US")+"</span>";
+
+    svg.setAttribute("role","img");
+    svg.setAttribute("aria-label", m.what+": the change of "+
+      (m.key==="employment"?num(m.delta)+" jobs a month":pp(m.delta))+" against a deadband of "+
+      (m.key==="employment"?num(m.band)+" jobs":m.band+" pp")+", which falls "+(inside?"inside":"outside")+
+      " the band. Recorded state "+title(m.state)+".");
+    ssvg.setAttribute("role","img");
+    ssvg.setAttribute("aria-label", m.series.title+", "+m.series.units+", "+obs.length+
+      " monthly observations from "+fmtMonth(obs[0].date)+" to "+fmtMonth(obs[obs.length-1].date)+
+      (gaps? ". "+gaps+" month"+(gaps>1?"s":"")+" in that range has no published value and is left as a gap." : "."));
+  }
+
+  /* ---------- the overall conclusion ---------- */
+  function renderOverall(){
+    $("overall").innerHTML =
+      '<span class="chip" style="font-size:15px">'+title(D.state)+"</span>"+
+      '<p style="margin-top:12px">MacroChipz records <b style="color:#eef0ff">'+title(D.state)+
+        "</b> for Jobs in "+fmtMonth(D.evaluation_period)+", because the two surveys do not agree: payroll employment is "+
+        title(E.state)+" and the unemployment trend is "+title(U.state)+
+        ". Neither is overridden and no average is taken between them.</p>";
+  }
+
+  /* ---------- lessons, limits, history, methodology ---------- */
+  $("q1").textContent=L1.q; $("a1").textContent=L1.a; $("b1").textContent=L1.b; $("c1").textContent=L1.c;
+  $("q2").textContent=L2.q; $("a2").textContent=L2.a; $("b2").textContent=L2.b; $("c2").textContent=L2.c;
+
+  [ "No measure of how hard it is to find a job. Participation, the U-6 underemployment rate, job openings and new claims for unemployment insurance all return 404 from this API today — so this page does not discuss them, and does not estimate them.",
+    "No industry, state or demographic breakdown. Both series are published here as one national number each.",
+    "No wages. Pay is not in either survey as MacroChipz ingests them.",
+    "The two surveys count different populations, so a month where they disagree is a real feature of the data rather than an error in it.",
+    "Values are the latest revised data ("+D.data_basis+"), so a figure can change after it is first published."
+  ].forEach(function(t){ var li=document.createElement("li"); li.textContent=t; $("limits").appendChild(li); });
+
+  (function history(){
+    var TONE={ STRENGTHENING:"rgba(140,190,160,.38)", COOLING:"rgba(124,160,240,.42)",
+      STABLE:"rgba(159,172,241,.24)", MIXED:"rgba(201,149,74,.38)", INSUFFICIENT_DATA:"rgba(255,255,255,.08)" };
+    var entries=D.state_history.slice().reverse();
+    if(entries.length===0){ $("histNote").textContent="No recorded conclusions are stored for this monitor yet."; return; }
+    entries.forEach(function(e){
+      var d=document.createElement("div");
+      d.innerHTML='<div class="b" style="background:'+(TONE[e.state]||TONE.MIXED)+'"></div>'+
+        '<div class="l">'+MONTHS[Number(e.evaluation_period.split("-")[1])-1]+"</div>";
+      d.title=fmtMonth(e.evaluation_period)+": "+e.state;
+      $("strip").appendChild(d);
+    });
+    $("histNote").textContent="Twelve recorded classifications, "+fmtMonth(entries[0].evaluation_period)+
+      " to "+fmtMonth(entries[entries.length-1].evaluation_period)+
+      ". These are states MacroChipz recorded at the time, not a rewritten history.";
+  })();
+
+  [ ["Methodology",D.methodology_id],["Data basis",D.data_basis],["Evaluation period",D.evaluation_period],
+    ["Employer survey",D.series.payems.series_id+" — "+D.series.payems.title+" ("+D.series.payems.units+")"],
+    ["Household survey",D.series.unrate.series_id+" — "+D.series.unrate.title+" ("+D.series.unrate.units+")"],
+    ["Source",D.series.payems.source],
+    ["Employment rule","Condition compares the last three months' average monthly change against ±"+num(E.condition_deadband_jobs)+
+      " jobs; momentum compares it against the three months before, within ±"+num(E.momentum_deadband_jobs)+" jobs."],
+    ["Unemployment rule","The last three months' average rate against the same three months a year earlier, within ±"+
+      U.unemployment_deadband_pp+" pp."],
+    ["Combination","The two components are reported separately. Where they disagree the overall state is MIXED; they are never averaged."],
+    ["Endpoints captured",D._endpoints.join("  ·  ")]
+  ].forEach(function(r){ var dt=document.createElement("dt"),dd=document.createElement("dd");
+    dt.textContent=r[0]; dd.textContent=r[1]; $("meth").appendChild(dt); $("meth").appendChild(dd); });
+
+  UNDERSTAND.forEach(function(q){ var li=document.createElement("li");
+    li.innerHTML='<a href="#">'+q+" →</a>"; $("understand").appendChild(li); });
+
+  function setMode(mode){
+    state.mode=mode;
+    if(mode==="missing" && state.key==="employment") state.key="unemployment";
+    [["dNormal","normal"],["dLoading","loading"],["dFail","fail"],["dMissing","missing"]].forEach(function(p){
+      $(p[0]).setAttribute("aria-pressed", String(mode===p[1]));
+    });
+    $("dNote").textContent = mode==="normal" ? "Showing every measure as published."
+      : mode==="loading" ? "Showing the loading state."
+      : mode==="fail" ? "Showing a failed observations request. The monitor's classification still renders."
+      : "Showing payroll employment as not computed. No figure is invented for it.";
+    renderSwitch(); renderVerdict();
+  }
+  ["dNormal","dLoading","dFail","dMissing"].forEach(function(id,i){
+    $(id).addEventListener("click", function(){ setMode(["normal","loading","fail","missing"][i]); });
+  });
+
+  renderSwitch(); renderVerdict(); renderOverall();
+  window.addEventListener("resize", renderVerdict);
+})();
+</script>
+</body>
+</html>

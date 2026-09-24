@@ -30,6 +30,8 @@ const SURFACE_BY_PATH: Readonly<Record<string, PageSurface>> = {
   "/rates": "cinematic",
   /** The Inflation world (#50B). */
   "/inflation": "cinematic",
+  /** The Jobs world (#51B). */
+  "/jobs": "cinematic",
 };
 
 export function surfaceForPath(pathname: string): PageSurface | undefined {

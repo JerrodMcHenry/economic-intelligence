@@ -14920,3 +14920,132 @@ state nothing had exercised.
 The check that would have caught it immediately is cheap and I did not run it:
 for each independently-loaded resource, fail exactly that one and look at the
 page. Five resources, five looks.
+
+---
+
+## #51A — a null that drew itself as a number
+
+**2026-09-24.** Audit and prototype for the Jobs world. **No production
+frontend or backend file was modified.**
+
+### The visual came from a 404 sweep, not a sketch
+
+Before designing anything I asked the API what Jobs actually has. Two series
+answer: `PAYEMS` and `UNRATE`, 60 monthly observations each. Five do not:
+participation, the employment ratio, U-6, job openings and initial claims all
+**404**.
+
+That sweep decided the design. Everything that would describe *how hard it is to
+find a job* is absent, so the page cannot be about that, and pretending
+otherwise would have been the easy and dishonest route. What Jobs does have that
+no other world has is an **explicit numeric deadband** on every classification.
+
+So the hero is that deadband, drawn: an axis centred on no change, the band
+shaded, the measure's own change plotted as a point. Payroll employment sits
+well outside its ±50,000 band — hiring pace roughly halved, 141,667 to 71,333 a
+month. Unemployment sits inside its ±0.2pp band, having moved 0.10pp. **Same
+diagram, two verdicts, one labour market**, which is exactly what `MIXED` means
+and what the page never explained.
+
+### The defect: `Math.min` over a null
+
+`UNRATE` carries one null observation, October 2025. I fed the raw values into
+`Math.min`, where **`null` coerces to `0`**.
+
+Two things happened at once. The axis floor became 0 instead of 3.4, flattening
+five years of real variation into the top sliver of the chart. And the line
+dived to the bottom of the plot at that month — **drawing a value the provider
+never published**, in a product whose first rule is that it does not do that.
+
+I did not catch it by reading the code. I caught it because the sparkline had a
+spike in it that did not look like unemployment, went to check whether the spike
+was real, and found `min()` throwing a TypeError on a Python `None` — the same
+null, refusing to be silent in a language that does not coerce it.
+
+**JavaScript's willingness to turn `null` into `0` is a data-integrity hazard in
+a product like this, not a convenience.** The line now breaks at the gap, the
+axis uses only real values, and both the caption and the accessible label say
+"1 month not published".
+
+### What the audit found about the page itself
+
+`/jobs` starts from a better place than Inflation did — one undersized target
+instead of eleven, zero overflow — because the shared fixes from #49B and #50B
+propagated. It still has **zero charts** and **1,413px of Intelligence history
+on a phone, 31% of the page**.
+
+And the most interesting fact in the response — the hiring pace halving — is
+rendered as two grey stat cards, with the deadband that makes it meaningful
+never shown at all.
+
+### Lesson
+
+**Ask the API what it has before deciding what the page is about.** The 404
+sweep took two minutes and eliminated an entire category of design I might
+otherwise have prototyped and then had to withdraw — and it turned "what should
+this page look like" into "what is the one thing this world has that the others
+do not".
+
+The corollary, learned the hard way three increments running: **every
+measurement I take of my own work has a blind spot, and the cheap way to find it
+is to look at the picture and ask whether it could possibly be true.** The spike
+was not plausible unemployment. That is what found the bug.
+
+---
+
+## #51B — showing the rule, not just the verdict
+
+**2026-09-24.** The Jobs world rebuilt around the deadband. 1,997 tests,
+typecheck, lint and build pass. `labor_v1.0` untouched; nothing recalculated in
+the frontend.
+
+### The page now shows why, not only what
+
+`/jobs` has always said `Cooling` and `Stable` and `Mixed`. It has never said
+why one number counted as a move and the other did not — even though
+`momentum_deadband_jobs` and `unemployment_deadband_pp` were both in the
+response and neither was ever rendered.
+
+Now the threshold is the hero: an axis centred on no change, the band shaded,
+the measure's own change plotted against it. Payroll employment lands well
+outside its ±50,000 band at −70,333 jobs a month. Unemployment lands inside its
+±0.2pp band at −0.10. **Same picture, opposite verdicts** — which is exactly
+what the formal `Mixed` classification means and what four state words on the
+old first screen never conveyed.
+
+Mobile height fell 20%, from 4,632 to 3,725, while gaining two charts where
+there had been none.
+
+### The fixture that could not test the thing
+
+My first pass at the component test asserted "falls outside that band" and
+failed. The shared `buildLaborMonitor` fixture has a momentum delta of +30,000
+against a ±50,000 band — **inside** it. Every existing test using that fixture
+was correct; none of them could exercise the contrast this component exists to
+show, because the fixture only ever produces one side of it.
+
+So the test file builds its own monitor with a delta outside the band, and says
+why in a comment. **A fixture tuned for the tests that already existed is not
+automatically adequate for a component that asks a new question of the same
+data.**
+
+### Two measurement notes, both already in the catalogue
+
+The band label matched in the browser check as an empty string, and for a
+moment that looked like a rendering bug. My regex was `/within [^.]+counts/` and
+the label contains "0.2" — the decimal point ended the match. The label was
+perfect; the assertion was wrong.
+
+And the page height went *up* on the first measurement, because I had collapsed
+the two survey sections but left Intelligence History open at 1,413px. Collapsing
+it too took 5,009 down to 3,725.
+
+### Lesson
+
+**The most valuable thing in the response was a parameter, not a number.**
+Deadbands are configuration — the sort of field that reads as plumbing and gets
+left in the methodology disclosure if it is shown at all. Rendering it turned an
+unexplained verdict into an auditable one, and cost nothing but a rectangle.
+
+Worth asking of every monitor: which field decides the answer, and can the
+reader see it?

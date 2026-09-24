@@ -145,3 +145,55 @@ export function buildLaborWhatChanged(overrides: Partial<LaborWhatChangedResult>
     ...overrides,
   };
 }
+
+/**
+ * Published observations for the two Jobs surveys (#51B).
+ *
+ * `UNRATE` deliberately carries a NULL in the middle, because the live
+ * series does (2025-10-01) and because a null coerced to zero is the
+ * defect this fixture exists to keep out: it destroys the axis floor
+ * AND draws a value the provider never published.
+ */
+export function buildPayrollObservations(
+  overrides: Partial<import("../../api/series.types").SeriesObservationsResponse> = {},
+): import("../../api/series.types").SeriesObservationsResponse {
+  const observations = [
+    { date: "2026-03-01", value: 158600 },
+    { date: "2026-04-01", value: 158750 },
+    { date: "2026-05-01", value: 158880 },
+    { date: "2026-06-01", value: 158960 },
+    { date: "2026-07-01", value: 159020 },
+    { date: "2026-08-01", value: 159075 },
+  ];
+  return {
+    series_id: "PAYEMS",
+    title: "All Employees, Total Nonfarm",
+    units: "Thousands of Persons",
+    source: "FRED",
+    observations,
+    pagination: { limit: 200, offset: 0, returned: observations.length, total: observations.length },
+    ...overrides,
+  };
+}
+
+export function buildUnemploymentObservations(
+  overrides: Partial<import("../../api/series.types").SeriesObservationsResponse> = {},
+): import("../../api/series.types").SeriesObservationsResponse {
+  const observations = [
+    { date: "2026-03-01", value: 4.3 },
+    { date: "2026-04-01", value: 4.2 },
+    { date: "2026-05-01", value: null },
+    { date: "2026-06-01", value: 4.2 },
+    { date: "2026-07-01", value: 4.1 },
+    { date: "2026-08-01", value: 4.1 },
+  ] as Array<{ date: string; value: number | null }>;
+  return {
+    series_id: "UNRATE",
+    title: "Unemployment Rate",
+    units: "Percent",
+    source: "FRED",
+    observations: observations as Array<{ date: string; value: number }>,
+    pagination: { limit: 200, offset: 0, returned: observations.length, total: observations.length },
+    ...overrides,
+  };
+}
