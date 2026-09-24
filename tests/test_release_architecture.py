@@ -307,3 +307,71 @@ class TestCIGuards:
         job_names = set(workflow.get("jobs", {}).keys())
         for name in job_names:
             assert "deploy" not in name.lower(), f"a deploy-shaped CI job exists: {name!r}"
+
+
+class TestDockerfileWebCommandExecutes:
+    """#54A: the image's default CMD, EXECUTED by `sh`, hands uvicorn
+    exactly the arguments intended -- whatever files sit in the working
+    directory.
+
+    Found by the first real run of the CMD: an unquoted
+    `${FORWARDED_ALLOW_IPS:-*}` was glob-expanded into the filenames in
+    /app, and uvicorn refused to start. A text match on the Dockerfile
+    could not have caught that, so this test runs the real CMD string
+    through the real shell, with a stub `uvicorn` on PATH that prints
+    its own argv instead of serving."""
+
+    #: What the image's own working directory holds after `pip install .`
+    #: -- the files a stray `*` would expand into.
+    _IMAGE_WORKDIR_ENTRIES = ("alembic", "alembic.ini", "app", "build", "pyproject.toml")
+
+    def _cmd_script(self) -> str:
+        import json
+
+        cmd_lines = [line for line in _code_only(_DOCKERFILE).splitlines() if line.strip().startswith("CMD")]
+        assert len(cmd_lines) == 1, f"expected exactly one CMD instruction: {cmd_lines}"
+        argv = json.loads(cmd_lines[0].strip()[len("CMD") :])
+        assert argv[:2] == ["sh", "-c"], f"CMD is no longer `sh -c <script>`: {argv}"
+        return argv[2]
+
+    def _run(self, tmp_path: Path, extra_env: dict[str, str]) -> list[str]:
+        import subprocess
+
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        stub = bin_dir / "uvicorn"
+        stub.write_text('#!/bin/sh\nfor arg in "$@"; do printf "%s\\n" "$arg"; done\n')
+        stub.chmod(0o755)
+
+        workdir = tmp_path / "workdir"
+        workdir.mkdir()
+        for name in self._IMAGE_WORKDIR_ENTRIES:
+            (workdir / name).touch()
+
+        result = subprocess.run(
+            ["sh", "-c", self._cmd_script()],
+            cwd=workdir,
+            env={"PATH": f"{bin_dir}:/usr/bin:/bin", **extra_env},
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.splitlines()
+
+    def test_defaults_bind_port_8000_and_trust_the_platform_proxy(self, tmp_path):
+        assert self._run(tmp_path, {}) == [
+            "app.main:app",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8000",
+            "--proxy-headers",
+            "--forwarded-allow-ips",
+            "*",
+        ]
+
+    def test_platform_port_and_explicit_proxy_list_pass_through_unsplit(self, tmp_path):
+        argv = self._run(tmp_path, {"PORT": "10000", "FORWARDED_ALLOW_IPS": "10.0.0.1,10.0.0.2"})
+        assert argv[argv.index("--port") + 1] == "10000"
+        assert argv[argv.index("--forwarded-allow-ips") + 1] == "10.0.0.1,10.0.0.2"
+        assert len(argv) == 8, f"unexpected extra arguments reached uvicorn: {argv}"

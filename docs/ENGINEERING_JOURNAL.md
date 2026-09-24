@@ -15456,3 +15456,143 @@ front-end-shaped. The fix took an hour. Noticing took an audit.
 And the smaller one, which cost me a false statement in a report: a
 background write does not stop when the client does. "I checked and
 nothing happened" needs to name *when* it checked.
+
+## #54A — the Dockerfile that had never been run
+
+#54A was preparation for the first production deployment: Rates and
+Housing only, Inflation and Jobs held back until the FRED question is
+settled, nothing deployed. The checklist it produced is
+`docs/operations/first-deployment-checklist-v54.md`.
+
+The baseline was good. `bd49a45` (#53B) is green in CI: both jobs of run
+36043618403 passed, read from the public Actions API rather than taken
+on trust.
+
+### No Docker, so run what the image runs
+
+There is still no container runtime on this machine, and the image is
+still unverified. I did not want to write "written carefully, not
+build-verified" for the fourth time since #26D, so I got as close to the
+image as the machine allows:
+
+- `git archive` of exactly the Dockerfile's `COPY` set;
+- a fresh Python 3.12 venv with `pip install .` and no `dev` extra;
+- `env -i`, so no shell variable and no `.env` leaks in (`config.py`
+  calls `load_dotenv()`, so running from the repo root would have
+  silently loaded the developer's real keys);
+- the Dockerfile's **own** `CMD` string, parsed out of the file and
+  handed to `sh`.
+
+That last step failed on its first run.
+
+```
+Error: Got unexpected extra arguments (alembic.ini app build economic_intelligence.egg-info pyproject.toml)
+```
+
+`--forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-*}` sits unquoted inside
+`sh -c`. With the variable unset, which is the documented default, the
+shell expands `*` into the working directory's filenames. In the image
+that directory is `/app`, holding `app`, `alembic`, `alembic.ini`,
+`pyproject.toml` and pip's `build/`, so it would have failed the same way.
+
+That line was written in #34 to satisfy a frozen contract, reviewed, and
+described in three documents. The first Render deploy would have failed
+its health check. Quoting both expansions fixed it. The regression test
+runs the real `CMD` string through `sh`, with a stub `uvicorn` on
+`PATH` that prints its argv. Against the old `CMD` it fails; against the
+new one it passes. A text match on the Dockerfile would have approved
+the broken line: it contained every token it was supposed to.
+
+### The URL the platform will actually hand us
+
+The second defect came from asking what `DATABASE_URL` will really look
+like on Render. #26F §13 freezes the answer as `fromDatabase:
+connectionString`, which is a plain `postgresql://` URL. Every local
+`.env` and test URL in this repository says `postgresql+psycopg://`, so
+nothing had ever tried the plain form.
+
+SQLAlchemy maps `postgresql://` to psycopg2, and the image ships
+psycopg 3:
+
+- `release migrate` crashed with a traceback.
+- `/readiness`, the route whose job is to explain what is wrong,
+  returned a bare 500.
+- `postgres://` failed differently, as `DATABASE_UNAVAILABLE`: a
+  confident and wrong diagnosis.
+
+#26F forbids the obvious workaround of hand-pasting an edited
+credential, so `Settings.database_url` now rewrites a driverless Postgres
+scheme to the installed driver and leaves everything else alone. The
+tests resolve the dialect exactly as `create_engine` does. One test
+asserts that the unrewritten URL still resolves to psycopg2, so the day
+SQLAlchemy changes its default, the rewrite announces that it is no
+longer needed.
+
+### Interrupting an ingestion on purpose
+
+#53B recorded that I once reported "the interrupted run wrote nothing"
+without having established it. This time I established it.
+
+On a throwaway database, a production-mode server ran an authorised
+Rates sync to completion in **449.8 seconds**: six series, 245
+observations each, and no FRED key anywhere. Then I started a second
+sync and, at 290 seconds, SIGKILLed the server the way a platform does
+at the end of a shutdown grace period. Just before the kill,
+`pg_stat_activity` showed the transaction `idle in transaction` for 69
+seconds, held open across Treasury fetches. After the kill:
+
+- zero lingering backends;
+- zero new run rows;
+- every row count unchanged.
+
+So an interrupted sync is harmless, and it is also **invisible**. The
+audit row commits with the data, so an interruption is detected only by
+the absence of a row. Render's documented deploy behaviour kills the old
+instance at most about 360 seconds after cutover, which is less than one
+Rates sync. The operational rule "never deploy during a sync" is now
+written down. The real fix, a CLI entry point so ingestion runs as a job
+rather than an HTTP request, is recorded as a follow-up.
+
+### What the build said about scope
+
+Built the way it will be deployed (API first, `VITE_API_BASE_URL`
+pointing at the production-mode API), the frontend prerendered six
+permanent Rates pages and passed its own verifier. Its sitemap then
+listed `/inflation`, `/jobs`, `/calendar` and five Inflation/Jobs
+explainers for indexing.
+
+Not ingesting FRED data makes those pages *empty*. It does not make them
+*inaccessible*. A mapping pass found no gate of any kind:
+
+- about fifteen backend routes serve or proxy FRED-derived data;
+- the frontend reaches Inflation and Jobs from the world registry, the
+  homepage, explainers, the calendar, hard links and the footer.
+
+That is a scoping increment in its own right, and it is recorded as the
+first production blocker rather than squeezed into a preparation pass.
+
+### Also recorded, not fixed
+
+- The relative `Sitemap:` line #46B found is still there.
+- Public reads have no rate limit. This is cheap while the intelligence
+  set is six objects instead of 1,899.
+- uvicorn's plain-text access log duplicates the JSON line and records
+  raw paths.
+- A `%` in a database password would break Alembic's `configparser`.
+- Verification ran on PostgreSQL 14; Render defaults to 18.
+
+A backup-and-restore rehearsal passed locally: `pg_dump` → `pg_restore`
+into a new database gave identical fingerprints across eleven tables,
+and `preflight` reported `COMPATIBLE` on the copy. The same fingerprint
+query is now the #54B acceptance check against a real PITR restore.
+
+### Lesson
+
+**A command nobody has executed is a hypothesis.**
+
+The `CMD` line and the `DATABASE_URL` path were both reviewed, both
+documented and both wrong, and both failed within seconds of first
+contact. Nothing about either needed Docker or Render to find. They
+needed someone to run the exact string, with the exact input the
+platform will supply, instead of the input the developer always
+happens to have.

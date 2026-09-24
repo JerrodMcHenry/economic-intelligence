@@ -39,6 +39,32 @@ def _split_csv(raw: str | None) -> list[str]:
     return [item.strip() for item in (raw or "").split(",") if item.strip()]
 
 
+#: The driver this application installs (`psycopg[binary]`, i.e.
+#: psycopg 3). See `_normalise_database_url`.
+_DATABASE_DRIVER_SCHEME = "postgresql+psycopg://"
+
+
+def _normalise_database_url(raw: str | None) -> str | None:
+    """Point a driverless Postgres URL at the driver actually installed.
+
+    Increment #54A. Managed Postgres providers (Render's
+    `connectionString` included) hand out `postgresql://` or the older
+    `postgres://`. SQLAlchemy maps the first to psycopg2, which this
+    image does not install, and does not recognise the second at all --
+    so a platform-issued URL made every database route return 500 and
+    the pre-deploy migration fail. Rewriting only the scheme keeps the
+    platform's value authoritative rather than asking an operator to
+    hand-edit a credential. A URL that already names a driver is
+    returned unchanged.
+    """
+    if not raw:
+        return raw
+    for scheme in ("postgresql://", "postgres://"):
+        if raw.startswith(scheme):
+            return _DATABASE_DRIVER_SCHEME + raw[len(scheme) :]
+    return raw
+
+
 class Settings:
     """Minimal settings container backed by environment variables."""
 
@@ -99,7 +125,7 @@ class Settings:
         """
         return bool(self.census_api_key)
 
-    database_url: str | None = os.environ.get("DATABASE_URL")
+    database_url: str | None = _normalise_database_url(os.environ.get("DATABASE_URL"))
 
     # No hardcoded default: the model is not baked into architecture, so an
     # unset OPENAI_MODEL means AI features are simply not configured, the

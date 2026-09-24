@@ -128,7 +128,7 @@ summary:
 | Variable | Class | Notes |
 |---|---|---|
 | `ENVIRONMENT` | Required (prod) | `production` enables closed defaults |
-| `DATABASE_URL` | Required | |
+| `DATABASE_URL` | Required | A driverless `postgresql://` / `postgres://` URL (as platforms issue it) is rewritten to the installed psycopg 3 driver (#54A) |
 | `FRED_API_KEY` | Required | |
 | `CORS_ALLOWED_ORIGINS` | Required (prod) | exact origins; never `*` |
 | `OPERATOR_TOKEN` | Required (prod) | else sync endpoints close |
@@ -390,7 +390,10 @@ decision — never automatic.
 ## §16. Reverse-proxy assumptions
 
 The container binds `0.0.0.0:$PORT` and runs uvicorn with
-`--proxy-headers --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-*}`.
+`--proxy-headers --forwarded-allow-ips "${FORWARDED_ALLOW_IPS:-*}"`.
+The quotes are load-bearing (#54A): unquoted, `sh` expanded the `*`
+default into the working directory's filenames and uvicorn refused to
+start.
 
 `*` is correct **only because the platform is the sole ingress** — the
 container is never exposed directly, so the only source of forwarded

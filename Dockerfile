@@ -105,5 +105,12 @@ USER macrochipz
 #   set is configurable and defaults to `*`, which is correct ONLY
 #   because this container is never exposed directly -- the platform is
 #   always the sole ingress. Documented in the deployment guide.
+#
+# Increment #54A: both expansions are double-quoted. Unquoted, the
+# `*` default is subject to pathname expansion by `sh`, so with
+# FORWARDED_ALLOW_IPS unset it became the filenames in /app (`alembic
+# alembic.ini app build pyproject.toml`) and uvicorn refused to start:
+# "Got unexpected extra arguments". Found by the first real run of this
+# CMD; pinned by tests/test_release_architecture.py, which executes it.
 EXPOSE 8000
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-*}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8000}\" --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-*}\""]
