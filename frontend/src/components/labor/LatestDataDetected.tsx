@@ -14,8 +14,9 @@ const MAX_CHANGES = 5;
  * `fetchReleaseProcessingStatus(releaseId)`, docs/architecture/labor-ui-v1.md
  * §5/§23), never the generic cross-release list Overview shows.
  * Because every item this component receives is already scoped to one
- * release, `items[0]` IS the most recent Employment Situation
- * occurrence (the backend orders `scheduled_date DESC, id ASC` --
+ * release, the first item scheduled on or before today is the most
+ * recent Employment Situation occurrence to have arrived (the backend
+ * orders `scheduled_date DESC, id ASC`, future occurrences included --
  * verified in app/repositories/release_processing_read_repository.py)
  * -- `lib/selectLatestDataDetected.ts`'s own "pick one interesting item
  * from a MIXED list" logic does not apply here and is deliberately not
@@ -26,8 +27,20 @@ const MAX_CHANGES = 5;
  * discipline, which this component otherwise mirrors exactly (same
  * row components, reused unchanged; see docs/architecture/labor-ui-v1.md §22).
  */
-export function LatestDataDetected({ items }: { items: readonly ReleaseProcessingStatusItem[] }) {
-  const item = items[0] ?? null;
+export function LatestDataDetected({
+  items,
+  today = localIsoDate(new Date()),
+}: {
+  items: readonly ReleaseProcessingStatusItem[];
+  /** `YYYY-MM-DD`; injectable for tests. */
+  today?: string;
+}) {
+  // #56C: the most recent occurrence that has actually ARRIVED. The
+  // backend lists every mapped occurrence newest-first, and a release
+  // schedule contains future dates -- so `items[0]` was the LAST
+  // scheduled release of the year, shown as "Latest data detected" ten
+  // weeks before it happens. ISO dates compare correctly as strings.
+  const item = items.find((candidate) => candidate.scheduled_date <= today) ?? null;
 
   return (
     <section aria-labelledby="labor-latest-data-detected-heading">
@@ -110,4 +123,10 @@ function SelectedOccurrence({ item }: { item: ReleaseProcessingStatusItem }) {
       )}
     </div>
   );
+}
+
+function localIsoDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
 }

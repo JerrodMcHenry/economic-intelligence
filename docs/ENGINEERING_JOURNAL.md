@@ -15960,3 +15960,74 @@ The storage id defaulted to being the provider id; the result models
 defaulted to a storage constant; the test fixture defaulted to FRED's
 catalog. Every one of them was right when written, and every one was
 invisible until the value it assumed changed underneath it.
+
+## #56C — acceptance, and the release that had not happened yet
+
+#56C added no feature. It asked whether the four worlds work, end to end,
+on a database that has never seen FRED.
+
+It started from `0daf7dc` with a clean tree. Both CI and the Container
+workflow were green: the real image, built from `requirements.lock`,
+migrated, gated and failed closed on GitHub's runner. That was the first
+time the locked image had been exercised anywhere.
+
+### Four worlds, fresh database, first-party only
+
+The environment was built from `git archive HEAD` with
+`requirements.lock`, with no FRED or BLS key. Where I could, I checked
+figures against what the agencies themselves published, not against the
+code's own output:
+
+- **Inflation:** headline PCE year-over-year 3.70% and core 3.34%. BEA's
+  July release says 3.7% and 3.3%.
+- **Jobs:** payroll three-month average 71,333, which I computed by hand
+  from the BLS values; unemployment 4.133, the mean of 4.2, 4.1 and 4.1.
+- **Rates:** the first Treasury run came back PARTIAL_FAILURE, a
+  `TreasuryTimeoutError` on the nominal curve while the real curve
+  committed. The retry succeeded and inserted no duplicate real-curve
+  rows. This is the failure isolation and retry #54A documented, now
+  observed for real.
+- **Housing:** August permits read 1,403,000. Census's own August
+  release says 1,394,000, and the development database, captured three
+  days ago, says 1,394,000 too. It would have been easy to call that a
+  bug. It isn't one: the Building Permits Survey published a new release
+  on 2026-09-24, between the two retrievals, and the application shows
+  Census's current value. Against the development database, the next
+  sync would record it as a genuine REVISED version -- which is the
+  point of the versioning.
+
+**Idempotency:** a second import, two passes of release processing over
+all three releases, and a second Housing sync together inserted and
+revised nothing. The database holds only baseline versions and zero
+revisions. A dump and restore of it fingerprinted identically.
+
+### What the browser caught
+
+Every world rendered, with live data, correct attribution and no FRED.
+The Jobs evidence finally reads "Value (Jobs) 159,075,000" beside
+`CES0000000001`, and a forced API failure is contained with a Retry.
+
+Then the Jobs page said: **"Latest data detected: December 4, 2026 --
+Not yet checked."** In September. The component took the first item
+from a list the backend orders newest-first, and a release schedule --
+FRED's before #56B, the agencies' now -- is full of dates that have not
+happened yet. The Overview's version of the same idea already preferred
+checked occurrences; this one never had to, until a real schedule sat
+behind it on a fresh database. It now takes the latest occurrence that
+has arrived. The test pins that, and fails on the old line.
+
+### What I could not verify
+
+Mobile. Resizing the window left the page reporting a 1651-pixel
+viewport, exactly as #46B diagnosed. An iframe is refused, correctly, by
+the app's own `frame-ancestors 'none'`. The checklist now carries a
+four-step manual check. Mobile acceptance is **not** claimed.
+
+### Lesson
+
+**Test with the real calendar.**
+
+Every fixture this project ever wrote put release dates in the past,
+because that is where the interesting data is. The first real schedule,
+on the first empty database, put the most important release on the page
+in December.

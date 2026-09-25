@@ -99,6 +99,73 @@ dialect the way `create_engine` does.
 
 ---
 
+### §1c. #56C final acceptance (baseline `0daf7dc`)
+
+**CI and Container both green on `0daf7dc`**: the real image built from
+`requirements.lock`, migrated, gated and failed closed in CI.
+
+**All four worlds on a fresh database** (VERIFIED). The environment was
+built from `git archive HEAD` plus `requirements.lock`; no FRED key, no
+BLS key, no FRED seed observations.
+
+| World | Source | Result |
+|---|---|---|
+| Inflation | BEA NIPA flat file + BLS v1 | 230 + 464 baseline observations. Headline PCE 12m **3.70%** (BEA release: 3.7%), core **3.34%** (3.3%) |
+| Jobs | BLS v1 | Payroll 3-month average **71,333** = hand calculation from BLS data; unemployment 3-month average 4.133 = mean of 4.2, 4.1, 4.1 |
+| Rates | Treasury XML | First run PARTIAL_FAILURE (`TreasuryTimeoutError`, nominal curve); retry SUCCEEDED -- the documented §8 path |
+| Housing | Census API | 26,773 rows, 0 rejected. August permits 1,403,000: **Census revised** the 1,394,000 advance figure (Building Permits release 2026-09-24); the app shows the current value |
+
+**Idempotency** (VERIFIED):
+- second `import_first_party`: 0 inserted, 0 revised;
+- `process_release` for CPI, Employment Situation and PIO, twice:
+  NO_CHANGE both times;
+- second Housing sync: 0 inserted.
+
+**Resulting database:** 694 first-party and 4,644 Census versions, all
+baseline, and **0 REVISED**. The FRED-sourced series, observations and
+occurrences are all 0.
+
+**Production-mode server** (gated): container checks 40/40, restricted
+smoke 13/13. The log holds no credential, no configuration problem and
+no ERROR line.
+
+**Backup and restore** of that database: `pg_dump -Fc` → `pg_restore`
+gave an identical 15-row fingerprint, and the restored copy reported
+`COMPATIBLE`.
+
+**Browser, desktop** (VERIFIED in Chrome, ungated local instance, same
+build and data):
+- all four worlds plus Home, Calendar, Revisions, an explainer and a
+  share page render with live data;
+- attribution names BLS, BEA, Treasury and Census, with the verbatim BLS
+  disclaimer, and FRED appears nowhere;
+- the Jobs evidence table reads "Value (Jobs)", 159,075,000, with series
+  `CES0000000001`;
+- a forced 503 on the Labor monitor shows "Jobs data could not be
+  loaded." with Retry while the rest of the page renders.
+
+**Defect fixed:** `/jobs` "Latest data detected" showed a FUTURE
+occurrence (December 4, 2026, "Not yet checked"). It now shows the
+latest occurrence that has arrived.
+
+**Browser, mobile: NOT VERIFIED.** Resizing the window left the layout
+viewport at 1651 px (the #46B diagnosis), and an iframe is correctly
+refused by `frame-ancestors 'none'`. Manual check before sharing the URL,
+on a real phone or with Chrome DevTools device mode at 390×844:
+
+1. Confirm `innerWidth === 390` and `matchMedia('(min-width: 640px)').matches === false`.
+2. For each of `/`, `/inflation`, `/jobs`, `/rates`, `/housing`, `/calendar`:
+   - no horizontal page scroll;
+   - the menu opens and closes;
+   - charts are fully visible;
+   - evidence tables scroll inside their container.
+3. `/jobs`: the survey switcher is tappable, and the evidence table
+   shows "Value (Jobs)".
+4. The browser's own sign-in prompt appears, and pages load after
+   signing in -- including the frontend's `/api` calls.
+
+---
+
 ## Part B — #55A restricted deployment
 
 ## §3. Access architecture (ADR-042)
@@ -177,6 +244,22 @@ no prerendered object pages (CI asserts the sitemap's absence).
     serves them, but they sit outside any access boundary.
   - Removing them from the tree is simple. Removing them from history
     rewrites public history — a DECISION, not done here.
+
+**Human decisions before #57 (#56C).** Engineering cannot resolve these:
+- **D1 = R3:** remove the FRED-derived snapshots from the public tree
+  and, if wanted, from history (a force-push rewrite of a public repo).
+- **D2 -- BLS retrieval date.** The BLS API terms say users *should*
+  cite the date data were retrieved. It is recorded per observation
+  (`observation_provenance.retrieved_at`) but not displayed. Accept, or
+  schedule a display change.
+- **D3 -- provider terms read and accepted.** BLS, BEA flat files,
+  Census and Treasury terms are silent on caching and commercial use
+  (#54B L1). Record that a human has read them. The BEA API notice is
+  not required, since the API is not used.
+- **D4 -- mobile acceptance** (§1c checklist), by a person on a device.
+- Informational only: the frozen original migrations still seed six
+  INACTIVE FRED catalog rows (names and FRED release numbers; no data,
+  no dates).
 
 **Not blocking, recorded:**
 - Basic auth has no logout, and all reviewers share one credential.
@@ -399,7 +482,7 @@ python - <<'PY'
 from sqlalchemy import text
 from app.db.session import session_scope
 TABLES = ["economic_series", "economic_observations", "observation_versions", "observation_provenance",
-          "rates_ingestion_runs", "housing_ingestion_runs", "recorded_monitor_results", "economic_releases",
+          "rates_ingestion_runs", "housing_ingestion_runs", "provider_ingestion_runs", "recorded_monitor_results", "economic_releases",
           "release_occurrences", "release_series_mappings", "release_check_runs", "maintenance_sweeps"]
 with session_scope() as s:
     print("alembic_version", s.execute(text("select version_num from alembic_version")).scalar())
