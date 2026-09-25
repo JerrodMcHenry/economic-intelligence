@@ -11,13 +11,13 @@ import { formatRawObservationValue } from "../../lib/laborFormat";
  * omitted). Purely presentational -- nothing here is recalculated or
  * re-derived.
  *
- * `unitLabel` is caller-provided (e.g. "Thousands of persons" for
- * PAYEMS, "Percent" for UNRATE) rather than inferred here -- these raw
- * values are FRED-native, NOT the already-converted actual-jobs unit
- * the summary metrics use (docs/architecture/labor-ui-v1.md §15,
- * load-bearing) -- explicit labeling is what prevents a reader from
- * assuming a raw `130,472` here means the same thing as an
- * already-converted `-331,333` in the summary tier above it.
+ * `unitLabel` is caller-provided ("Jobs" for payroll employment,
+ * "Percent" for the unemployment rate) rather than inferred here.
+ * #56B correction: employment evidence arrives ALREADY in jobs --
+ * `app.domain.labor` applies the x1000 once, before evidence is built
+ * -- so it was never "thousands of persons", whatever this comment and
+ * the label used to say. A real 159,075,000 was being labelled as
+ * thousands.
  */
 export function EvidenceDisclosure({
   label,

@@ -72,11 +72,20 @@ class ProviderBinding:
 
 
 def _fred(concept_obj: EconomicConcept, series_id: str, native_unit: str, factor: float, basis: str) -> ProviderBinding:
+    """A FRED binding -- INACTIVE since #56B.
+
+    Kept, not deleted, for two reasons: the FRED-sourced rows it names
+    still exist wherever FRED data was ever ingested, and their identity
+    must stay resolvable so historical evidence keeps naming FRED
+    (ADR-034, Invariant D); and a rollback is a flag flip, not a
+    reconstruction. No reader resolves it while it is inactive.
+    """
     return ProviderBinding(
         concept_id=concept_obj.concept_id,
         provider="FRED",
         provider_series_id=series_id,
         storage_series_id=series_id,
+        active=False,
         provider_native_unit=native_unit,
         canonical_unit_factor=factor,
         equivalence_basis=basis,
@@ -141,11 +150,12 @@ def _first_party(
     """A BLS or BEA binding for an Inflation or Jobs concept (Increment
     #56A, audited in #54B).
 
-    INACTIVE by construction: the FRED binding for the same concept
-    stays the one every reader resolves until #56B moves release
-    processing and the calendar across and flips the flag. Until then
-    these rows are populated by `app.operations.import_first_party` and
-    read by nothing but parity checks.
+    ACTIVE since #56B, which moved release processing and the release
+    schedule to BLS and BEA and flipped the flag. Every reader now
+    resolves these concept-keyed rows; the FRED binding for the same
+    concept is kept inactive (see `_fred`). The rows are first populated
+    by `app.operations.import_first_party` (a baseline) and then kept
+    current by release processing.
 
     `storage_series_id` is the concept id, as for Census: a provider
     added after #38 has no legacy rows to preserve. FRED's rows keep
@@ -165,12 +175,12 @@ def _first_party(
         provider_native_unit=native_unit,
         canonical_unit_factor=factor,
         equivalence_basis=basis,
-        active=False,
+        active=True,
     )
 
 
-#: Every binding MacroChipz currently has: six FRED, six Treasury and
-#: six Census (all active), and six BLS/BEA (inactive until #56B).
+#: Every binding MacroChipz currently has: six Treasury, six Census and
+#: six BLS/BEA (active), and six FRED (inactive since #56B).
 #:
 #: The BLS and BEA bindings at the end were added by #56A only after
 #: #54B verified each identifier against the agency's own documentation
@@ -321,7 +331,7 @@ BINDINGS: tuple[ProviderBinding, ...] = (
         "ACOMPLETIONS binding, published as the month's actual count. Distinct concept, same reasoning.",
     ),
     # ----------------------------------------------------------------
-    # First-party BLS and BEA (Increment #56A). INACTIVE -- see
+    # First-party BLS and BEA (Increment #56A; ACTIVE since #56B) -- see
     # `_first_party`. Each basis records what #54B verified: the
     # agency's own identifier and definition, and an exact value match
     # against every stored FRED observation (358 of 358, including the

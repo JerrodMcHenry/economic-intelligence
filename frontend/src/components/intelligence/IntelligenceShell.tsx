@@ -108,9 +108,10 @@ export function IntelligenceShell({
                 someone's first and only view of MacroChipz. Kept
                 verbatim and identical to the one in `AppShell`. */}
             <p className="sm:max-w-xl sm:text-right">
-              Source data: U.S. Department of the Treasury; FRED®, Federal Reserve Bank of St. Louis; U.S. Census
-              Bureau and U.S. Department of Housing and Urban Development. This product uses the Census Bureau Data
-              API but is not endorsed or certified by the Census Bureau.
+              Source data: U.S. Bureau of Labor Statistics; U.S. Bureau of Economic Analysis; U.S. Department of the
+              Treasury; U.S. Census Bureau and U.S. Department of Housing and Urban Development. BLS.gov cannot vouch
+              for the data or analyses derived from these data after the data have been retrieved from BLS.gov. This
+              product uses the Census Bureau Data API but is not endorsed or certified by the Census Bureau.
             </p>
           </div>
         </PageContainer>

@@ -15833,3 +15833,130 @@ to break it:
   declared `Content-Length` rather than the streaming path.
 
 Each was found by making the code wrong on purpose and watching.
+
+## #56B — flipping six flags, and everything that was keyed on the old answer
+
+The core of #56B is six booleans in `app/concepts/bindings.py`. Everything
+else is what those booleans had quietly been holding up.
+
+I started by flipping them and running the suite before changing
+anything else. Fifty-three failures, thirty-three of them in release
+processing, which was still asking FRED for FRED's series ids. That
+number turned out to be a floor, not the size of the job.
+
+### What the flip exposed
+
+- **Evidence would have printed a storage key.** For FRED, the row's
+  `series_id` WAS the provider id, so `get_identity` could read it off
+  the row. For concept-keyed BLS/BEA rows it would have printed
+  `us.nonfarm.payroll-employment.sa.monthly` where `CES0000000001`
+  belongs. The same shortcut lived in two places in the intelligence
+  builder, and in three result models whose `series_id` DEFAULTED to a
+  storage constant. All five now resolve the agency id from the binding
+  that owns the row. FRED rows still name FRED, because they are
+  different rows.
+- **Release processing would have fabricated history.** Given a series
+  it had never seen, it created the row and recorded every observation
+  in the five-year window as newly OBSERVED. On a fresh database, that
+  is sixty "new data" events per series on day one. The first-party
+  source refuses to create a series, and names the command that creates
+  it correctly: `import_first_party`, which writes a baseline.
+- **The Jobs page overstated payrolls a thousandfold.** Known since #54B
+  and now fixed. The evidence value was always jobs (159,075,000) and
+  was labelled "Thousands of persons". A test asserted the wrong label;
+  it now asserts the right one, and the docstrings that taught the
+  mistake say what is true.
+
+### A test fixture that undid the migration
+
+After adding the catalog migration, release tests still behaved as if
+FRED were active. The test database was at the new revision, but its
+catalog was not. An API fixture restores "the migrated baseline" after
+each test by deleting every non-FRED release and reactivating FRED. It
+was written when that WAS the baseline, and it was silently reverting my
+migration on every run. The fixture now restores the post-#56B baseline.
+It was the same lesson as #53B's guard: a check encodes the world it was
+written in.
+
+Two cleanup bugs surfaced along the way:
+
+- One committing test deleted only one of the two rows it seeded.
+- Another "cleaned up" through a rollback-isolated session, so its
+  delete was itself rolled back. `TXCOMMIT` had been left in the test
+  database by every run since the test was written.
+
+They mattered now because a stray concept-keyed row owned by FRED makes
+the first-party import refuse to write, so tests would have failed
+depending on order. Both are fixed. The test database is now empty
+after a full run.
+
+### Making the network unreachable
+
+Maintenance now syncs the real schedule and processes whatever is due in
+a 7-day window. Tests run with today's date, so on the right day of the
+month a test would have found a real release due and fetched it from
+BLS. The fix has two parts:
+
+- CLI tests isolate the schedule, and the schedule gets its own tests.
+- An autouse fixture makes the first-party transport refuse every
+  connection.
+
+My first version of that fixture patched `bounded_http.httpx.Client`,
+which is the global `httpx.Client`. It broke 104 tests, including
+FastAPI's own test client. It now patches a private factory that only
+`bounded_http` calls.
+
+### The schedule
+
+BLS's feed refuses non-browser clients, so the schedule is a committed
+file: the agencies' 2026 dates, each citing its page. Every date matched
+the FRED calendar already in the development database, checked
+read-only as verification only.
+
+It expires on 2026-12-23. `release_schedule` reports EXPIRING 45 days
+ahead, and `run_maintenance` exits 1 once it has expired, which on
+Render sends the failure email. Until next year's dates land,
+`import_first_party` is the manual path. It needs no calendar and
+records only genuine changes.
+
+### Locked
+
+`requirements.lock` and `requirements-dev.lock` are hash-pinned by
+pip-tools from `pyproject.toml`, and they resolve to exactly what CI
+already tested (SQLAlchemy 2.1.0, Starlette 1.7.0). The image installs
+the production lock with `--require-hashes` and the project with
+`--no-deps`. CI installs the dev lock. Guards keep the two locks
+consistent with `pyproject.toml` and with each other. #56A's red build
+cannot recur by accident.
+
+### Verified with no FRED anywhere
+
+On a fresh database, with no FRED key, no BLS key and real BLS and BEA
+requests, from an environment built from the lock:
+
+- migrate, schedule sync, and import all succeeded;
+- release processing of the latest CPI, Employment Situation and PIO
+  reported **NO_CHANGE** with 0 revisions against the baseline;
+- maintenance reported a clean schedule;
+- the gated production server passed 41/41 container checks and 13/13
+  smoke checks.
+
+Both monitors compute, and their evidence names only BLS and BEA series.
+The database holds 4 BLS and 2 BEA series, and zero FRED observations
+or occurrences.
+
+**Final results:** backend **2734 passed**, frontend **2016 passed**,
+typecheck, lint and production build clean.
+
+The browser check was not performed: the Chrome extension was not
+connected. The rendering of the new labels is covered by the frontend
+tests, not by eyes.
+
+### Lesson
+
+**A default is a decision that stopped being questioned.**
+
+The storage id defaulted to being the provider id; the result models
+defaulted to a storage constant; the test fixture defaulted to FRED's
+catalog. Every one of them was right when written, and every one was
+invisible until the value it assumed changed underneath it.

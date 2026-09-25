@@ -187,21 +187,35 @@ class TestWorkerPreflightOrder:
         ]
         return min(linenos) if linenos else None
 
-    def test_process_release_checks_compatibility_before_constructing_fred_client(self):
+    # #56B: the provider is BLS/BEA via `FirstPartyObservationSource`
+    # (FRED's client is no longer constructed by either CLI); the rule is
+    # unchanged -- no provider client before the schema check.
+    def test_process_release_checks_compatibility_before_constructing_the_provider_source(self):
         main_function = self._main_function(_PROCESS_RELEASE_FILE)
         compatibility_line = self._first_call_lineno(main_function, "check_schema_compatibility")
-        fred_client_line = self._first_call_lineno(main_function, "FREDClient")
+        source_line = self._first_call_lineno(main_function, "FirstPartyObservationSource")
         assert compatibility_line is not None
-        assert fred_client_line is not None
-        assert compatibility_line < fred_client_line
+        assert source_line is not None
+        assert compatibility_line < source_line
+        assert self._first_call_lineno(main_function, "FREDClient") is None
 
-    def test_run_maintenance_checks_compatibility_before_constructing_fred_client(self):
+    def test_run_maintenance_checks_compatibility_before_constructing_the_provider_source(self):
         main_function = self._main_function(_RUN_MAINTENANCE_FILE)
         compatibility_line = self._first_call_lineno(main_function, "check_schema_compatibility")
-        fred_client_line = self._first_call_lineno(main_function, "FREDClient")
+        source_line = self._first_call_lineno(main_function, "FirstPartyObservationSource")
         assert compatibility_line is not None
-        assert fred_client_line is not None
-        assert compatibility_line < fred_client_line
+        assert source_line is not None
+        assert compatibility_line < source_line
+        assert self._first_call_lineno(main_function, "FREDClient") is None
+
+    def test_run_maintenance_checks_compatibility_before_writing_the_schedule(self):
+        """The schedule sync WRITES occurrences, so it is gated like any
+        other write (#56B)."""
+        main_function = self._main_function(_RUN_MAINTENANCE_FILE)
+        compatibility_line = self._first_call_lineno(main_function, "check_schema_compatibility")
+        sync_line = self._first_call_lineno(main_function, "sync_schedule")
+        assert compatibility_line is not None and sync_line is not None
+        assert compatibility_line < sync_line
 
     def test_run_maintenance_checks_compatibility_before_constructing_the_orchestrator(self):
         main_function = self._main_function(_RUN_MAINTENANCE_FILE)

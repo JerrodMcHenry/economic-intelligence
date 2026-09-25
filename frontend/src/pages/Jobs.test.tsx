@@ -131,7 +131,7 @@ describe("loading", () => {
 describe("frozen 7-section hierarchy", () => {
   it("renders the frozen seven monitor sections in order, plus #44's page-level footer", async () => {
     resolveAll({
-      upcoming: buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ provider_release_id: "50" })] }),
+      upcoming: buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ provider_release_id: "empsit" })] }),
     });
     renderPage();
 
@@ -572,11 +572,15 @@ describe("Employment", () => {
     expect(within(section).queryByText(/-331,333%/)).not.toBeInTheDocument();
   });
 
-  it("raw evidence observations render in thousands-of-persons, never converted, distinctly labeled from the summary tier", async () => {
+  it("raw evidence observations render as jobs, labelled Jobs, with the BLS series id", async () => {
+    // #56B: the API has always delivered employment evidence in JOBS
+    // (the x1000 is applied once, in app.domain.labor, before evidence is
+    // built) -- the old "Thousands of persons" label made a real
+    // 159,075,000 read as 159 billion. The label now matches the value.
     resolveAll({
       monitor: buildLaborMonitor({
         employment: buildEmploymentResult({
-          observations: [{ series_id: "PAYEMS", observation_date: "2009-08-01", value: 130472 }],
+          observations: [{ series_id: "CES0000000001", observation_date: "2009-08-01", value: 130472000 }],
         }),
       }),
     });
@@ -585,10 +589,9 @@ describe("Employment", () => {
     const section = await findSection("Employment");
     const disclosure = within(section).getByText("View evidence: Employment");
     disclosure.click();
-    expect(await within(section).findByText("130,472")).toBeInTheDocument();
-    expect(within(section).getByText(/Thousands of persons/)).toBeInTheDocument();
-    // Never silently multiplied by 1,000 into an actual-jobs-shaped number.
-    expect(within(section).queryByText("130,472,000")).not.toBeInTheDocument();
+    expect(await within(section).findByText("130,472,000")).toBeInTheDocument();
+    expect(within(section).getByText(/Value \(Jobs\)/)).toBeInTheDocument();
+    expect(within(section).queryByText(/Thousands of persons/)).not.toBeInTheDocument();
   });
 });
 
@@ -750,7 +753,7 @@ describe("Relevant Release", () => {
   it("shows the next scheduled Employment Situation occurrence, reusing the existing release row", async () => {
     resolveAll({
       upcoming: buildReleaseListResponse({
-        releases: [buildReleaseOccurrenceItem({ name: "Employment Situation", provider_release_id: "50", scheduled_date: "2026-10-02" })],
+        releases: [buildReleaseOccurrenceItem({ name: "Employment Situation", provider_release_id: "empsit", scheduled_date: "2026-10-02" })],
       }),
     });
     renderPage();
@@ -762,7 +765,7 @@ describe("Relevant Release", () => {
   it("Increment #22B: never renders ReleaseRow's per-row 'View Labor →' CTA here -- it would be circular, already on /labor", async () => {
     resolveAll({
       upcoming: buildReleaseListResponse({
-        releases: [buildReleaseOccurrenceItem({ name: "Employment Situation", provider_release_id: "50", scheduled_date: "2026-10-02" })],
+        releases: [buildReleaseOccurrenceItem({ name: "Employment Situation", provider_release_id: "empsit", scheduled_date: "2026-10-02" })],
       }),
     });
     renderPage();
@@ -843,7 +846,7 @@ describe("failure isolation", () => {
     mockedGetProcessingStatus.mockResolvedValue(buildReleaseProcessingStatusResponse({ occurrences: [] }));
     mockedFetchUpcoming.mockRejectedValue(new Error("down"));
     mockedFetchRecent.mockResolvedValue(
-      buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ name: "Employment Situation", provider_release_id: "50" })] }),
+      buildReleaseListResponse({ releases: [buildReleaseOccurrenceItem({ name: "Employment Situation", provider_release_id: "empsit" })] }),
     );
     renderPage();
 

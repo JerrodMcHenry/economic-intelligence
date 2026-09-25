@@ -59,7 +59,7 @@ class TestSuccessAndContract:
         _seed(seed_session, UNRATE_SERIES_ID, _unrate_history(ANCHOR))
         response = client.get("/api/v1/monitors/labor")
         employment = response.json()["employment"]
-        assert employment["series_id"] == "PAYEMS"
+        assert employment["series_id"] == "CES0000000001"  # #56B: the BLS series, not the storage key
         assert set(employment.keys()) == {
             "series_id", "current_3m_avg_jobs", "prior_3m_avg_jobs", "momentum_delta_jobs",
             "condition_deadband_jobs", "momentum_deadband_jobs", "condition", "momentum", "state", "observations",
@@ -73,7 +73,7 @@ class TestSuccessAndContract:
         _seed(seed_session, UNRATE_SERIES_ID, _unrate_history(ANCHOR))
         response = client.get("/api/v1/monitors/labor")
         unemployment = response.json()["unemployment"]
-        assert unemployment["series_id"] == "UNRATE"
+        assert unemployment["series_id"] == "LNS14000000"  # #56B: the BLS series, not the storage key
         assert set(unemployment.keys()) == {
             "series_id", "current_3m_avg", "prior_year_3m_avg", "delta_pp",
             "unemployment_deadband_pp", "state", "observations",

@@ -3,12 +3,12 @@ import { ReleaseDateBadge } from "../releases/ReleaseDateBadge";
 import { ReleaseRow } from "../releases/ReleaseRow";
 import { ReleaseScheduleDisclosure } from "../releases/ReleaseScheduleDisclosure";
 
-// Employment Situation's stable FRED identity -- the same
+// Employment Situation's stable release identity (BLS `empsit` since #56B) -- the same
 // `provider_release_id` app/domain/labor_release_processing.py and the
 // backend's own curated-catalog migration both key off, never the
 // release's display `name` (which could change without changing this
 // identity). See docs/architecture/labor-ui-v1.md §4/§24.
-const EMPLOYMENT_SITUATION_PROVIDER_RELEASE_ID = "50";
+const EMPLOYMENT_SITUATION_PROVIDER_RELEASE_ID = "empsit";
 
 function findEmploymentSituation(releases: readonly ReleaseOccurrenceItem[]): ReleaseOccurrenceItem | null {
   return releases.find((r) => r.provider_release_id === EMPLOYMENT_SITUATION_PROVIDER_RELEASE_ID) ?? null;

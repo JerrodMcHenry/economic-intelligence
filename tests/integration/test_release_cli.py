@@ -19,8 +19,8 @@ from tests.conftest import migrate_schema_drift_database, reset_schema_drift_dat
 
 pytestmark = pytest.mark.integration
 
-_HEAD = "a6f1c3d95e20"
-_ONE_BEFORE_HEAD = "e7b3d51c8a94"
+_HEAD = "b8d2e4f60a17"
+_ONE_BEFORE_HEAD = "a6f1c3d95e20"
 _THREE_BEFORE_HEAD = "b7c41d92e8a3"
 
 
@@ -147,10 +147,15 @@ class TestMigrateFromFresh:
         engine = create_engine(schema_drift_database_url)
         try:
             with engine.connect() as connection:
-                count = connection.execute(text("SELECT COUNT(*) FROM economic_releases")).scalar_one()
+                rows = connection.execute(text("SELECT provider, active FROM economic_releases")).all()
         finally:
             engine.dispose()
-        assert count == 6  # the six curated V1 releases, seeded by the migration chain itself
+        # The six curated V1 FRED releases (inactive since #56B) and the
+        # three first-party releases that replaced them, all seeded by the
+        # migration chain itself -- no provider call.
+        assert sorted((provider, active) for provider, active in rows) == sorted(
+            [("FRED", False)] * 6 + [("BLS", True), ("BLS", True), ("BEA", True)]
+        )
 
 
 class TestMigrateIdempotency:

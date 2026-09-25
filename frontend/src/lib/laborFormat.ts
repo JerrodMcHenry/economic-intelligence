@@ -10,12 +10,10 @@
  * backend (the x1000 conversion happens exactly once, in
  * `app.domain.labor.build_jobs_index`, before these fields are ever
  * computed) -- `formatJobs` below must NEVER multiply or divide by
- * 1,000 again. Raw `observations[].value` entries (both PAYEMS and
- * UNRATE) are exactly what FRED persisted -- PAYEMS's own raw
- * observations remain in FRED-native "Thousands of Persons", NOT yet
- * converted -- so those are formatted with `formatRawObservationValue`
- * instead, which never converts either, and callers must label the
- * unit explicitly next to it (see components/labor/EvidenceDisclosure.tsx).
+ * 1,000 again. Raw `observations[].value` entries are formatted with
+ * `formatRawObservationValue`, which never converts either; callers
+ * label the unit beside it. (#56B: employment evidence is already in
+ * jobs, so its label is "Jobs" -- see components/labor/EvidenceDisclosure.tsx.)
  */
 import { formatPercent, formatPercentagePoints } from "./format";
 import { isJobCountField, isPercentagePointDeltaField } from "./laborLabels";

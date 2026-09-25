@@ -18,8 +18,8 @@ from tests.conftest import migrate_schema_drift_database
 
 pytestmark = pytest.mark.integration
 
-_HEAD = "a6f1c3d95e20"
-_ONE_BEFORE_HEAD = "e7b3d51c8a94"
+_HEAD = "b8d2e4f60a17"
+_ONE_BEFORE_HEAD = "a6f1c3d95e20"
 
 
 @pytest.fixture(autouse=True)

@@ -32,6 +32,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from app.clients.fred import FREDClient
+from app.services.first_party_source import FirstPartyObservationSource
 from app.db.session import session_scope
 from app.repositories.maintenance_repository import MaintenanceRepository
 from app.repositories.release_processing_repository import ReleaseProcessingRepository
@@ -77,8 +78,9 @@ class MaintenanceSweepOutcome:
 
 
 class MaintenanceOrchestrator:
-    def __init__(self, fred_client: FREDClient):
-        self._service = ReleaseProcessingService(fred_client)
+    def __init__(self, source: "FREDClient | FirstPartyObservationSource"):
+        # #56B: `FirstPartyObservationSource` in production.
+        self._service = ReleaseProcessingService(source)
 
     def run_sweep(self, as_of_date: date, retry_window_days: int = DEFAULT_RETRY_WINDOW_DAYS) -> MaintenanceSweepOutcome:
         """Run exactly one bounded sweep: start a sweep record, discover

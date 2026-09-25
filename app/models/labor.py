@@ -62,6 +62,15 @@ UNEMPLOYMENT_CONCEPT_ID = "us.unemployment-rate.sa.monthly"
 PAYEMS_SERIES_ID = active_binding(EMPLOYMENT_CONCEPT_ID).storage_series_id
 UNRATE_SERIES_ID = active_binding(UNEMPLOYMENT_CONCEPT_ID).storage_series_id
 
+# --- The PROVIDER's identifiers, for display (#56B) -------------------
+#
+# Equal to the storage ids while FRED was active (FRED rows were keyed
+# by FRED's own ids). Since #56B the rows are concept-keyed, so the
+# `series_id` a result REPORTS must come from the binding's provider id
+# (BLS `CES0000000001`), never from where it is stored.
+EMPLOYMENT_PROVIDER_SERIES_ID = active_binding(EMPLOYMENT_CONCEPT_ID).provider_series_id
+UNEMPLOYMENT_PROVIDER_SERIES_ID = active_binding(UNEMPLOYMENT_CONCEPT_ID).provider_series_id
+
 # PAYEMS is persisted in FRED's native "Thousands of Persons" -- every
 # `labor_v1.0` formula operates on actual persons/jobs instead (see
 # LABOR_V1_FROZEN_METHODOLOGY.md §2). This is the ONE conversion
@@ -96,11 +105,12 @@ LaborState = Literal["STRENGTHENING", "COOLING", "STABLE", "MIXED", "INSUFFICIEN
 
 
 class LaborObservationEvidence(BaseModel):
-    """One exact-calendar-month source observation, exactly as
-    persisted (FRED-native units -- PAYEMS in thousands of persons,
-    UNRATE in percent; the jobs conversion is a pure, deterministic,
-    documented multiply, reconstructable from this raw value alone, so
-    it is not duplicated here). `value: None` means this exact required
+    """One exact-calendar-month source observation. Units: payroll
+    employment in JOBS -- the binding's x1000 is applied once in
+    `app.domain.labor.build_jobs_index`, before this evidence is built
+    (#56B corrected this docstring, which said "thousands of persons");
+    the unemployment rate in percent. `series_id` is the PROVIDER's own
+    identifier (BLS `CES0000000001`, `LNS14000000`). `value: None` means this exact required
     calendar month has no usable persisted observation -- never
     omitted from the list, so a caller can always see exactly which
     month(s) were missing, not just that something was missing."""
@@ -124,7 +134,7 @@ class EmploymentResult(BaseModel):
     (`observations`, `t` through `t-6`) is missing -- never computed
     from a partial window."""
 
-    series_id: str = PAYEMS_SERIES_ID
+    series_id: str = EMPLOYMENT_PROVIDER_SERIES_ID
     current_3m_avg_jobs: float | None
     prior_3m_avg_jobs: float | None
     momentum_delta_jobs: float | None
@@ -142,7 +152,7 @@ class UnemploymentResult(BaseModel):
     `INSUFFICIENT_DATA` whenever any of the 6 exact required UNRATE
     calendar months (`observations`) is missing."""
 
-    series_id: str = UNRATE_SERIES_ID
+    series_id: str = UNEMPLOYMENT_PROVIDER_SERIES_ID
     current_3m_avg: float | None
     prior_year_3m_avg: float | None
     delta_pp: float | None

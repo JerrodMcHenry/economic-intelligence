@@ -35,6 +35,12 @@ from datetime import date, datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.clients.bounded_http import (
+    ProviderError,
+    ProviderRateLimitedError,
+    ProviderResponseError,
+    ProviderTimeoutError,
+)
 from app.clients.fred import FREDClient, FREDError
 from app.domain.inflation import compute_confirmation_at, compute_series_momentum_at, compute_target_at
 from app.domain.inflation_what_changed import (
@@ -93,6 +99,7 @@ from app.models.release_processing import (
 )
 from app.models.series import Observation
 from app.repositories.series_repository import SeriesRepository
+from app.services.first_party_source import FirstPartyObservationSource, SeriesNotInitializedError
 from app.services.series_identity import resolve_identity
 from app.repositories.release_processing_repository import ReleaseProcessingRepository
 from app.repositories.release_repository import ReleaseRepository
@@ -155,6 +162,18 @@ def _safe_error_message(exc: FREDError) -> str:
     return "FRED request failed."
 
 
+def _safe_first_party_message(exc: ProviderError) -> str:
+    """The #56B counterpart for BLS/BEA: the provider and the kind of
+    failure, never an upstream message, URL or key."""
+    if isinstance(exc, ProviderTimeoutError):
+        return f"{exc.provider} request timed out."
+    if isinstance(exc, ProviderRateLimitedError):
+        return f"{exc.provider} refused the request (rate or daily query limit)."
+    if isinstance(exc, ProviderResponseError):
+        return f"{exc.provider} returned an unexpected or malformed response."
+    return f"{exc.provider} could not be reached."
+
+
 def _parse_value(raw: str) -> float | None:
     """FRED represents a missing observation with the literal string
     '.' -- the identical rule `app.services.economic_data._parse_value`
@@ -167,12 +186,17 @@ def _parse_value(raw: str) -> float | None:
 class ReleaseProcessingService:
     """Explicit, manually-triggered only -- no scheduler anywhere in
     this class's call graph, and nothing here is ever invoked by a
-    read. Requires a `FREDClient` (release processing has no
+    read. Requires an observation SOURCE (release processing has no
     meaningful database-only mode, the same reasoning
-    `app.services.releases.ReleaseSyncService` already applies)."""
+    `app.services.releases.ReleaseSyncService` already applies).
 
-    def __init__(self, fred_client: FREDClient):
-        self._fred_client = fred_client
+    #56B: the source is `FirstPartyObservationSource` (BLS and BEA) in
+    every production path. It answers the same two calls FRED's client
+    does -- `get_observations` and `get_series_info` -- so nothing below
+    changed except which provider's failures are named."""
+
+    def __init__(self, source: "FREDClient | FirstPartyObservationSource"):
+        self._fred_client = source
 
     def process_occurrence(self, occurrence_id: int, session: Session, as_of_date: date) -> ReleaseCheckRunResult:
         """Process one release occurrence: fetch its mapped series over
@@ -301,8 +325,15 @@ class ReleaseProcessingService:
                         detected_at=detected_at,
                     )
                 )
-        except (FREDError, KeyError, TypeError, ValueError) as exc:
-            error = _safe_error_message(exc) if isinstance(exc, FREDError) else "FRED returned malformed observation data."
+        except (FREDError, ProviderError, SeriesNotInitializedError, KeyError, TypeError, ValueError) as exc:
+            if isinstance(exc, FREDError):
+                error = _safe_error_message(exc)
+            elif isinstance(exc, ProviderError):
+                error = _safe_first_party_message(exc)
+            elif isinstance(exc, SeriesNotInitializedError):
+                error = "Series has not been imported; run `python -m app.operations.import_first_party` first."
+            else:
+                error = "The provider returned malformed observation data."
             return SeriesCheckOutcome(series_id=series_id, succeeded=False, error=error), []
 
         outcome = SeriesCheckOutcome(

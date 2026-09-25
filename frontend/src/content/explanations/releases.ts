@@ -23,10 +23,10 @@ export const ECONOMIC_RELEASE: Explanation = {
 export const SCHEDULED_DATE: Explanation = {
   id: "releases.scheduled-date",
   title: "Scheduled date",
-  definition: "The calendar date Economic Intelligence's persisted release calendar has on file for this release, sourced from FRED.",
+  definition: "The calendar date Economic Intelligence's persisted release calendar has on file for this release, from the publisher's own schedule (BLS or BEA).",
   whyItMatters:
     "It tells you when a release is expected, but a scheduled date on its own does not confirm the release actually happened or that new data has arrived.",
-  sourceNote: "Source: FRED release calendar",
+  sourceNote: "Source: BLS and BEA release schedules",
 };
 
 const SCHEDULE_STATUS_EXPLANATIONS: Record<ScheduleStatus, Explanation> = {
@@ -51,42 +51,42 @@ export function scheduleStatusExplanation(status: ScheduleStatus): Explanation {
 }
 
 const RELEASE_TYPE_EXPLANATIONS: Record<string, Explanation> = {
-  "10": {
+  cpi: {
     id: "releases.type-cpi",
     title: "Consumer Price Index (CPI)",
     definition: "Measures changes in prices paid by consumers for a broad basket of goods and services.",
     whyItMatters: "One of the most widely followed measures of inflation.",
-    sourceNote: "Source: FRED release calendar",
+    sourceNote: "Source: BLS release schedule",
   },
-  "54": {
+  pio: {
     id: "releases.type-personal-income-and-outlays",
     title: "Personal Income and Outlays",
     definition:
       "A monthly report on personal income, consumer spending, and the PCE price index -- the inflation measure the Federal Reserve's 2% objective is defined against.",
     whyItMatters:
       "It's the source of the PCE price data Economic Intelligence uses for its primary inflation target comparison, alongside a read on consumer income and spending.",
-    sourceNote: "Source: FRED release calendar",
+    sourceNote: "Source: BEA release schedule",
   },
-  "50": {
+  empsit: {
     id: "releases.type-employment-situation",
     title: "Employment Situation",
     definition: "A monthly labor-market report containing major measures such as payroll employment and the unemployment rate.",
     whyItMatters: "It helps show whether the labor market is strengthening or weakening.",
-    sourceNote: "Source: FRED release calendar",
+    sourceNote: "Source: BLS release schedule",
   },
   "192": {
     id: "releases.type-jolts",
     title: "Job Openings and Labor Turnover Survey (JOLTS)",
     definition: "Tracks job openings, hiring, and worker separations.",
     whyItMatters: "It provides another view of labor demand and how easily workers are moving between jobs.",
-    sourceNote: "Source: FRED release calendar",
+    sourceNote: "Source: BLS and BEA release schedules",
   },
   "53": {
     id: "releases.type-gdp",
     title: "Gross Domestic Product (GDP)",
     definition: "Measures the value of goods and services produced in the economy.",
     whyItMatters: "It is one of the broadest measures of economic activity.",
-    sourceNote: "Source: FRED release calendar",
+    sourceNote: "Source: BLS and BEA release schedules",
   },
   "9": {
     id: "releases.type-advance-retail-sales",
@@ -94,7 +94,7 @@ const RELEASE_TYPE_EXPLANATIONS: Record<string, Explanation> = {
     definition: "An early estimate of consumer spending at retail and food-service businesses, published before more complete source data is available.",
     whyItMatters:
       "Because it's released quickly, it's an early signal of consumer spending trends -- though as an early estimate, it's sometimes revised in later reports.",
-    sourceNote: "Source: FRED release calendar",
+    sourceNote: "Source: BLS and BEA release schedules",
   },
 };
 

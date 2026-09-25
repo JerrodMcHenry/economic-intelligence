@@ -30,10 +30,10 @@ export function getLaborStateDuration(): Promise<StateDurationResult> {
   return apiGet<StateDurationResult>("/api/v1/monitors/labor/state-duration");
 }
 
-// Employment Situation's stable FRED identity -- see
+// Employment Situation's stable release identity (BLS `empsit` since #56B) -- see
 // components/labor/RelevantRelease.tsx's own identical constant and
 // docs/architecture/labor-ui-v1.md §4/§24.
-const EMPLOYMENT_SITUATION_PROVIDER_RELEASE_ID = "50";
+const EMPLOYMENT_SITUATION_PROVIDER_RELEASE_ID = "empsit";
 
 /**
  * Employment Situation's own processing-status evidence, scoped via

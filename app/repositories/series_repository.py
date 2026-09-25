@@ -13,10 +13,42 @@ from typing import Literal
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.concepts.bindings import AmbiguousBindingError, UnknownBindingError, concept_id_for_stored_series
+from app.concepts.bindings import BINDINGS, AmbiguousBindingError, UnknownBindingError, concept_id_for_stored_series
 from app.db.models import EconomicObservation, EconomicSeries
 from app.models.series import SeriesIdentity, SeriesResponse
 from app.repositories.observation_versions import ORIGIN_SERIES_SYNC, ObservationVersionWriter
+
+
+#: Providers whose rows are keyed by MacroChipz's concept id rather than
+#: by the provider's own identifier (#56B). Treasury and Census rows are
+#: concept-keyed too, but their evidence contracts predate this and name
+#: the storage id; changing them is not #56B's business.
+_CONCEPT_KEYED_AGENCY_PROVIDERS = frozenset({"BLS", "BEA"})
+
+
+def provider_series_id_for(series: EconomicSeries) -> str:
+    """The identifier the PROVIDER uses for this row's series.
+
+    For FRED rows the storage id IS the provider id (`PAYEMS`). For BLS
+    and BEA rows the storage id is a concept id, so the agency's own
+    identifier (`CES0000000001`) comes from the binding registered for
+    exactly this row -- matched on storage id AND the row's own source,
+    so it can never name another provider's series (#56B: without this,
+    evidence would print a concept id where the agency series id
+    belongs).
+    """
+    if series.source not in _CONCEPT_KEYED_AGENCY_PROVIDERS:
+        return series.series_id
+    matches = [
+        binding.provider_series_id
+        for binding in BINDINGS
+        if binding.storage_series_id == series.series_id and binding.provider == series.source
+    ]
+    if len(matches) != 1:
+        raise MissingConceptIdentityError(
+            f"Stored {series.source} series {series.series_id!r} has {len(matches)} matching bindings; expected one."
+        )
+    return matches[0]
 
 
 def _concept_id_or_none(storage_series_id: str) -> str | None:
@@ -86,13 +118,14 @@ class SeriesRepository:
                 f"It is not a MacroChipz economic concept; see app/concepts/bindings.py."
             )
 
-        # Provider and provider-series identity ALWAYS come from the row,
-        # never from the binding table -- that is what keeps historical
-        # evidence honest after a provider cutover (ADR-034, Invariant D).
+        # The PROVIDER always comes from the row, never from whichever
+        # binding is active -- that is what keeps historical evidence
+        # honest after a provider cutover (ADR-034, Invariant D): a FRED
+        # row keeps naming FRED after #56B, because it is a different row.
         return SeriesIdentity(
             concept_id=concept_id,
             provider=series.source,
-            provider_series_id=series.series_id,
+            provider_series_id=provider_series_id_for(series),
         )
 
     def search_series(self, query: str, limit: int) -> list[EconomicSeries]:

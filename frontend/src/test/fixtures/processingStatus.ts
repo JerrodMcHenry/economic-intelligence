@@ -17,8 +17,8 @@ export function buildReleaseContext(overrides: Partial<ReleaseContext> = {}): Re
   return {
     release_id: 1,
     name: "Personal Income and Outlays",
-    provider: "FRED",
-    provider_release_id: "54",
+    provider: "BEA",
+    provider_release_id: "pio",
     ...overrides,
   };
 }

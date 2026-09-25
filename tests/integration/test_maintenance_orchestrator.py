@@ -67,7 +67,7 @@ def real_session_scope(monkeypatch, test_database_url):
         session_module._get_session_factory.cache_clear()
 
 
-def _seed_release_mapping_and_occurrence(session_scope, scheduled_date=AS_OF, provider_release_id="9401", series_id="UNRATE"):
+def _seed_release_mapping_and_occurrence(session_scope, scheduled_date=AS_OF, provider_release_id="9401", series_id="us.unemployment-rate.sa.monthly"):
     with session_scope() as session:
         release = EconomicRelease(name="Maintenance Test Release", provider="FRED", provider_release_id=provider_release_id, active=True)
         session.add(release)
@@ -78,7 +78,7 @@ def _seed_release_mapping_and_occurrence(session_scope, scheduled_date=AS_OF, pr
         return release.id, occurrence.id
 
 
-def _cleanup(session_scope, release_id: int, series_ids: tuple[str, ...] = ("UNRATE",)) -> None:
+def _cleanup(session_scope, release_id: int, series_ids: tuple[str, ...] = ("us.unemployment-rate.sa.monthly",)) -> None:
     with session_scope() as session:
         session.execute(EconomicRelease.__table__.delete().where(EconomicRelease.id == release_id))
         for series_id in series_ids:
@@ -143,7 +143,7 @@ class TestOneDueOccurrence:
         payload = [{"date": "2026-01-01", "value": "4.1"}]
         try:
             with patch.object(FREDClient, "get_observations", return_value=payload):
-                with patch.object(FREDClient, "get_series_info", return_value={"id": "UNRATE", "title": "Unemployment Rate", "units": "Percent"}):
+                with patch.object(FREDClient, "get_series_info", return_value={"id": "us.unemployment-rate.sa.monthly", "title": "Unemployment Rate", "units": "Percent"}):
                     outcome = orchestrator.run_sweep(AS_OF)
 
             assert outcome.processed_count == 1
@@ -162,10 +162,10 @@ class TestOneDueOccurrence:
 class TestMultipleDueOccurrences:
     def test_each_occurrence_is_processed_independently(self, real_session_scope):
         release_id_a, occurrence_id_a = _seed_release_mapping_and_occurrence(
-            real_session_scope, provider_release_id="9404", series_id="UNRATE"
+            real_session_scope, provider_release_id="9404", series_id="us.unemployment-rate.sa.monthly"
         )
         release_id_b, occurrence_id_b = _seed_release_mapping_and_occurrence(
-            real_session_scope, provider_release_id="9405", series_id="PAYEMS"
+            real_session_scope, provider_release_id="9405", series_id="us.nonfarm.payroll-employment.sa.monthly"
         )
         orchestrator = MaintenanceOrchestrator(_mock_client())
         try:
@@ -184,8 +184,8 @@ class TestMultipleDueOccurrences:
                     assert len(runs) == 1
                     assert runs[0].status == "NO_CHANGE"
         finally:
-            _cleanup(real_session_scope, release_id_a, series_ids=("UNRATE",))
-            _cleanup(real_session_scope, release_id_b, series_ids=("PAYEMS",))
+            _cleanup(real_session_scope, release_id_a, series_ids=("us.unemployment-rate.sa.monthly",))
+            _cleanup(real_session_scope, release_id_b, series_ids=("us.nonfarm.payroll-employment.sa.monthly",))
             _cleanup_sweeps(real_session_scope, [outcome.sweep_id])
 
     def test_one_occurrence_failing_does_not_abort_the_others(self, real_session_scope):
@@ -193,15 +193,15 @@ class TestMultipleDueOccurrences:
         individual occurrence's own outcome -- one failure must not
         stop the sweep from processing the remaining due occurrences."""
         release_id_a, occurrence_id_a = _seed_release_mapping_and_occurrence(
-            real_session_scope, provider_release_id="9406", series_id="UNRATE"
+            real_session_scope, provider_release_id="9406", series_id="us.unemployment-rate.sa.monthly"
         )
         release_id_b, occurrence_id_b = _seed_release_mapping_and_occurrence(
-            real_session_scope, provider_release_id="9407", series_id="PAYEMS"
+            real_session_scope, provider_release_id="9407", series_id="us.nonfarm.payroll-employment.sa.monthly"
         )
         orchestrator = MaintenanceOrchestrator(_mock_client())
 
         def _side_effect(series_id, **kwargs):
-            if series_id == "UNRATE":
+            if series_id == "us.unemployment-rate.sa.monthly":
                 raise FREDTimeoutError("timed out")
             return []
 
@@ -223,8 +223,8 @@ class TestMultipleDueOccurrences:
                 ).scalar_one()
                 assert run_b.status == "NO_CHANGE"
         finally:
-            _cleanup(real_session_scope, release_id_a, series_ids=("UNRATE",))
-            _cleanup(real_session_scope, release_id_b, series_ids=("PAYEMS",))
+            _cleanup(real_session_scope, release_id_a, series_ids=("us.unemployment-rate.sa.monthly",))
+            _cleanup(real_session_scope, release_id_b, series_ids=("us.nonfarm.payroll-employment.sa.monthly",))
             _cleanup_sweeps(real_session_scope, [outcome.sweep_id])
 
 
@@ -304,7 +304,7 @@ class TestSweepRecord:
         payload = [{"date": "2026-01-01", "value": "4.1"}, {"date": "2026-02-01", "value": "4.2"}]
         try:
             with patch.object(FREDClient, "get_observations", return_value=payload):
-                with patch.object(FREDClient, "get_series_info", return_value={"id": "UNRATE", "title": "t", "units": "u"}):
+                with patch.object(FREDClient, "get_series_info", return_value={"id": "us.unemployment-rate.sa.monthly", "title": "t", "units": "u"}):
                     outcome = orchestrator.run_sweep(AS_OF)
 
             # Two observation changes in ONE occurrence -- due/processed
@@ -372,10 +372,10 @@ class TestLockingAndConcurrency:
         from app.services.release_processing import ReleaseProcessingService, try_acquire_and_process_occurrence
 
         release_id_a, occurrence_id_a = _seed_release_mapping_and_occurrence(
-            real_session_scope, provider_release_id="9413", series_id="UNRATE"
+            real_session_scope, provider_release_id="9413", series_id="us.unemployment-rate.sa.monthly"
         )
         release_id_b, occurrence_id_b = _seed_release_mapping_and_occurrence(
-            real_session_scope, provider_release_id="9414", series_id="PAYEMS"
+            real_session_scope, provider_release_id="9414", series_id="us.nonfarm.payroll-employment.sa.monthly"
         )
         service = ReleaseProcessingService(_mock_client())
         try:
@@ -391,8 +391,8 @@ class TestLockingAndConcurrency:
                     assert result is not None
                     assert result.status == "NO_CHANGE"
         finally:
-            _cleanup(real_session_scope, release_id_a, series_ids=("UNRATE",))
-            _cleanup(real_session_scope, release_id_b, series_ids=("PAYEMS",))
+            _cleanup(real_session_scope, release_id_a, series_ids=("us.unemployment-rate.sa.monthly",))
+            _cleanup(real_session_scope, release_id_b, series_ids=("us.nonfarm.payroll-employment.sa.monthly",))
 
     def test_lock_contention_is_recorded_as_skipped_not_failed(self, real_session_scope):
         """The orchestrator's own accounting distinguishes "skipped due
@@ -614,7 +614,7 @@ class TestRecordedMonitorResultViaAutomation:
         payload = [{"date": "2026-01-01", "value": "4.1"}]
         try:
             with patch.object(FREDClient, "get_observations", return_value=payload):
-                with patch.object(FREDClient, "get_series_info", return_value={"id": "UNRATE", "title": "Unemployment Rate", "units": "Percent"}):
+                with patch.object(FREDClient, "get_series_info", return_value={"id": "us.unemployment-rate.sa.monthly", "title": "Unemployment Rate", "units": "Percent"}):
                     outcome = orchestrator.run_sweep(AS_OF)
             assert outcome.processed_count == 1
 

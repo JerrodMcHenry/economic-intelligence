@@ -80,7 +80,7 @@ export function InflationPage() {
               <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-brand" />
               Core prices through {formatPeriod(monitor.data.underlying_momentum.calculation_period)}
             </span>
-            <span>Published by the U.S. Bureau of Economic Analysis, via FRED</span>
+            <span>Published by the U.S. Bureau of Economic Analysis and the U.S. Bureau of Labor Statistics</span>
           </div>
         )}
         <div className="mt-3">

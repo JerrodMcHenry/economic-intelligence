@@ -61,8 +61,11 @@ class TestTransactionBehavior:
         # visible within the same in-flight transaction.
         found = db_session.execute(select(EconomicSeries).where(EconomicSeries.series_id == "TXCOMMIT")).scalar_one_or_none()
         assert found is not None
-        db_session.execute(EconomicSeries.__table__.delete().where(EconomicSeries.series_id == "TXCOMMIT"))
-        db_session.commit()
+        # Cleaned up through a REAL session: `db_session` is rolled back at
+        # teardown, so deleting through it never removed this row (#56B
+        # found TXCOMMIT left in the test database by every run).
+        with real_session_scope() as cleanup:
+            cleanup.execute(EconomicSeries.__table__.delete().where(EconomicSeries.series_id == "TXCOMMIT"))
 
     def test_exception_inside_block_causes_rollback(self, real_session_scope, db_session):
         class _DeliberateFailure(Exception):

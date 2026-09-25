@@ -1056,7 +1056,8 @@ class TestProvenance:
             (result.evidence_6m, "6m_annualized"),
             (result.evidence_12m, "12m"),
         ):
-            assert evidence.series_id == "PCEPILFE"
+            # #56B: evidence names the AGENCY's series (BEA Core PCE).
+            assert evidence.series_id == "DPCCRG"
             assert evidence.calculation_period == date(2025, 1, 1)
             assert evidence.transformation == expected_transformation
             assert evidence.methodology_id == "inflation_v1.0"
@@ -1122,8 +1123,9 @@ class TestHeadlineContext:
         pce_obs = [_obs(date(2024, 1, 1), 100.0), _obs(date(2024, 7, 1), 103.0), _obs(date(2024, 10, 1), 106.0), _obs(date(2025, 1, 1), 110.0)]
         cpi_obs = [_obs(date(2024, 1, 1), 200.0), _obs(date(2024, 7, 1), 200.5), _obs(date(2024, 10, 1), 200.8), _obs(date(2025, 1, 1), 201.0)]
         result = compute_headline_context(pce_obs, cpi_obs, identities=INFLATION_IDENTITIES)
-        assert result.headline_pce.series_id == TARGET_SERIES_ID
-        assert result.headline_cpi.series_id == HEADLINE_CPI_SERIES_ID
+        # #56B: the agency identifiers, not the concept-keyed storage ids.
+        assert result.headline_pce.series_id == "DPCERG"
+        assert result.headline_cpi.series_id == "CUSR0000SA0"
         assert result.headline_pce.state != result.headline_cpi.state or True  # no forced relationship either way
 
     def test_no_aggregate_headline_state_field_exists(self):

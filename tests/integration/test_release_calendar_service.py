@@ -123,24 +123,18 @@ class TestReleaseSyncService:
         )
         assert total == 1
 
-    def test_syncs_exactly_the_six_curated_releases_when_active(self, db_session):
-        """The real migration-seeded catalog, not a synthetic
-        substitute -- proves sync actually attempts the six approved
-        V1 releases and nothing else, satisfying the follow-up's own
-        requirement that sync only ever touches this set."""
+    def test_the_fred_calendar_sync_never_touches_the_first_party_catalog(self, db_session):
+        """#56B: the six FRED releases are inactive and the active catalog
+        is BLS/BEA, whose dates come from the committed schedule. So a
+        FRED calendar sync of the real catalog asks FRED about nothing --
+        and in particular never sends it a BLS release id."""
         client = FREDClient(api_key="not-used", timeout=1.0)
-        with patch.object(FREDClient, "get_release_dates", return_value=[]):
+        with patch.object(FREDClient, "get_release_dates", return_value=[]) as get_release_dates:
             result = ReleaseSyncService(client).sync_all(db_session)
 
-        assert sorted(s.name for s in result.synced) == [
-            "Advance Monthly Sales for Retail and Food Services",
-            "Consumer Price Index",
-            "Employment Situation",
-            "Gross Domestic Product",
-            "Job Openings and Labor Turnover Survey",
-            "Personal Income and Outlays",
-        ]
+        assert result.synced == []
         assert result.failed == []
+        get_release_dates.assert_not_called()
 
     def test_repeated_sync_is_idempotent(self, db_session):
         _deactivate_curated_releases(db_session)

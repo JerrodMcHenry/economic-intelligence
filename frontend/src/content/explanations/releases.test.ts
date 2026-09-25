@@ -12,9 +12,9 @@ import { describe, expect, it } from "vitest";
 import { ECONOMIC_RELEASE, releaseTypeExplanation, scheduleStatusExplanation, SCHEDULED_DATE } from "./releases";
 
 const CURATED_V1_RELEASE_IDS: ReadonlyArray<[string, string]> = [
-  ["10", "Consumer Price Index (CPI)"],
-  ["54", "Personal Income and Outlays"],
-  ["50", "Employment Situation"],
+  ["cpi", "Consumer Price Index (CPI)"],
+  ["pio", "Personal Income and Outlays"],
+  ["empsit", "Employment Situation"],
   ["192", "Job Openings and Labor Turnover Survey (JOLTS)"],
   ["53", "Gross Domestic Product (GDP)"],
   ["9", "Advance Monthly Sales for Retail and Food Services"],
@@ -54,11 +54,11 @@ describe("releases explanation registry: coverage", () => {
 
 describe("release-type explanations describe what each release actually is, without investment advice", () => {
   it("CPI explanation covers consumer prices", () => {
-    expect(releaseTypeExplanation("10")!.definition).toMatch(/prices/i);
+    expect(releaseTypeExplanation("cpi")!.definition).toMatch(/prices/i);
   });
 
   it("Employment Situation explanation covers payrolls/unemployment", () => {
-    expect(releaseTypeExplanation("50")!.definition).toMatch(/labor|employment|payroll/i);
+    expect(releaseTypeExplanation("empsit")!.definition).toMatch(/labor|employment|payroll/i);
   });
 
   it("JOLTS explanation covers job openings and labor turnover", () => {
@@ -70,7 +70,7 @@ describe("release-type explanations describe what each release actually is, with
   });
 
   it("Personal Income and Outlays explanation connects to the PCE price index used for the Fed target", () => {
-    expect(releaseTypeExplanation("54")!.definition).toMatch(/pce price index/i);
+    expect(releaseTypeExplanation("pio")!.definition).toMatch(/pce price index/i);
   });
 
   it("Advance Retail Sales explanation describes it as an early, sometimes-revised estimate", () => {

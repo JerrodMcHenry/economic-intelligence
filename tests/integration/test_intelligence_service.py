@@ -57,7 +57,7 @@ def seeded(db_session):
             concept_id=PRIMARY_CONCEPT_ID,
             title="Core PCE",
             units="Index 2017=100",
-            source="FRED",
+            source="BEA",
         )
         db_session.add(series)
     else:
@@ -204,16 +204,19 @@ class TestObservationChangeIntelligence:
     def test_concept_identity_is_preserved_and_provider_is_actual(self, objects) -> None:
         obj = self._seeded_observations(objects)[0]
         assert obj.concepts == [PRIMARY_CONCEPT_ID]
-        assert obj.payload.provider == "FRED"
-        assert obj.payload.provider_series_id == PRIMARY_SERIES_ID
-        assert PRIMARY_SERIES_ID not in obj.concepts[0], "concept identity must not be the provider identifier"
+        # #56B: the row is BEA's, keyed by concept; the object names BEA's
+        # own series id, never the storage key.
+        assert obj.payload.provider == "BEA"
+        assert obj.payload.provider_series_id == "DPCCRG"
+        assert obj.payload.provider_series_id not in obj.concepts[0], "concept identity must not be the provider identifier"
+        assert obj.evidence[0].provider_series_id == "DPCCRG"
 
     def test_evidence_resolves_to_the_observation(self, objects) -> None:
         obj = self._seeded_observations(objects)[0]
         assert obj.evidence
         ref = obj.evidence[0]
         assert ref.concept_id == PRIMARY_CONCEPT_ID
-        assert ref.provider == "FRED"
+        assert (ref.provider, ref.provider_series_id) == ("BEA", "DPCCRG")
         assert ref.observation_date == obj.effective_period
         assert ref.value == obj.payload.new_value
 

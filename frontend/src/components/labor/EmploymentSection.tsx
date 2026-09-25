@@ -68,7 +68,7 @@ export function EmploymentSection({ employment, methodologyId, dataBasis }: { em
       <div className="mt-3">
         <EvidenceDisclosure
           label="Employment"
-          unitLabel="Thousands of persons"
+          unitLabel="Jobs"
           observations={employment.observations}
           methodologyId={methodologyId}
           dataBasis={dataBasis}

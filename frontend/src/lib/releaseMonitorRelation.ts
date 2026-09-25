@@ -35,8 +35,9 @@
  * two fixed sets, not a generic n-domain registry.
  */
 export const CANONICAL_MONITOR_RELEASE_IDS = {
-  INFLATION: new Set<string>(["10", "54"]), // Consumer Price Index; Personal Income and Outlays
-  LABOR: new Set<string>(["50"]), // Employment Situation
+  // #56B: the publishers' own releases (BLS, BEA), replacing FRED ids 10/54/50.
+  INFLATION: new Set<string>(["cpi", "pio"]), // Consumer Price Index; Personal Income and Outlays
+  LABOR: new Set<string>(["empsit"]), // Employment Situation
 } as const;
 
 export type CanonicalMonitorDomain = "INFLATION" | "LABOR";

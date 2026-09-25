@@ -68,12 +68,22 @@ RUN apt-get update \
 # ONLY, never the `dev` extra (pytest is never installed in this
 # image; pyproject.toml's own comment already states this discipline,
 # restated here as the image's own behavior, not merely a hope).
+#
+# Increment #56B: dependencies install from `requirements.lock` -- exact
+# versions, every file hash-checked -- and the project itself with
+# `--no-deps`, so nothing is resolved at build time. Unpinned, two
+# builds of one commit could differ, and in #56A CI picked up a new
+# SQLAlchemy between two pushes. The lock is the same one CI tests
+# (`requirements-dev.lock` = this plus the dev extra).
+COPY requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
+
 COPY pyproject.toml ./
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
 
-RUN pip install --no-cache-dir . \
+RUN pip install --no-cache-dir --no-deps . \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 

@@ -37,7 +37,7 @@ export const CPI: Explanation = {
     "A measure of the average change in prices paid by consumers for a broad basket of goods and services, published by the Bureau of Labor Statistics.",
   whyItMatters:
     "It's one of the most widely followed inflation measures in the United States. Economic Intelligence uses Core CPI to check whether Core PCE's momentum reading is confirmed by a second, independently constructed measure.",
-  sourceNote: "Series: CPIAUCSL (headline) / CPILFESL (core) · Source: FRED",
+  sourceNote: "Series: CUSR0000SA0 (headline) / CUSR0000SA0L1E (core) · Source: U.S. Bureau of Labor Statistics",
 };
 
 export const PCE: Explanation = {
@@ -47,7 +47,7 @@ export const PCE: Explanation = {
     "A measure of the average change in prices paid by or on behalf of consumers, published by the Bureau of Economic Analysis, based on what people actually buy.",
   whyItMatters:
     "The Federal Reserve's 2% inflation objective is defined in terms of PCE, not CPI -- which is why Economic Intelligence uses Headline PCE for the target comparison and Core PCE as its primary momentum signal.",
-  sourceNote: "Series: PCEPI (headline) / PCEPILFE (core) · Source: FRED",
+  sourceNote: "Series: DPCERG (headline) / DPCCRG (core) · Source: U.S. Bureau of Economic Analysis",
 };
 
 export const CORE_PCE: Explanation = {
@@ -57,7 +57,7 @@ export const CORE_PCE: Explanation = {
     "The PCE price index excluding food and energy -- Economic Intelligence's primary signal for underlying inflation momentum.",
   whyItMatters:
     "It's the measure the Federal Reserve itself weighs most heavily when judging underlying inflation pressure, which is why it's Economic Intelligence's primary series rather than a secondary one.",
-  sourceNote: "Series: PCEPILFE · Methodology: inflation_v1.0",
+  sourceNote: "Series: DPCCRG (BEA) · Methodology: inflation_v1.0",
 };
 
 export const CORE_CPI: Explanation = {
@@ -67,7 +67,7 @@ export const CORE_CPI: Explanation = {
     "The Consumer Price Index excluding food and energy -- a second, independently constructed measure of underlying inflation.",
   whyItMatters:
     "Because Core CPI comes from different survey data than Core PCE, Economic Intelligence uses it only to check whether Core PCE's momentum reading is corroborated -- never to override it.",
-  sourceNote: "Series: CPILFESL · Methodology: inflation_v1.0",
+  sourceNote: "Series: CUSR0000SA0L1E (BLS) · Methodology: inflation_v1.0",
 };
 
 export const THREE_MONTH_ANNUALIZED: Explanation = {

@@ -58,7 +58,7 @@ const CORE_QUESTIONS: ReadonlyArray<{ question: string; answer: string; answered
 const PIPELINE: ReadonlyArray<{ step: string; description: string }> = [
   {
     step: "Trusted economic data",
-    description: "Official series from FRED, organized around the economic release calendar.",
+    description: "Official series from BLS, BEA, Treasury and Census, organized around the economic release calendar.",
   },
   {
     step: "Deterministic analysis",
@@ -81,7 +81,7 @@ const PIPELINE: ReadonlyArray<{ step: string; description: string }> = [
 const TRUST_PRINCIPLES: ReadonlyArray<{ title: string; body: string }> = [
   {
     title: "Sourced economic data",
-    body: "Every figure traces to a named FRED series — never an estimate the product invented.",
+    body: "Every figure traces to a named agency series — never an estimate the product invented.",
   },
   {
     title: "Deterministic calculations",

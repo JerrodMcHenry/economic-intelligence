@@ -30,7 +30,7 @@ export function ReleaseScheduleDisclosure() {
         ingested, or reflected in Economic Intelligence analysis.
       </p>
       <p className="mt-1 max-w-prose text-xs text-fg-muted">
-        Schedules are sourced from FRED, Federal Reserve Bank of St. Louis.
+        Schedules are the publishers' own: the U.S. Bureau of Labor Statistics and the U.S. Bureau of Economic Analysis.
       </p>
     </>
   );

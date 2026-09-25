@@ -24,6 +24,7 @@ teardown, so this never leaks into another test).
 from datetime import date, timedelta
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
@@ -63,22 +64,20 @@ class TestActiveReleaseCatalog:
         _deactivate_curated_releases(db_session)
         assert ReleaseRepository(db_session).get_active_releases() == []
 
-    def test_curated_catalog_is_active_by_default(self, db_session):
-        """The migration-seeded catalog itself, read back through the
-        same repository method sync uses -- proves the six rows this
-        follow-up seeded are genuinely active, deterministic, and
-        exactly six, not a coincidence of the tests above."""
+    def test_the_active_catalog_is_the_publishers_own_releases(self, db_session):
+        """#56B: BLS CPI, BLS Employment Situation and BEA Personal Income
+        and Outlays are the active catalog; the six FRED rows the
+        original migration seeded are kept -- their occurrences are
+        history -- but INACTIVE."""
         active = ReleaseRepository(db_session).get_active_releases()
-        curated = [r for r in active if r.provider_release_id in {"9", "10", "50", "53", "54", "192"}]
-        assert sorted(r.name for r in curated) == [
-            "Advance Monthly Sales for Retail and Food Services",
-            "Consumer Price Index",
-            "Employment Situation",
-            "Gross Domestic Product",
-            "Job Openings and Labor Turnover Survey",
-            "Personal Income and Outlays",
+        assert sorted((r.provider, r.provider_release_id, r.name) for r in active) == [
+            ("BEA", "pio", "Personal Income and Outlays"),
+            ("BLS", "cpi", "Consumer Price Index"),
+            ("BLS", "empsit", "Employment Situation"),
         ]
-        assert all(r.provider == "FRED" for r in curated)
+        fred = db_session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider == "FRED")).scalars().all()
+        assert sorted(r.provider_release_id for r in fred) == sorted(["9", "10", "50", "53", "54", "192"])
+        assert not any(r.active for r in fred)
 
 
 class TestProviderIdentityLookup:
@@ -89,10 +88,12 @@ class TestProviderIdentityLookup:
         assert found.name == "Custom Release"
 
     def test_finds_a_real_curated_release_by_provider_identity(self, db_session):
-        found = ReleaseRepository(db_session).get_release_by_provider_identity("FRED", "10")
+        found = ReleaseRepository(db_session).get_release_by_provider_identity("BLS", "cpi")
         assert found is not None
         assert found.name == "Consumer Price Index"
         assert found.active is True
+        retired = ReleaseRepository(db_session).get_release_by_provider_identity("FRED", "10")
+        assert retired is not None and retired.active is False
 
     def test_unknown_provider_identity_returns_none(self, db_session):
         assert ReleaseRepository(db_session).get_release_by_provider_identity("FRED", "999999") is None

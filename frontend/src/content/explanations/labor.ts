@@ -34,20 +34,20 @@ export const EMPLOYMENT: Explanation = {
   id: "labor.employment",
   title: "Employment",
   definition:
-    "The payroll employment side of the Labor Monitor, based on Total Nonfarm Payrolls (PAYEMS) -- how many jobs the economy is adding or losing, and whether that pace is improving or worsening.",
+    "The payroll employment side of the Labor Monitor, based on BLS total nonfarm payroll employment (CES0000000001) -- how many jobs the economy is adding or losing, and whether that pace is improving or worsening.",
   whyItMatters:
     "Payroll employment is one of the most closely watched monthly economic releases, both for its own sake and as an early read on broader economic momentum.",
-  sourceNote: "Series: PAYEMS · Methodology: labor_v1.0",
+  sourceNote: "Series: CES0000000001 (BLS) · Methodology: labor_v1.0",
 };
 
 export const UNEMPLOYMENT: Explanation = {
   id: "labor.unemployment",
   title: "Unemployment trend",
   definition:
-    "The unemployment-rate side of the Labor Monitor, based on the civilian Unemployment Rate (UNRATE) -- comparing its recent average against its own average from a year earlier.",
+    "The unemployment-rate side of the Labor Monitor, based on the BLS civilian unemployment rate (LNS14000000) -- comparing its recent average against its own average from a year earlier.",
   whyItMatters:
     "Comparing against a year ago, rather than the prior month, smooths out normal month-to-month noise and shows whether the labor market is trending looser or tighter over a longer horizon.",
-  sourceNote: "Series: UNRATE · Methodology: labor_v1.0",
+  sourceNote: "Series: LNS14000000 (BLS) · Methodology: labor_v1.0",
 };
 
 export const EMPLOYMENT_CONDITION_CONCEPT: Explanation = {
@@ -142,7 +142,7 @@ const EMPLOYMENT_STATE_EXPLANATIONS: Record<EmploymentState, Explanation> = {
   INSUFFICIENT_DATA: {
     id: "labor.employment-state-insufficient-data",
     title: "Insufficient data",
-    definition: "Economic Intelligence does not have all the persisted PAYEMS observations required to calculate this state.",
+    definition: "Economic Intelligence does not have all the persisted payroll observations required to calculate this state.",
   },
 };
 
@@ -157,7 +157,7 @@ const EMPLOYMENT_CONDITION_EXPLANATIONS: Record<EmploymentCondition, Explanation
   INSUFFICIENT_DATA: {
     id: "labor.condition-insufficient-data",
     title: "Insufficient data",
-    definition: "Economic Intelligence does not have the persisted PAYEMS observations required to calculate condition.",
+    definition: "Economic Intelligence does not have the persisted payroll observations required to calculate condition.",
   },
 };
 
@@ -172,7 +172,7 @@ const EMPLOYMENT_MOMENTUM_EXPLANATIONS: Record<EmploymentMomentum, Explanation> 
   INSUFFICIENT_DATA: {
     id: "labor.momentum-insufficient-data",
     title: "Insufficient data",
-    definition: "Economic Intelligence does not have the persisted PAYEMS observations required to calculate momentum.",
+    definition: "Economic Intelligence does not have the persisted payroll observations required to calculate momentum.",
   },
 };
 
@@ -187,7 +187,7 @@ const UNEMPLOYMENT_TREND_EXPLANATIONS: Record<UnemploymentTrendState, Explanatio
   INSUFFICIENT_DATA: {
     id: "labor.unemployment-insufficient-data",
     title: "Insufficient data",
-    definition: "Economic Intelligence does not have the persisted UNRATE observations required to calculate this trend.",
+    definition: "Economic Intelligence does not have the persisted unemployment-rate observations required to calculate this trend.",
   },
 };
 

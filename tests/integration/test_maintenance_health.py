@@ -25,8 +25,8 @@ from tests.conftest import migrate_schema_drift_database
 
 pytestmark = pytest.mark.integration
 
-_HEAD = "a6f1c3d95e20"
-_ONE_BEFORE_HEAD = "e7b3d51c8a94"
+_HEAD = "b8d2e4f60a17"
+_ONE_BEFORE_HEAD = "a6f1c3d95e20"
 NOW = datetime(2026, 9, 15, 12, 0, 0, tzinfo=timezone.utc)
 STALE_THRESHOLD = timedelta(hours=3)
 UNFINISHED_GRACE = timedelta(minutes=30)

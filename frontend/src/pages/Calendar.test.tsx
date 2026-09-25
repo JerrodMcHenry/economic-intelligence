@@ -154,7 +154,7 @@ describe("Upcoming Releases", () => {
     resolveBoth({
       upcoming: buildReleaseListResponse({
         releases: [
-          buildReleaseOccurrenceItem({ release_id: 1, name: "Consumer Price Index", provider_release_id: "10" }),
+          buildReleaseOccurrenceItem({ release_id: 1, name: "Consumer Price Index", provider_release_id: "cpi" }),
           buildReleaseOccurrenceItem({ release_id: 2, name: "Job Openings and Labor Turnover Survey", provider_release_id: "192" }),
         ],
       }),
@@ -183,7 +183,7 @@ describe("Upcoming Releases", () => {
     // The #45A finding this increment exists to close.
     resolveBoth({
       upcoming: buildReleaseListResponse({
-        releases: [buildReleaseOccurrenceItem({ release_id: 1, name: "Consumer Price Index", provider_release_id: "10" })],
+        releases: [buildReleaseOccurrenceItem({ release_id: 1, name: "Consumer Price Index", provider_release_id: "cpi" })],
       }),
     });
     renderPage();
@@ -401,7 +401,7 @@ describe("presentation labels and accessible names", () => {
   it("shows the canonical name unchanged for a release with no shortening entry", async () => {
     resolveBoth({
       upcoming: buildReleaseListResponse({
-        releases: [buildReleaseOccurrenceItem({ provider_release_id: "10", name: "Consumer Price Index" })],
+        releases: [buildReleaseOccurrenceItem({ provider_release_id: "cpi", name: "Consumer Price Index" })],
       }),
     });
     renderPage();
@@ -413,7 +413,7 @@ describe("presentation labels and accessible names", () => {
   it("shows the category tag for a curated release", async () => {
     resolveBoth({
       upcoming: buildReleaseListResponse({
-        releases: [buildReleaseOccurrenceItem({ provider_release_id: "10", name: "Consumer Price Index" })],
+        releases: [buildReleaseOccurrenceItem({ provider_release_id: "cpi", name: "Consumer Price Index" })],
       }),
     });
     renderPage();
@@ -479,7 +479,7 @@ describe("explanations (Increment #17C)", () => {
     expect(screen.getByText(/scheduled publication of official economic data/i)).toBeInTheDocument();
   });
 
-  it("offers a 'Scheduled date' explanation naming FRED as the source", async () => {
+  it("offers a 'Scheduled date' explanation naming the publishers' schedules as the source", async () => {
     resolveBoth();
     renderPage();
 
@@ -487,14 +487,14 @@ describe("explanations (Increment #17C)", () => {
     const user = userEvent.setup();
     await user.click(within(section).getByLabelText("What does Scheduled date mean?"));
 
-    expect(within(section).getByText("Source: FRED release calendar")).toBeInTheDocument();
+    expect(within(section).getByText("Source: BLS and BEA release schedules")).toBeInTheDocument();
   });
 
   it("opens a curated explanation for each of the six curated V1 release types, keyed by provider_release_id", async () => {
     const curated: ReadonlyArray<[string, string, RegExp]> = [
-      ["10", "Consumer Price Index (CPI)", /bureau of labor statistics|prices/i],
-      ["54", "Personal Income and Outlays", /pce price index/i],
-      ["50", "Employment Situation", /labor|employment|payroll/i],
+      ["cpi", "Consumer Price Index (CPI)", /bureau of labor statistics|prices/i],
+      ["pio", "Personal Income and Outlays", /pce price index/i],
+      ["empsit", "Employment Situation", /labor|employment|payroll/i],
       ["192", "Job Openings and Labor Turnover Survey (JOLTS)", /job openings|turnover/i],
       ["53", "Gross Domestic Product (GDP)", /goods and services|economic activity/i],
       ["9", "Advance Monthly Sales for Retail and Food Services", /early estimate/i],

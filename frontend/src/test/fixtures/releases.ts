@@ -9,8 +9,8 @@ export function buildReleaseOccurrenceItem(overrides: Partial<ReleaseOccurrenceI
   return {
     release_id: 1,
     name: "Consumer Price Index",
-    provider: "FRED",
-    provider_release_id: "10",
+    provider: "BLS",
+    provider_release_id: "cpi",
     official_url: null,
     scheduled_date: "2026-09-17",
     schedule_status: "SCHEDULED",

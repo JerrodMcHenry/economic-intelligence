@@ -322,3 +322,24 @@ def migrate_schema_drift_database(schema_drift_database_url: str, revision: str)
     assert upgrade_result.returncode == 0, (
         f"Failed to upgrade the schema-drift database to {revision!r}: {upgrade_result.stdout}\n{upgrade_result.stderr}"
     )
+
+
+# ---------------------------------------------------------------------
+# Increment #56B: no test may reach BLS or BEA.
+#
+# Release processing and maintenance now fetch from BLS/BEA through
+# `app.clients.bounded_http`. A test that forgot to stub its source --
+# or a date-dependent test that happened to find a real scheduled release
+# due -- would otherwise make a live request. This makes that impossible:
+# every first-party connection attempt fails loudly. The client tests'
+# own `httpx.MockTransport` patches the same attribute more narrowly, so
+# they are unaffected.
+# ---------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _no_first_party_network(monkeypatch):
+    from app.clients import bounded_http
+
+    def refuse(*args, **kwargs):
+        raise RuntimeError("Tests must not make real BLS/BEA requests; stub the client or its source.")
+
+    monkeypatch.setattr(bounded_http, "_new_client", refuse)

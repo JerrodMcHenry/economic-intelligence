@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import { CANONICAL_MONITOR_RELEASE_IDS, canonicalMonitorDomain, releaseMonitorCta } from "./releaseMonitorRelation";
 
 describe("CANONICAL_MONITOR_RELEASE_IDS -- migration-verified, not releaseCategory()-derived (docs/product/overview-attention-model-v1.md §3A)", () => {
-  it("maps CPI ('10') and Personal Income and Outlays ('54') to Inflation", () => {
-    expect(CANONICAL_MONITOR_RELEASE_IDS.INFLATION.has("10")).toBe(true);
-    expect(CANONICAL_MONITOR_RELEASE_IDS.INFLATION.has("54")).toBe(true);
+  it("maps CPI ('cpi') and Personal Income and Outlays ('pio') to Inflation", () => {
+    expect(CANONICAL_MONITOR_RELEASE_IDS.INFLATION.has("cpi")).toBe(true);
+    expect(CANONICAL_MONITOR_RELEASE_IDS.INFLATION.has("pio")).toBe(true);
   });
 
-  it("maps Employment Situation ('50') to Labor", () => {
-    expect(CANONICAL_MONITOR_RELEASE_IDS.LABOR.has("50")).toBe(true);
+  it("maps Employment Situation ('empsit') to Labor", () => {
+    expect(CANONICAL_MONITOR_RELEASE_IDS.LABOR.has("empsit")).toBe(true);
   });
 
   it("THE JOLTS REGRESSION TEST: '192' is in neither set, despite releaseCategory() tagging it 'Labor'", () => {
@@ -27,12 +27,12 @@ describe("CANONICAL_MONITOR_RELEASE_IDS -- migration-verified, not releaseCatego
 
 describe("canonicalMonitorDomain", () => {
   it("returns INFLATION for CPI and Personal Income and Outlays", () => {
-    expect(canonicalMonitorDomain("10")).toBe("INFLATION");
-    expect(canonicalMonitorDomain("54")).toBe("INFLATION");
+    expect(canonicalMonitorDomain("cpi")).toBe("INFLATION");
+    expect(canonicalMonitorDomain("pio")).toBe("INFLATION");
   });
 
   it("returns LABOR for Employment Situation", () => {
-    expect(canonicalMonitorDomain("50")).toBe("LABOR");
+    expect(canonicalMonitorDomain("empsit")).toBe("LABOR");
   });
 
   it("returns null for JOLTS, GDP, Advance Retail Sales, and any unmapped release", () => {
@@ -43,16 +43,16 @@ describe("canonicalMonitorDomain", () => {
 });
 
 describe("releaseMonitorCta -- the frozen exact per-release navigation table (§17)", () => {
-  it("CPI ('10') -> View Inflation -> /inflation", () => {
-    expect(releaseMonitorCta("10")).toEqual({ label: "View Inflation →", to: "/inflation" });
+  it("CPI ('cpi') -> View Inflation -> /inflation", () => {
+    expect(releaseMonitorCta("cpi")).toEqual({ label: "View Inflation →", to: "/inflation" });
   });
 
-  it("Personal Income and Outlays ('54') -> View Inflation -> /inflation", () => {
-    expect(releaseMonitorCta("54")).toEqual({ label: "View Inflation →", to: "/inflation" });
+  it("Personal Income and Outlays ('pio') -> View Inflation -> /inflation", () => {
+    expect(releaseMonitorCta("pio")).toEqual({ label: "View Inflation →", to: "/inflation" });
   });
 
-  it("Employment Situation ('50') -> View Jobs -> /jobs", () => {
-    expect(releaseMonitorCta("50")).toEqual({ label: "View Jobs →", to: "/jobs" });
+  it("Employment Situation ('empsit') -> View Jobs -> /jobs", () => {
+    expect(releaseMonitorCta("empsit")).toEqual({ label: "View Jobs →", to: "/jobs" });
   });
 
   it("JOLTS ('192') -> View Calendar -> /calendar -- never /labor", () => {

@@ -57,10 +57,14 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
-from app.clients.fred import FREDClient
+from app.clients.bea import BEAClient
+from app.clients.bls import BLSClient
 from app.core.config import settings
 from app.core.schema_compatibility import check_schema_compatibility
+from app.db.session import session_scope
+from app.services.first_party_source import FirstPartyObservationSource
 from app.services.maintenance import DEFAULT_RETRY_WINDOW_DAYS, MaintenanceOrchestrator, MaintenanceSweepOutcome
+from app.services.release_schedule import schedule_status, sync_schedule
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -68,9 +72,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     as_of_date = args.as_of_date or datetime.now(timezone.utc).date()
 
-    if not settings.fred_api_key:
-        print("Operational failure: FRED integration is not configured on this server.", file=sys.stderr)
-        return 2
+    # #56B: no FRED key is needed. Inflation and Jobs come from BLS
+    # (keyless, or `BLS_API_KEY`) and BEA (keyless).
     if not settings.database_url:
         print("Operational failure: database is not configured on this server.", file=sys.stderr)
         return 2
@@ -93,8 +96,19 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    client = FREDClient(api_key=settings.fred_api_key, timeout=settings.fred_timeout_seconds)
-    orchestrator = MaintenanceOrchestrator(client)
+    # #56B: write the committed BLS/BEA schedule into occurrences first
+    # (idempotent), so a deploy that ships next year's dates takes effect
+    # on the next sweep with no separate step to forget.
+    try:
+        with session_scope() as session:
+            synced = sync_schedule(session)
+    except OperationalError:
+        print("Operational failure: database is currently unavailable.", file=sys.stderr)
+        return 2
+    schedule_problem = _report_schedule(as_of_date, synced.missing_catalog_releases)
+
+    source = FirstPartyObservationSource(BLSClient(api_key=settings.bls_api_key), BEAClient(), today=as_of_date)
+    orchestrator = MaintenanceOrchestrator(source)
 
     try:
         outcome = orchestrator.run_sweep(as_of_date, retry_window_days=args.retry_window_days)
@@ -106,7 +120,24 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     _print_summary(outcome)
-    return 1 if outcome.failed_count > 0 else 0
+    return 1 if outcome.failed_count > 0 or schedule_problem else 0
+
+
+def _report_schedule(as_of_date: date, missing_catalog_releases: tuple[str, ...]) -> bool:
+    """Print every release's schedule state. True when scheduled updates
+    have stopped or cannot run (EXPIRED/MISSING), which makes the sweep
+    exit 1 -- a scheduler's failure alert, not a line nobody reads."""
+    problem = False
+    for status in schedule_status(as_of_date):
+        state = "MISSING" if f"{status.provider}/{status.provider_release_id}" in missing_catalog_releases else status.state
+        if state in {"EXPIRED", "MISSING"}:
+            problem = True
+        line = status.describe() if state == status.state else (
+            f"{status.provider} {status.provider_release_id} ({status.name}): MISSING: release is not in the "
+            "active catalog -- run `python -m app.operations.release migrate`"
+        )
+        print(f"Schedule: {line}", file=sys.stderr if state != "OK" else sys.stdout)
+    return problem
 
 
 def _build_parser() -> argparse.ArgumentParser:

@@ -490,7 +490,7 @@ describe("Releases", () => {
       buildReleaseOccurrenceItem({ release_id: 1, name: "Advance Retail Sales", provider_release_id: "9", scheduled_date: "2026-09-16" }),
       buildReleaseOccurrenceItem({ release_id: 2, name: "Job Openings and Labor Turnover Survey", provider_release_id: "192", scheduled_date: "2026-09-29" }),
       buildReleaseOccurrenceItem({ release_id: 3, name: "Gross Domestic Product", provider_release_id: "53", scheduled_date: "2026-09-30" }),
-      buildReleaseOccurrenceItem({ release_id: 4, name: "Consumer Price Index", provider_release_id: "10", scheduled_date: "2026-10-14" }),
+      buildReleaseOccurrenceItem({ release_id: 4, name: "Consumer Price Index", provider_release_id: "cpi", scheduled_date: "2026-10-14" }),
     ];
     resolveAll({ upcoming: buildReleaseListResponse({ releases }) });
     renderPage();
@@ -505,8 +505,8 @@ describe("Releases", () => {
 
   it("THE RELEASE-ROW CTA TEST (§17/§21): each row's next action is keyed by canonical monitor relation, never releaseCategory()", async () => {
     const releases = [
-      buildReleaseOccurrenceItem({ release_id: 1, name: "Consumer Price Index", provider_release_id: "10", scheduled_date: "2026-09-16" }),
-      buildReleaseOccurrenceItem({ release_id: 2, name: "Employment Situation", provider_release_id: "50", scheduled_date: "2026-09-17" }),
+      buildReleaseOccurrenceItem({ release_id: 1, name: "Consumer Price Index", provider_release_id: "cpi", scheduled_date: "2026-09-16" }),
+      buildReleaseOccurrenceItem({ release_id: 2, name: "Employment Situation", provider_release_id: "empsit", scheduled_date: "2026-09-17" }),
       buildReleaseOccurrenceItem({ release_id: 3, name: "Job Openings and Labor Turnover Survey", provider_release_id: "192", scheduled_date: "2026-09-18" }),
     ];
     resolveAll({ upcoming: buildReleaseListResponse({ releases }) });
@@ -554,7 +554,7 @@ describe("Releases", () => {
   it("Employment Situation naturally appears among Releases -- no special-case Labor logic", async () => {
     resolveAll({
       upcoming: buildReleaseListResponse({
-        releases: [buildReleaseOccurrenceItem({ release_id: 5, name: "Employment Situation", provider_release_id: "50", scheduled_date: "2026-10-02" })],
+        releases: [buildReleaseOccurrenceItem({ release_id: 5, name: "Employment Situation", provider_release_id: "empsit", scheduled_date: "2026-10-02" })],
       }),
     });
     renderPage();

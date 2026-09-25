@@ -5,8 +5,9 @@ subprocess, for speed, but the REAL `app.db.session.session_scope()`
 (via the same `real_session_scope`-style monkeypatch
 tests/integration/test_transaction_and_safety.py and
 test_release_processing_service.py already use), so this proves the
-actual production wiring (settings -> FREDClient -> session_scope ->
-service), not a lookalike. FRED is mocked at the FREDClient-*method*
+actual production wiring (settings -> BLS/BEA source -> session_scope ->
+service), not a lookalike. Since #56B the provider is mocked at the
+`FirstPartyObservationSource` method boundary; before, FRED at the FREDClient-*method*
 boundary, never a live call (see this file's entry in
 test_transaction_and_safety.py's `NETWORK_EXCEPTIONS`).
 """
@@ -16,7 +17,8 @@ from unittest.mock import patch
 
 import pytest
 
-from app.clients.fred import FREDClient, FREDTimeoutError
+from app.clients.bounded_http import ProviderTimeoutError
+from app.services.first_party_source import FirstPartyObservationSource
 from app.db.models import EconomicRelease, EconomicSeries, ReleaseSeriesMapping
 from app.operations.process_release import main
 from app.repositories.release_repository import ReleaseRepository
@@ -49,7 +51,7 @@ def _seed_release_mapping_and_occurrence(scheduled_date=AS_OF, provider_release_
         release = EconomicRelease(name="CLI Test Release", provider="FRED", provider_release_id=provider_release_id, active=True)
         session.add(release)
         session.flush()
-        session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id="UNRATE", active=True))
+        session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id="us.unemployment-rate.sa.monthly", active=True))
         occurrence = ReleaseRepository(session).upsert_occurrence(release.id, scheduled_date)
         session.flush()
         return release.id, occurrence.id
@@ -60,7 +62,22 @@ def _cleanup(release_id: int):
 
     with session_scope() as session:
         session.execute(EconomicRelease.__table__.delete().where(EconomicRelease.id == release_id))
-        session.execute(EconomicSeries.__table__.delete().where(EconomicSeries.series_id == "UNRATE"))
+        session.execute(EconomicSeries.__table__.delete().where(EconomicSeries.series_id == "us.unemployment-rate.sa.monthly"))
+
+
+def _seed_imported_unemployment_row():
+    from app.db.session import session_scope
+
+    with session_scope() as session:
+        session.add(
+            EconomicSeries(
+                series_id="us.unemployment-rate.sa.monthly",
+                concept_id="us.unemployment-rate.sa.monthly",
+                title="Unemployment Rate",
+                units="Percent",
+                source="BLS",
+            )
+        )
 
 
 def _seed_employment_situation_occurrence(scheduled_date=AS_OF):
@@ -74,7 +91,7 @@ def _seed_employment_situation_occurrence(scheduled_date=AS_OF):
     from app.db.session import session_scope
 
     with session_scope() as session:
-        release = session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "50")).scalar_one()
+        release = session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "empsit")).scalar_one()
         occurrence = ReleaseRepository(session).upsert_occurrence(release.id, scheduled_date)
         session.flush()
         return occurrence.id
@@ -92,7 +109,7 @@ class TestEmploymentSituationProcessableThroughTheSameCli:
     def test_employment_situation_occurrence_processes_successfully(self, configured_settings, capsys):
         occurrence_id = _seed_employment_situation_occurrence()
         try:
-            with patch.object(FREDClient, "get_observations", return_value=[]):
+            with patch.object(FirstPartyObservationSource, "get_observations", return_value=[]):
                 exit_code = main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
         finally:
             _cleanup_employment_situation_occurrence(occurrence_id)
@@ -112,7 +129,7 @@ class TestValidOccurrence:
             # here deliberately: if it were called, it would attempt a
             # real network request and this test would fail/hang,
             # which is exactly the proof this behavior is correct).
-            with patch.object(FREDClient, "get_observations", return_value=[]):
+            with patch.object(FirstPartyObservationSource, "get_observations", return_value=[]):
                 exit_code = main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
         finally:
             _cleanup(release_id)
@@ -126,9 +143,12 @@ class TestValidOccurrence:
         release_id, occurrence_id = _seed_release_mapping_and_occurrence()
         payload = [{"date": "2026-01-01", "value": "4.1"}]
         try:
-            with patch.object(FREDClient, "get_observations", return_value=payload):
-                with patch.object(FREDClient, "get_series_info", return_value={"id": "UNRATE", "title": "Unemployment Rate", "units": "Percent"}):
-                    exit_code = main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
+            # #56B: a first-party row starts as an imported baseline, so
+            # it exists before release processing sees it (the source
+            # refuses to create one) -- seeded here as the import would.
+            _seed_imported_unemployment_row()
+            with patch.object(FirstPartyObservationSource, "get_observations", return_value=payload):
+                exit_code = main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
         finally:
             _cleanup(release_id)
 
@@ -165,7 +185,7 @@ class TestProviderFailure:
     def test_provider_failure_exits_non_zero_and_reports_it_safely(self, configured_settings, capsys):
         release_id, occurrence_id = _seed_release_mapping_and_occurrence()
         try:
-            with patch.object(FREDClient, "get_observations", side_effect=FREDTimeoutError("timed out")):
+            with patch.object(FirstPartyObservationSource, "get_observations", side_effect=ProviderTimeoutError("BLS", "timed out")):
                 exit_code = main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
         finally:
             _cleanup(release_id)
@@ -174,19 +194,22 @@ class TestProviderFailure:
         out = capsys.readouterr().out
         assert "Status: FAILED_PROVIDER" in out
         assert "provider check failed" in out
-        assert "FRED request timed out." in out
+        assert "BLS request timed out." in out
 
 
 class TestNotConfigured:
-    def test_missing_fred_api_key_exits_non_zero_before_touching_the_database(self, monkeypatch, test_database_url, capsys):
-        from app.core.config import settings
-
-        monkeypatch.setattr(settings, "fred_api_key", None)
-        monkeypatch.setattr(settings, "database_url", test_database_url)
-        exit_code = main(["--occurrence-id", "1"])
-        assert exit_code == 1
-        err = capsys.readouterr().err
-        assert "FRED integration is not configured" in err
+    def test_no_fred_key_is_needed(self, configured_settings, monkeypatch, capsys):
+        """#56B: release processing fetches from BLS and BEA."""
+        monkeypatch.setattr(configured_settings, "fred_api_key", None)
+        release_id, occurrence_id = _seed_release_mapping_and_occurrence()
+        try:
+            with patch.object(FirstPartyObservationSource, "get_observations", return_value=[]):
+                exit_code = main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
+        finally:
+            _cleanup(release_id)
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "FRED" not in captured.out + captured.err
 
     def test_missing_database_url_exits_non_zero(self, monkeypatch):
         from app.core.config import settings
@@ -201,7 +224,7 @@ class TestSafeOutput:
     def test_no_secret_values_ever_appear_in_output(self, configured_settings, capsys):
         release_id, occurrence_id = _seed_release_mapping_and_occurrence()
         try:
-            with patch.object(FREDClient, "get_observations", return_value=[]):
+            with patch.object(FirstPartyObservationSource, "get_observations", return_value=[]):
                 main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
         finally:
             _cleanup(release_id)
@@ -215,7 +238,7 @@ class TestSafeOutput:
     def test_provider_failure_output_never_leaks_a_stack_trace(self, configured_settings, capsys):
         release_id, occurrence_id = _seed_release_mapping_and_occurrence()
         try:
-            with patch.object(FREDClient, "get_observations", side_effect=FREDTimeoutError("timed out")):
+            with patch.object(FirstPartyObservationSource, "get_observations", side_effect=ProviderTimeoutError("BLS", "timed out")):
                 main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
         finally:
             _cleanup(release_id)
@@ -290,9 +313,12 @@ class TestRecordedMonitorResultViaManualProcessing:
         release_id, occurrence_id = _seed_release_mapping_and_occurrence()
         payload = [{"date": "2026-01-01", "value": "4.1"}]
         try:
-            with patch.object(FREDClient, "get_observations", return_value=payload):
-                with patch.object(FREDClient, "get_series_info", return_value={"id": "UNRATE", "title": "Unemployment Rate", "units": "Percent"}):
-                    exit_code = main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
+            # #56B: a first-party row starts as an imported baseline, so
+            # it exists before release processing sees it (the source
+            # refuses to create one) -- seeded here as the import would.
+            _seed_imported_unemployment_row()
+            with patch.object(FirstPartyObservationSource, "get_observations", return_value=payload):
+                exit_code = main(["--occurrence-id", str(occurrence_id), "--as-of-date", AS_OF.isoformat()])
             assert exit_code == 0
 
             with session_scope() as session:

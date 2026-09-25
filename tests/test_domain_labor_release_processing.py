@@ -18,8 +18,9 @@ from app.domain.labor_release_processing import (
 
 
 class TestLaborSeriesIds:
-    def test_exactly_payems_and_unrate(self):
-        assert LABOR_SERIES_IDS == frozenset({"PAYEMS", "UNRATE"})
+    def test_exactly_the_payroll_and_unemployment_storage_rows(self):
+        # #56B: the concept-keyed BLS rows, not FRED's PAYEMS/UNRATE.
+        assert LABOR_SERIES_IDS == frozenset({"us.nonfarm.payroll-employment.sa.monthly", "us.unemployment-rate.sa.monthly"})
 
 
 class TestFrozenHorizonConstants:

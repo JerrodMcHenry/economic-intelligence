@@ -124,20 +124,20 @@ class TestFirstVisitEmptyDatabase:
 
 class TestInflationStructuralChangeEndToEnd:
     def test_a_genuine_state_change_appears_as_a_structural_change(self, db_session):
-        release = _release(db_session, "54")
+        release = _release(db_session, "pio")
         occurrence = _occurrence(db_session, release)
         base = _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002)
         latest = max(base)
-        _seed_series(db_session, "PCEPILFE", base, title="Core PCE")
-        _seed_series(db_session, "PCEPI", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
-        _seed_series(db_session, "CPIAUCSL", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
-        _seed_series(db_session, "CPILFESL", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", base, title="Core PCE")
+        _seed_series(db_session, "us.pce.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
 
         revised = dict(base)
         revised[latest] = base[latest] * 1.25
         with _patched(observations_by_series={
-            "PCEPILFE": _fred_payload(revised),
-            "PCEPI": _fred_payload(_constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002)),
+            "us.pce.core.price-index.sa.monthly": _fred_payload(revised),
+            "us.pce.headline.price-index.sa.monthly": _fred_payload(_constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002)),
         }) as client:
             ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
@@ -166,14 +166,14 @@ class TestLaborUnchangedConfirmationEndToEnd:
     }
 
     def test_a_genuine_recomputation_with_unchanged_state_appears_as_a_recalculation(self, db_session):
-        release = _release(db_session, "50")
+        release = _release(db_session, "empsit")
         occurrence = _occurrence(db_session, release)
-        _seed_series(db_session, "PAYEMS", self._PAYEMS_THOUSANDS, title="PAYEMS", units="Thousands of Persons")
-        _seed_series(db_session, "UNRATE", self._UNRATE_PERCENT, title="UNRATE", units="Percent")
+        _seed_series(db_session, "us.nonfarm.payroll-employment.sa.monthly", self._PAYEMS_THOUSANDS, title="us.nonfarm.payroll-employment.sa.monthly", units="Thousands of Persons")
+        _seed_series(db_session, "us.unemployment-rate.sa.monthly", self._UNRATE_PERCENT, title="us.unemployment-rate.sa.monthly", units="Percent")
 
         period = date(2009, 5, 1)
         revised_value = self._PAYEMS_THOUSANDS[period] - 1  # negligible, keeps top-level state unchanged
-        with _patched(observations_by_series={"PAYEMS": _fred_payload({period: revised_value}), "UNRATE": []}) as client:
+        with _patched(observations_by_series={"us.nonfarm.payroll-employment.sa.monthly": _fred_payload({period: revised_value}), "us.unemployment-rate.sa.monthly": []}) as client:
             ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         response = SinceLastVisitService().get_recap(db_session, None)
@@ -215,15 +215,15 @@ class TestReadOnlyGuarantee:
 
 class TestQueryCountBound:
     def test_query_count_does_not_scale_with_number_of_check_runs(self, db_session):
-        release = _release(db_session, "50")
+        release = _release(db_session, "empsit")
         occurrence = _occurrence(db_session, release)
-        _seed_series(db_session, "PAYEMS", TestLaborUnchangedConfirmationEndToEnd._PAYEMS_THOUSANDS, title="PAYEMS", units="Thousands of Persons")
-        _seed_series(db_session, "UNRATE", TestLaborUnchangedConfirmationEndToEnd._UNRATE_PERCENT, title="UNRATE", units="Percent")
+        _seed_series(db_session, "us.nonfarm.payroll-employment.sa.monthly", TestLaborUnchangedConfirmationEndToEnd._PAYEMS_THOUSANDS, title="us.nonfarm.payroll-employment.sa.monthly", units="Thousands of Persons")
+        _seed_series(db_session, "us.unemployment-rate.sa.monthly", TestLaborUnchangedConfirmationEndToEnd._UNRATE_PERCENT, title="us.unemployment-rate.sa.monthly", units="Percent")
 
         payems = dict(TestLaborUnchangedConfirmationEndToEnd._PAYEMS_THOUSANDS)
         for i, d in enumerate(sorted(payems)[:5]):
             payems[d] = payems[d] - (i + 1)
-            with _patched(observations_by_series={"PAYEMS": _fred_payload({d: payems[d]}), "UNRATE": []}) as client:
+            with _patched(observations_by_series={"us.nonfarm.payroll-employment.sa.monthly": _fred_payload({d: payems[d]}), "us.unemployment-rate.sa.monthly": []}) as client:
                 ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         statements = []
@@ -246,11 +246,11 @@ class TestRaceSafety:
         pattern #25C's own concurrency tests already establish for a
         comparable real-database timing guarantee."""
         with real_session_scope() as setup_session:
-            release = _release(setup_session, "50")
+            release = _release(setup_session, "empsit")
             occurrence = _occurrence(setup_session, release)
             occurrence_id = occurrence.id
-            _seed_series(setup_session, "PAYEMS", TestLaborUnchangedConfirmationEndToEnd._PAYEMS_THOUSANDS, title="PAYEMS", units="Thousands of Persons")
-            _seed_series(setup_session, "UNRATE", TestLaborUnchangedConfirmationEndToEnd._UNRATE_PERCENT, title="UNRATE", units="Percent")
+            _seed_series(setup_session, "us.nonfarm.payroll-employment.sa.monthly", TestLaborUnchangedConfirmationEndToEnd._PAYEMS_THOUSANDS, title="us.nonfarm.payroll-employment.sa.monthly", units="Thousands of Persons")
+            _seed_series(setup_session, "us.unemployment-rate.sa.monthly", TestLaborUnchangedConfirmationEndToEnd._UNRATE_PERCENT, title="us.unemployment-rate.sa.monthly", units="Percent")
 
         try:
             # Simulate the request's own `through` having been captured
@@ -259,7 +259,7 @@ class TestRaceSafety:
 
             revised_value = TestLaborUnchangedConfirmationEndToEnd._PAYEMS_THOUSANDS[date(2009, 5, 1)] - 500
             with real_session_scope() as session:
-                with _patched(observations_by_series={"PAYEMS": _fred_payload({date(2009, 5, 1): revised_value}), "UNRATE": []}) as client:
+                with _patched(observations_by_series={"us.nonfarm.payroll-employment.sa.monthly": _fred_payload({date(2009, 5, 1): revised_value}), "us.unemployment-rate.sa.monthly": []}) as client:
                     ReleaseProcessingService(client).process_occurrence(occurrence_id, session, AS_OF)
 
             with real_session_scope() as verify_session:
@@ -279,7 +279,11 @@ class TestRaceSafety:
                 from app.db.models import ReleaseOccurrence
 
                 cleanup_session.execute(ReleaseOccurrence.__table__.delete().where(ReleaseOccurrence.id == occurrence_id))
-                series = ReleaseProcessingRepository(cleanup_session).get_series_by_series_id("PAYEMS")
-                if series is not None:
-                    cleanup_session.execute(EconomicObservation.__table__.delete().where(EconomicObservation.economic_series_id == series.id))
-                    cleanup_session.execute(EconomicSeries.__table__.delete().where(EconomicSeries.id == series.id))
+                # Both seeded rows (#56B: the unemployment row used to be
+                # left behind, and a stray concept-keyed row now collides
+                # with the first-party import in later tests).
+                for series_id in ("us.nonfarm.payroll-employment.sa.monthly", "us.unemployment-rate.sa.monthly"):
+                    series = ReleaseProcessingRepository(cleanup_session).get_series_by_series_id(series_id)
+                    if series is not None:
+                        cleanup_session.execute(EconomicObservation.__table__.delete().where(EconomicObservation.economic_series_id == series.id))
+                        cleanup_session.execute(EconomicSeries.__table__.delete().where(EconomicSeries.id == series.id))

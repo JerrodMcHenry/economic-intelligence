@@ -26,7 +26,7 @@ def _release(session, name="SLV Test Release", provider_release_id="9701", activ
     return release
 
 
-def _mapping(session, release, series_id="PCEPILFE"):
+def _mapping(session, release, series_id="us.pce.core.price-index.sa.monthly"):
     session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id=series_id, active=True))
     session.flush()
 
@@ -43,20 +43,20 @@ def _check_run(session, occurrence, status="CHANGED", completed_at=None):
 class TestRelevantReleaseIdsBySeries:
     def test_a_release_mapped_to_an_inflation_series_is_relevant_to_inflation_only(self, db_session):
         release = _release(db_session)
-        _mapping(db_session, release, series_id="PCEPILFE")
+        _mapping(db_session, release, series_id="us.pce.core.price-index.sa.monthly")
 
         repo = SinceLastVisitRepository(db_session)
-        inflation_ids, labor_ids = repo.relevant_release_ids_by_series(frozenset({"PCEPILFE"}), frozenset({"PAYEMS"}))
+        inflation_ids, labor_ids = repo.relevant_release_ids_by_series(frozenset({"us.pce.core.price-index.sa.monthly"}), frozenset({"us.nonfarm.payroll-employment.sa.monthly"}))
         assert release.id in inflation_ids
         assert release.id not in labor_ids
 
     def test_an_inactive_mapping_is_excluded(self, db_session):
         release = _release(db_session)
-        db_session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id="PCEPILFE", active=False))
+        db_session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id="us.pce.core.price-index.sa.monthly", active=False))
         db_session.flush()
 
         repo = SinceLastVisitRepository(db_session)
-        inflation_ids, _ = repo.relevant_release_ids_by_series(frozenset({"PCEPILFE"}), frozenset())
+        inflation_ids, _ = repo.relevant_release_ids_by_series(frozenset({"us.pce.core.price-index.sa.monthly"}), frozenset())
         assert release.id not in inflation_ids
 
     def test_an_unmapped_series_release_is_relevant_to_neither(self, db_session):
@@ -64,7 +64,7 @@ class TestRelevantReleaseIdsBySeries:
         _mapping(db_session, release, series_id="FABRICATED_UNMAPPED")
 
         repo = SinceLastVisitRepository(db_session)
-        inflation_ids, labor_ids = repo.relevant_release_ids_by_series(frozenset({"PCEPILFE"}), frozenset({"PAYEMS"}))
+        inflation_ids, labor_ids = repo.relevant_release_ids_by_series(frozenset({"us.pce.core.price-index.sa.monthly"}), frozenset({"us.nonfarm.payroll-employment.sa.monthly"}))
         assert release.id not in inflation_ids
         assert release.id not in labor_ids
 

@@ -14,7 +14,7 @@ directly by the Inflation-impact test classes below (CPI release =
 CPIAUCSL/CPILFESL, Personal Income and Outlays release =
 PCEPI/PCEPILFE). Classification-only tests (NEW/REVISED/UNCHANGED,
 idempotency, provider/database failure) use a synthetic release/
-mapping/series ("UNRATE") well outside the curated catalog, mirroring
+mapping/series ("us.unemployment-rate.sa.monthly") well outside the curated catalog, mirroring
 tests/integration/test_release_calendar_service.py's own discipline.
 """
 
@@ -92,7 +92,7 @@ def _release(session, name="Test Release", provider_release_id="9001", active=Tr
     return release
 
 
-def _mapping(session, release, series_id="UNRATE", active=True):
+def _mapping(session, release, series_id="us.unemployment-rate.sa.monthly", active=True):
     mapping = ReleaseSeriesMapping(economic_release_id=release.id, series_id=series_id, active=active)
     session.add(mapping)
     session.flush()
@@ -112,11 +112,11 @@ def _seed_series(session, series_id: str, values: dict[date, float | None], titl
 
 
 def _cpi_release(session):
-    return session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "10")).scalar_one()
+    return session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "cpi")).scalar_one()
 
 
 def _pio_release(session):
-    return session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "54")).scalar_one()
+    return session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "pio")).scalar_one()
 
 
 def _mock_client(observations_by_series: dict[str, list[dict]] | None = None, info_by_series: dict[str, dict] | None = None):
@@ -180,14 +180,14 @@ class TestEligibilityAndLookup:
         date IS eligible; an early check may simply find nothing new."""
         release = _release(db_session)
         occurrence = _occurrence(db_session, release, scheduled_date=AS_OF)
-        with _patched(observations_by_series={"UNRATE": []}) as client:
+        with _patched(observations_by_series={"us.unemployment-rate.sa.monthly": []}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
         assert result.status == "NO_CHANGE"
 
     def test_past_due_occurrence_is_eligible(self, db_session):
         release = _release(db_session)
         occurrence = _occurrence(db_session, release, scheduled_date=date(2026, 1, 1))
-        with _patched(observations_by_series={"UNRATE": []}) as client:
+        with _patched(observations_by_series={"us.unemployment-rate.sa.monthly": []}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
         assert result.status == "NO_CHANGE"
 
@@ -208,12 +208,12 @@ class TestEligibilityAndLookup:
 class TestObservationClassification:
     def test_new_observation_is_inserted_and_audited(self, db_session):
         release = _release(db_session)
-        _mapping(db_session, release, "UNRATE")
+        _mapping(db_session, release, "us.unemployment-rate.sa.monthly")
         occurrence = _occurrence(db_session, release)
-        series = _seed_series(db_session, "UNRATE", {date(2026, 1, 1): 4.0})
+        series = _seed_series(db_session, "us.unemployment-rate.sa.monthly", {date(2026, 1, 1): 4.0})
 
         payload = _fred_payload({date(2026, 1, 1): 4.0, date(2026, 2, 1): 4.1})
-        with _patched(observations_by_series={"UNRATE": payload}) as client:
+        with _patched(observations_by_series={"us.unemployment-rate.sa.monthly": payload}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert result.status == "CHANGED"
@@ -230,12 +230,12 @@ class TestObservationClassification:
 
     def test_revised_observation_overwrites_canonical_value_and_is_audited(self, db_session):
         release = _release(db_session)
-        _mapping(db_session, release, "UNRATE")
+        _mapping(db_session, release, "us.unemployment-rate.sa.monthly")
         occurrence = _occurrence(db_session, release)
-        series = _seed_series(db_session, "UNRATE", {date(2026, 1, 1): 4.0})
+        series = _seed_series(db_session, "us.unemployment-rate.sa.monthly", {date(2026, 1, 1): 4.0})
 
         payload = _fred_payload({date(2026, 1, 1): 4.2})
-        with _patched(observations_by_series={"UNRATE": payload}) as client:
+        with _patched(observations_by_series={"us.unemployment-rate.sa.monthly": payload}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert result.status == "CHANGED"
@@ -249,12 +249,12 @@ class TestObservationClassification:
 
     def test_unchanged_observation_produces_no_write_and_no_audit_row(self, db_session):
         release = _release(db_session)
-        _mapping(db_session, release, "UNRATE")
+        _mapping(db_session, release, "us.unemployment-rate.sa.monthly")
         occurrence = _occurrence(db_session, release)
-        _seed_series(db_session, "UNRATE", {date(2026, 1, 1): 4.0})
+        _seed_series(db_session, "us.unemployment-rate.sa.monthly", {date(2026, 1, 1): 4.0})
 
         payload = _fred_payload({date(2026, 1, 1): 4.0})
-        with _patched(observations_by_series={"UNRATE": payload}) as client:
+        with _patched(observations_by_series={"us.unemployment-rate.sa.monthly": payload}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert result.status == "NO_CHANGE"
@@ -263,12 +263,12 @@ class TestObservationClassification:
 
     def test_missing_to_present_transition_is_revised_not_dropped(self, db_session):
         release = _release(db_session)
-        _mapping(db_session, release, "UNRATE")
+        _mapping(db_session, release, "us.unemployment-rate.sa.monthly")
         occurrence = _occurrence(db_session, release)
-        _seed_series(db_session, "UNRATE", {date(2026, 1, 1): None})
+        _seed_series(db_session, "us.unemployment-rate.sa.monthly", {date(2026, 1, 1): None})
 
         payload = _fred_payload({date(2026, 1, 1): 4.0})
-        with _patched(observations_by_series={"UNRATE": payload}) as client:
+        with _patched(observations_by_series={"us.unemployment-rate.sa.monthly": payload}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         change = result.observation_changes[0]
@@ -278,12 +278,12 @@ class TestObservationClassification:
 
     def test_present_to_missing_transition_is_revised_not_dropped(self, db_session):
         release = _release(db_session)
-        _mapping(db_session, release, "UNRATE")
+        _mapping(db_session, release, "us.unemployment-rate.sa.monthly")
         occurrence = _occurrence(db_session, release)
-        _seed_series(db_session, "UNRATE", {date(2026, 1, 1): 4.0})
+        _seed_series(db_session, "us.unemployment-rate.sa.monthly", {date(2026, 1, 1): 4.0})
 
         payload = _fred_payload({date(2026, 1, 1): None})
-        with _patched(observations_by_series={"UNRATE": payload}) as client:
+        with _patched(observations_by_series={"us.unemployment-rate.sa.monthly": payload}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         change = result.observation_changes[0]
@@ -293,17 +293,17 @@ class TestObservationClassification:
 
     def test_new_series_never_before_synced_is_created_via_get_series_info(self, db_session):
         release = _release(db_session)
-        _mapping(db_session, release, "UNRATE")
+        _mapping(db_session, release, "us.unemployment-rate.sa.monthly")
         occurrence = _occurrence(db_session, release)
 
         payload = _fred_payload({date(2026, 1, 1): 4.0})
         with _patched(
-            observations_by_series={"UNRATE": payload}, info_by_series={"UNRATE": {"id": "UNRATE", "title": "Unemployment Rate", "units": "Percent"}}
+            observations_by_series={"us.unemployment-rate.sa.monthly": payload}, info_by_series={"us.unemployment-rate.sa.monthly": {"id": "us.unemployment-rate.sa.monthly", "title": "Unemployment Rate", "units": "Percent"}}
         ) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert result.status == "CHANGED"
-        series = ReleaseProcessingRepository(db_session).get_series_by_series_id("UNRATE")
+        series = ReleaseProcessingRepository(db_session).get_series_by_series_id("us.unemployment-rate.sa.monthly")
         assert series is not None
         assert series.title == "Unemployment Rate"
 
@@ -316,11 +316,11 @@ class TestObservationClassification:
 class TestMultipleChanges:
     def test_one_new_two_revised_n_unchanged_counted_and_written_correctly(self, db_session):
         release = _release(db_session)
-        _mapping(db_session, release, "UNRATE")
+        _mapping(db_session, release, "us.unemployment-rate.sa.monthly")
         occurrence = _occurrence(db_session, release)
         _seed_series(
             db_session,
-            "UNRATE",
+            "us.unemployment-rate.sa.monthly",
             {date(2026, 1, 1): 4.0, date(2026, 2, 1): 4.0, date(2026, 3, 1): 4.0, date(2026, 4, 1): 4.0},
         )
 
@@ -333,7 +333,7 @@ class TestMultipleChanges:
                 date(2026, 5, 1): 4.2,  # new
             }
         )
-        with _patched(observations_by_series={"UNRATE": payload}) as client:
+        with _patched(observations_by_series={"us.unemployment-rate.sa.monthly": payload}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         outcome = result.series_outcomes[0]
@@ -345,7 +345,7 @@ class TestMultipleChanges:
 
         # No duplicate rows, and only the actually-changed dates changed.
         repo = ReleaseProcessingRepository(db_session)
-        series = repo.get_series_by_series_id("UNRATE")
+        series = repo.get_series_by_series_id("us.unemployment-rate.sa.monthly")
         assert repo.get_observations_by_date(series.id) == {
             date(2026, 1, 1): 4.0,
             date(2026, 2, 1): 4.05,
@@ -363,9 +363,9 @@ class TestMultipleChanges:
 class TestBoundedLookback:
     def test_fred_is_called_with_the_exact_five_year_observation_start(self, db_session):
         release = _release(db_session)
-        _mapping(db_session, release, "UNRATE")
+        _mapping(db_session, release, "us.unemployment-rate.sa.monthly")
         occurrence = _occurrence(db_session, release)
-        _seed_series(db_session, "UNRATE", {})
+        _seed_series(db_session, "us.unemployment-rate.sa.monthly", {})
 
         mock_get_observations = Mock(return_value=[])
         with patch.object(FREDClient, "get_observations", mock_get_observations):
@@ -378,9 +378,9 @@ class TestBoundedLookback:
 
     def test_leap_day_as_of_date_uses_exact_calendar_arithmetic(self, db_session):
         release = _release(db_session)
-        _mapping(db_session, release, "UNRATE")
+        _mapping(db_session, release, "us.unemployment-rate.sa.monthly")
         occurrence = _occurrence(db_session, release, scheduled_date=date(2024, 2, 29))
-        _seed_series(db_session, "UNRATE", {})
+        _seed_series(db_session, "us.unemployment-rate.sa.monthly", {})
 
         mock_get_observations = Mock(return_value=[])
         with patch.object(FREDClient, "get_observations", mock_get_observations):
@@ -399,11 +399,11 @@ class TestProviderFailureIsolation:
     def test_one_series_fails_while_sibling_series_still_succeeds(self, db_session):
         release = _cpi_release(db_session)
         occurrence = _occurrence(db_session, release)
-        cpi_series = _seed_series(db_session, "CPIAUCSL", {date(2026, 1, 1): 300.0}, title="CPI", units="Index")
-        _seed_series(db_session, "CPILFESL", {date(2026, 1, 1): 280.0}, title="Core CPI", units="Index")
+        cpi_series = _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", {date(2026, 1, 1): 300.0}, title="CPI", units="Index")
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", {date(2026, 1, 1): 280.0}, title="Core CPI", units="Index")
 
         def _get_observations(series_id, **kwargs):
-            if series_id == "CPILFESL":
+            if series_id == "us.cpi.core.price-index.sa.monthly":
                 raise FREDTimeoutError("timed out")
             return _fred_payload({date(2026, 1, 1): 300.0, date(2026, 2, 1): 301.0})
 
@@ -413,25 +413,25 @@ class TestProviderFailureIsolation:
 
         assert result.status == "PARTIAL_FAILURE"
         outcomes = {o.series_id: o for o in result.series_outcomes}
-        assert outcomes["CPIAUCSL"].succeeded is True
-        assert outcomes["CPILFESL"].succeeded is False
-        assert outcomes["CPILFESL"].error == "FRED request timed out."
+        assert outcomes["us.cpi.headline.price-index.sa.monthly"].succeeded is True
+        assert outcomes["us.cpi.core.price-index.sa.monthly"].succeeded is False
+        assert outcomes["us.cpi.core.price-index.sa.monthly"].error == "FRED request timed out."
 
         repo = ReleaseProcessingRepository(db_session)
         # CPIAUCSL's valid new observation was persisted despite CPILFESL's failure.
         assert repo.get_observations_by_date(cpi_series.id) == {date(2026, 1, 1): 300.0, date(2026, 2, 1): 301.0}
         # CPILFESL was never touched -- no fabricated data for the failed series.
-        core_cpi_series = repo.get_series_by_series_id("CPILFESL")
+        core_cpi_series = repo.get_series_by_series_id("us.cpi.core.price-index.sa.monthly")
         assert repo.get_observations_by_date(core_cpi_series.id) == {date(2026, 1, 1): 280.0}
 
     def test_reversed_the_other_series_fails_instead(self, db_session):
         release = _cpi_release(db_session)
         occurrence = _occurrence(db_session, release)
-        _seed_series(db_session, "CPIAUCSL", {date(2026, 1, 1): 300.0}, title="CPI", units="Index")
-        core_series = _seed_series(db_session, "CPILFESL", {date(2026, 1, 1): 280.0}, title="Core CPI", units="Index")
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", {date(2026, 1, 1): 300.0}, title="CPI", units="Index")
+        core_series = _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", {date(2026, 1, 1): 280.0}, title="Core CPI", units="Index")
 
         def _get_observations(series_id, **kwargs):
-            if series_id == "CPIAUCSL":
+            if series_id == "us.cpi.headline.price-index.sa.monthly":
                 raise FREDAuthError("auth failed")
             return _fred_payload({date(2026, 1, 1): 280.0, date(2026, 2, 1): 281.0})
 
@@ -446,8 +446,8 @@ class TestProviderFailureIsolation:
     def test_all_mapped_series_fail_produces_zero_changes_and_failed_provider_status(self, db_session):
         release = _cpi_release(db_session)
         occurrence = _occurrence(db_session, release)
-        cpi_series = _seed_series(db_session, "CPIAUCSL", {date(2026, 1, 1): 300.0})
-        core_series = _seed_series(db_session, "CPILFESL", {date(2026, 1, 1): 280.0})
+        cpi_series = _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", {date(2026, 1, 1): 300.0})
+        core_series = _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", {date(2026, 1, 1): 280.0})
 
         client = FREDClient(api_key="not-used", timeout=1.0)
         with patch.object(FREDClient, "get_observations", side_effect=FREDTimeoutError("timed out")):
@@ -481,9 +481,9 @@ class TestDatabaseFailure:
 
         with real_session_scope() as setup_session:
             release = _release(setup_session, provider_release_id="9099")
-            _mapping(setup_session, release, "UNRATE")
+            _mapping(setup_session, release, "us.unemployment-rate.sa.monthly")
             occurrence = _occurrence(setup_session, release)
-            _seed_series(setup_session, "UNRATE", {date(2026, 1, 1): 4.0})
+            _seed_series(setup_session, "us.unemployment-rate.sa.monthly", {date(2026, 1, 1): 4.0})
             release_id, occurrence_id = release.id, occurrence.id
 
         try:
@@ -503,7 +503,7 @@ class TestDatabaseFailure:
 
             with real_session_scope() as verify_session:
                 repo = ReleaseProcessingRepository(verify_session)
-                series = repo.get_series_by_series_id("UNRATE")
+                series = repo.get_series_by_series_id("us.unemployment-rate.sa.monthly")
                 # The NEW observation write never survived the rollback.
                 assert repo.get_observations_by_date(series.id) == {date(2026, 1, 1): 4.0}
                 assert repo.list_check_runs_for_occurrence(occurrence_id) == []
@@ -511,7 +511,7 @@ class TestDatabaseFailure:
             with real_session_scope() as cleanup_session:
                 # CASCADE deletes the occurrence/check-run/update rows too.
                 cleanup_session.execute(EconomicRelease.__table__.delete().where(EconomicRelease.id == release_id))
-                cleanup_session.execute(EconomicSeries.__table__.delete().where(EconomicSeries.series_id == "UNRATE"))
+                cleanup_session.execute(EconomicSeries.__table__.delete().where(EconomicSeries.series_id == "us.unemployment-rate.sa.monthly"))
 
 
 # ---------------------------------------------------------------------
@@ -522,14 +522,14 @@ class TestDatabaseFailure:
 class TestIdempotency:
     def test_processing_the_same_occurrence_twice_with_identical_data_creates_no_duplicate_change_events(self, db_session):
         release = _release(db_session)
-        _mapping(db_session, release, "UNRATE")
+        _mapping(db_session, release, "us.unemployment-rate.sa.monthly")
         occurrence = _occurrence(db_session, release)
-        _seed_series(db_session, "UNRATE", {date(2026, 1, 1): 4.0})
+        _seed_series(db_session, "us.unemployment-rate.sa.monthly", {date(2026, 1, 1): 4.0})
 
         payload = _fred_payload({date(2026, 1, 1): 4.0, date(2026, 2, 1): 4.1})
-        with _patched(observations_by_series={"UNRATE": payload}) as client:
+        with _patched(observations_by_series={"us.unemployment-rate.sa.monthly": payload}) as client:
             first = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
-        with _patched(observations_by_series={"UNRATE": payload}) as client:
+        with _patched(observations_by_series={"us.unemployment-rate.sa.monthly": payload}) as client:
             second = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert first.status == "CHANGED"
@@ -554,12 +554,12 @@ class TestShutdownInvariant:
     def test_scheduled_date_passing_with_no_provider_change_produces_zero_canonical_change(self, db_session):
         release = _cpi_release(db_session)
         occurrence = _occurrence(db_session, release, scheduled_date=date(2026, 1, 1))  # long past due
-        cpi_series = _seed_series(db_session, "CPIAUCSL", {date(2025, 12, 1): 300.0})
-        core_series = _seed_series(db_session, "CPILFESL", {date(2025, 12, 1): 280.0})
+        cpi_series = _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", {date(2025, 12, 1): 300.0})
+        core_series = _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", {date(2025, 12, 1): 280.0})
 
         payload_cpi = _fred_payload({date(2025, 12, 1): 300.0})
         payload_core = _fred_payload({date(2025, 12, 1): 280.0})
-        with _patched(observations_by_series={"CPIAUCSL": payload_cpi, "CPILFESL": payload_core}) as client:
+        with _patched(observations_by_series={"us.cpi.headline.price-index.sa.monthly": payload_cpi, "us.cpi.core.price-index.sa.monthly": payload_core}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert result.status == "NO_CHANGE"
@@ -588,14 +588,14 @@ class TestInflationAnalysisImpact:
         occurrence = _occurrence(db_session, release)
         # Deliberately only two months -- nowhere near enough for a
         # valid r_3m/r_6m/r_12m at either date, before or after.
-        _seed_series(db_session, "CPIAUCSL", {date(2026, 1, 1): 300.0}, title="CPI")
-        _seed_series(db_session, "CPILFESL", {date(2025, 12, 1): 280.0, date(2026, 1, 1): 281.0}, title="Core CPI")
-        _seed_series(db_session, "PCEPILFE", _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002))
-        _seed_series(db_session, "PCEPI", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", {date(2026, 1, 1): 300.0}, title="CPI")
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", {date(2025, 12, 1): 280.0, date(2026, 1, 1): 281.0}, title="Core CPI")
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.pce.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
 
         payload_core = _fred_payload({date(2025, 12, 1): 330.0, date(2026, 1, 1): 281.0})  # a large, unmistakable revision
         payload_cpi = _fred_payload({date(2026, 1, 1): 300.0})
-        with _patched(observations_by_series={"CPIAUCSL": payload_cpi, "CPILFESL": payload_core}) as client:
+        with _patched(observations_by_series={"us.cpi.headline.price-index.sa.monthly": payload_cpi, "us.cpi.core.price-index.sa.monthly": payload_core}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert len(result.observation_changes) == 1
@@ -616,17 +616,17 @@ class TestInflationAnalysisImpact:
         latest_period = max(base)
         revision_target = latest_period.replace(month=latest_period.month - 6) if latest_period.month > 6 else date(latest_period.year - 1, latest_period.month + 6, 1)
 
-        _seed_series(db_session, "CPIAUCSL", {date(2026, 1, 1): 300.0}, title="CPI")
-        _seed_series(db_session, "CPILFESL", base, title="Core CPI")
-        _seed_series(db_session, "PCEPILFE", _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002))
-        _seed_series(db_session, "PCEPI", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", {date(2026, 1, 1): 300.0}, title="CPI")
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", base, title="Core CPI")
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.pce.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
 
         revised = dict(base)
         revised[revision_target] = base[revision_target] * 1.15  # a large, unmistakable revision
 
         payload_core = _fred_payload(revised)
         payload_cpi = _fred_payload({date(2026, 1, 1): 300.0})
-        with _patched(observations_by_series={"CPIAUCSL": payload_cpi, "CPILFESL": payload_core}) as client:
+        with _patched(observations_by_series={"us.cpi.headline.price-index.sa.monthly": payload_cpi, "us.cpi.core.price-index.sa.monthly": payload_core}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert any(c.change_type == "REVISED" and c.observation_date == revision_target for c in result.observation_changes)
@@ -643,10 +643,10 @@ class TestInflationAnalysisImpact:
         base = _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002)
         latest_period = max(base)
 
-        _seed_series(db_session, "CPIAUCSL", {date(2026, 1, 1): 300.0}, title="CPI")
-        _seed_series(db_session, "CPILFESL", base, title="Core CPI")
-        _seed_series(db_session, "PCEPILFE", _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002))
-        _seed_series(db_session, "PCEPI", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", {date(2026, 1, 1): 300.0}, title="CPI")
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", base, title="Core CPI")
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.pce.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
 
         three_months_back = latest_period.replace(month=latest_period.month - 3) if latest_period.month > 3 else date(latest_period.year - 1, latest_period.month + 9, 1)
         six_months_back = latest_period.replace(month=latest_period.month - 6) if latest_period.month > 6 else date(latest_period.year - 1, latest_period.month + 6, 1)
@@ -666,13 +666,13 @@ class TestInflationAnalysisImpact:
 
         payload_core = _fred_payload(revised)
         payload_cpi = _fred_payload({date(2026, 1, 1): 300.0})
-        with _patched(observations_by_series={"CPIAUCSL": payload_cpi, "CPILFESL": payload_core}) as client:
+        with _patched(observations_by_series={"us.cpi.headline.price-index.sa.monthly": payload_cpi, "us.cpi.core.price-index.sa.monthly": payload_core}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert len(result.observation_changes) == 2  # exactly the two revised rows, not more
 
         repo = ReleaseProcessingRepository(db_session)
-        core_series = repo.get_series_by_series_id("CPILFESL")
+        core_series = repo.get_series_by_series_id("us.cpi.core.price-index.sa.monthly")
         persisted = repo.get_observations_by_date(core_series.id)
         assert persisted[three_months_back] == base[three_months_back] * 1.2
         assert persisted[six_months_back] == base[six_months_back] * 1.2
@@ -689,10 +689,10 @@ class TestInflationAnalysisImpact:
         base = _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002)
         latest_period = max(base)
 
-        _seed_series(db_session, "PCEPILFE", base, title="Core PCE")
-        _seed_series(db_session, "PCEPI", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
-        _seed_series(db_session, "CPIAUCSL", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
-        _seed_series(db_session, "CPILFESL", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", base, title="Core PCE")
+        _seed_series(db_session, "us.pce.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
 
         revised = dict(base)
         # A dramatic jump in the latest month's own value -- pushes r_3m/r_6m
@@ -710,7 +710,7 @@ class TestInflationAnalysisImpact:
 
         payload_pcepilfe = _fred_payload(revised)
         payload_pcepi = _fred_payload({d: v for d, v in _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002).items()})
-        with _patched(observations_by_series={"PCEPILFE": payload_pcepilfe, "PCEPI": payload_pcepi}) as client:
+        with _patched(observations_by_series={"us.pce.core.price-index.sa.monthly": payload_pcepilfe, "us.pce.headline.price-index.sa.monthly": payload_pcepi}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         state_events = [e for e in result.analysis_changes if e.component == "PRIMARY_MOMENTUM" and e.event_type == "STATE_CHANGED"]
@@ -730,10 +730,10 @@ class TestNoFakeAnalyticalChangeFromUnaffectedComponents:
         was never touched by this release at all."""
         release = _cpi_release(db_session)
         occurrence = _occurrence(db_session, release)
-        _seed_series(db_session, "PCEPILFE", _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002))
         cpi_base = _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002)
-        _seed_series(db_session, "CPIAUCSL", cpi_base)
-        _seed_series(db_session, "CPILFESL", {date(2026, 1, 1): 280.0})
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", cpi_base)
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", {date(2026, 1, 1): 280.0})
 
         revised_cpi = dict(cpi_base)
         latest = max(cpi_base)
@@ -741,7 +741,7 @@ class TestNoFakeAnalyticalChangeFromUnaffectedComponents:
 
         payload_cpi = _fred_payload(revised_cpi)
         payload_core = _fred_payload({date(2026, 1, 1): 280.0})
-        with _patched(observations_by_series={"CPIAUCSL": payload_cpi, "CPILFESL": payload_core}) as client:
+        with _patched(observations_by_series={"us.cpi.headline.price-index.sa.monthly": payload_cpi, "us.cpi.core.price-index.sa.monthly": payload_core}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert all(event.component != "PRIMARY_MOMENTUM" for event in result.analysis_changes)
@@ -771,10 +771,10 @@ class TestT12ForwardDependencyRegression:
         t = min(pcepilfe_base)
         t_plus_12 = max(pcepilfe_base)  # exactly 12 months later in this 13-month series
 
-        _seed_series(db_session, "PCEPILFE", pcepilfe_base, title="Core PCE")
-        _seed_series(db_session, "PCEPI", pcepi_base, title="Headline PCE")
-        _seed_series(db_session, "CPIAUCSL", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
-        _seed_series(db_session, "CPILFESL", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", pcepilfe_base, title="Core PCE")
+        _seed_series(db_session, "us.pce.headline.price-index.sa.monthly", pcepi_base, title="Headline PCE")
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
 
         revised_pcepilfe = dict(pcepilfe_base)
         # Revise ONLY t -- t+3 and t+6 are left completely untouched, so
@@ -794,20 +794,20 @@ class TestT12ForwardDependencyRegression:
         payload_pcepilfe = _fred_payload(revised_pcepilfe)
         payload_pcepi = _fred_payload(pcepi_base)  # identical to seeded data -> UNCHANGED, isolates the PCEPILFE effect
 
-        with _patched(observations_by_series={"PCEPILFE": payload_pcepilfe, "PCEPI": payload_pcepi}) as client:
+        with _patched(observations_by_series={"us.pce.core.price-index.sa.monthly": payload_pcepilfe, "us.pce.headline.price-index.sa.monthly": payload_pcepi}) as client:
             first = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         # 1 + 2: ReleaseObservationUpdate = REVISED at t, canonical value updated.
         assert len(first.observation_changes) == 1
         change = first.observation_changes[0]
-        assert change.series_id == "PCEPILFE"
+        assert change.series_id == "us.pce.core.price-index.sa.monthly"
         assert change.change_type == "REVISED"
         assert change.observation_date == t
         assert change.previous_value == pcepilfe_base[t]
         assert change.new_value == revised_pcepilfe[t]
 
         repo = ReleaseProcessingRepository(db_session)
-        pcepilfe_series = repo.get_series_by_series_id("PCEPILFE")
+        pcepilfe_series = repo.get_series_by_series_id("us.pce.core.price-index.sa.monthly")
         assert repo.get_observations_by_date(pcepilfe_series.id)[t] == revised_pcepilfe[t]
 
         # 3 + 4: ReleaseAnalysisUpdate contains the deterministic
@@ -851,7 +851,7 @@ class TestT12ForwardDependencyRegression:
         # 8: retry against identical provider data is idempotent -- a
         # new ReleaseCheckRun is allowed (a check occurring twice is a
         # real fact), but zero new observation/analysis rows.
-        with _patched(observations_by_series={"PCEPILFE": payload_pcepilfe, "PCEPI": payload_pcepi}) as client:
+        with _patched(observations_by_series={"us.pce.core.price-index.sa.monthly": payload_pcepilfe, "us.pce.headline.price-index.sa.monthly": payload_pcepi}) as client:
             second = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert second.status == "NO_CHANGE"
@@ -874,10 +874,10 @@ class TestT12ForwardDependencyRegression:
         t = min(pcepi_base)
         t_plus_12 = max(pcepi_base)
 
-        _seed_series(db_session, "PCEPILFE", pcepilfe_base, title="Core PCE")
-        _seed_series(db_session, "PCEPI", pcepi_base, title="Headline PCE")
-        _seed_series(db_session, "CPIAUCSL", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
-        _seed_series(db_session, "CPILFESL", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", pcepilfe_base, title="Core PCE")
+        _seed_series(db_session, "us.pce.headline.price-index.sa.monthly", pcepi_base, title="Headline PCE")
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
 
         revised_pcepi = dict(pcepi_base)
         revised_pcepi[t] = pcepi_base[t] * 1.2  # revise ONLY the YoY denominator 12 months back
@@ -894,13 +894,13 @@ class TestT12ForwardDependencyRegression:
         payload_pcepilfe = _fred_payload(pcepilfe_base)  # unchanged -> isolates the PCEPI effect
         payload_pcepi = _fred_payload(revised_pcepi)
 
-        with _patched(observations_by_series={"PCEPILFE": payload_pcepilfe, "PCEPI": payload_pcepi}) as client:
+        with _patched(observations_by_series={"us.pce.core.price-index.sa.monthly": payload_pcepilfe, "us.pce.headline.price-index.sa.monthly": payload_pcepi}) as client:
             first = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         # 1: ReleaseObservationUpdate = REVISED at t.
         assert len(first.observation_changes) == 1
         change = first.observation_changes[0]
-        assert change.series_id == "PCEPI"
+        assert change.series_id == "us.pce.headline.price-index.sa.monthly"
         assert change.change_type == "REVISED"
         assert change.observation_date == t
 
@@ -927,7 +927,7 @@ class TestT12ForwardDependencyRegression:
         assert len(keys) == len(set(keys))
 
         # 7: retry is idempotent.
-        with _patched(observations_by_series={"PCEPILFE": payload_pcepilfe, "PCEPI": payload_pcepi}) as client:
+        with _patched(observations_by_series={"us.pce.core.price-index.sa.monthly": payload_pcepilfe, "us.pce.headline.price-index.sa.monthly": payload_pcepi}) as client:
             second = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert second.status == "NO_CHANGE"
@@ -989,15 +989,15 @@ _UNRATE_PERCENT: dict[date, float] = {
 
 
 def _employment_situation_release(session):
-    return session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "50")).scalar_one()
+    return session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "empsit")).scalar_one()
 
 
 def _seed_payems(session, values: dict[date, float | None] = None):
-    return _seed_series(session, PAYEMS_SERIES_ID, values if values is not None else dict(_PAYEMS_THOUSANDS), title="PAYEMS", units="Thousands of Persons")
+    return _seed_series(session, PAYEMS_SERIES_ID, values if values is not None else dict(_PAYEMS_THOUSANDS), title="us.nonfarm.payroll-employment.sa.monthly", units="Thousands of Persons")
 
 
 def _seed_unrate(session, values: dict[date, float | None] = None):
-    return _seed_series(session, UNRATE_SERIES_ID, values if values is not None else dict(_UNRATE_PERCENT), title="UNRATE", units="Percent")
+    return _seed_series(session, UNRATE_SERIES_ID, values if values is not None else dict(_UNRATE_PERCENT), title="us.unemployment-rate.sa.monthly", units="Percent")
 
 
 def _labor_result(payems: dict[date, float], unrate: dict[date, float], period: date):
@@ -1538,10 +1538,10 @@ class TestRecordedMonitorResultInflationChanged:
         base = _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002)
         latest_period = max(base)
 
-        _seed_series(db_session, "PCEPILFE", base, title="Core PCE")
-        _seed_series(db_session, "PCEPI", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
-        _seed_series(db_session, "CPIAUCSL", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
-        _seed_series(db_session, "CPILFESL", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", base, title="Core PCE")
+        _seed_series(db_session, "us.pce.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
 
         revised = dict(base)
         revised[latest_period] = base[latest_period] * 1.25  # forces a genuine state change
@@ -1556,7 +1556,7 @@ class TestRecordedMonitorResultInflationChanged:
 
         payload_pcepilfe = _fred_payload(revised)
         payload_pcepi = _fred_payload(_constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
-        with _patched(observations_by_series={"PCEPILFE": payload_pcepilfe, "PCEPI": payload_pcepi}) as client:
+        with _patched(observations_by_series={"us.pce.core.price-index.sa.monthly": payload_pcepilfe, "us.pce.headline.price-index.sa.monthly": payload_pcepi}) as client:
             ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         rows = _recorded_results(db_session, monitor="inflation")
@@ -1589,10 +1589,10 @@ class TestRecordedMonitorResultInflationUnchangedState:
         base = _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002)
         latest_period = max(base)
 
-        _seed_series(db_session, "PCEPILFE", base, title="Core PCE")
-        _seed_series(db_session, "PCEPI", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
-        _seed_series(db_session, "CPIAUCSL", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
-        _seed_series(db_session, "CPILFESL", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", base, title="Core PCE")
+        _seed_series(db_session, "us.pce.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
 
         revised = dict(base)
         # A negligible nudge -- far too small to cross the 10-percentage-point
@@ -1609,7 +1609,7 @@ class TestRecordedMonitorResultInflationUnchangedState:
 
         payload_pcepilfe = _fred_payload(revised)
         payload_pcepi = _fred_payload(_constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
-        with _patched(observations_by_series={"PCEPILFE": payload_pcepilfe, "PCEPI": payload_pcepi}) as client:
+        with _patched(observations_by_series={"us.pce.core.price-index.sa.monthly": payload_pcepilfe, "us.pce.headline.price-index.sa.monthly": payload_pcepi}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert result.observation_changes != [], "test fixture must genuinely produce a REVISED observation write"
@@ -1689,10 +1689,10 @@ class TestRecordedMonitorResultInsufficientData:
         # Deliberately sparse -- only one prior month persisted, one NEW
         # month arrives, nowhere near enough for any r_3m/r_6m/r_12m
         # endpoint set.
-        _seed_series(db_session, "PCEPILFE", {date(2025, 12, 1): 119.0}, title="Core PCE")
-        _seed_series(db_session, "PCEPI", {date(2025, 12, 1): 129.0}, title="Headline PCE")
-        _seed_series(db_session, "CPIAUCSL", {date(2025, 12, 1): 299.0}, title="CPI")
-        _seed_series(db_session, "CPILFESL", {date(2025, 12, 1): 279.0}, title="Core CPI")
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", {date(2025, 12, 1): 119.0}, title="Core PCE")
+        _seed_series(db_session, "us.pce.headline.price-index.sa.monthly", {date(2025, 12, 1): 129.0}, title="Headline PCE")
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", {date(2025, 12, 1): 299.0}, title="CPI")
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", {date(2025, 12, 1): 279.0}, title="Core CPI")
 
         expected = compute_series_momentum_at(
             [Observation(date=date(2025, 12, 1), value=119.0), Observation(date=date(2026, 1, 1), value=120.0)],
@@ -1701,7 +1701,7 @@ class TestRecordedMonitorResultInsufficientData:
         assert expected.state == "INSUFFICIENT_DATA", "test fixture must genuinely be insufficient"
 
         payload_pcepilfe = _fred_payload({date(2026, 1, 1): 120.0})
-        with _patched(observations_by_series={"PCEPILFE": payload_pcepilfe, "PCEPI": []}) as client:
+        with _patched(observations_by_series={"us.pce.core.price-index.sa.monthly": payload_pcepilfe, "us.pce.headline.price-index.sa.monthly": []}) as client:
             ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         rows = _recorded_results(db_session, monitor="inflation")
@@ -1717,9 +1717,9 @@ class TestRecordedMonitorResultNoChange:
         behaviorally, in tests/test_recorded_monitor_result_architecture.py."""
         release = _pio_release(db_session)
         occurrence = _occurrence(db_session, release)
-        _seed_series(db_session, "PCEPILFE", {date(2026, 1, 1): 120.0})
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", {date(2026, 1, 1): 120.0})
 
-        with _patched(observations_by_series={"PCEPILFE": _fred_payload({date(2026, 1, 1): 120.0}), "PCEPI": []}) as client:
+        with _patched(observations_by_series={"us.pce.core.price-index.sa.monthly": _fred_payload({date(2026, 1, 1): 120.0}), "us.pce.headline.price-index.sa.monthly": []}) as client:
             result = ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
         assert result.status == "NO_CHANGE"
@@ -1757,16 +1757,16 @@ class TestRecordedMonitorResultRevisionImmutability:
         base = _constant_growth_series(date(2025, 1, 1), 13, start_value=120.0, monthly_growth=0.002)
         latest_period = max(base)
 
-        _seed_series(db_session, "PCEPILFE", base, title="Core PCE")
-        _seed_series(db_session, "PCEPI", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
-        _seed_series(db_session, "CPIAUCSL", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
-        _seed_series(db_session, "CPILFESL", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.pce.core.price-index.sa.monthly", base, title="Core PCE")
+        _seed_series(db_session, "us.pce.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.headline.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=300.0, monthly_growth=0.002))
+        _seed_series(db_session, "us.cpi.core.price-index.sa.monthly", _constant_growth_series(date(2025, 1, 1), 13, start_value=280.0, monthly_growth=0.002))
 
         first_revision = dict(base)
         first_revision[latest_period] = base[latest_period] * 1.25
         with _patched(observations_by_series={
-            "PCEPILFE": _fred_payload(first_revision),
-            "PCEPI": _fred_payload(_constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002)),
+            "us.pce.core.price-index.sa.monthly": _fred_payload(first_revision),
+            "us.pce.headline.price-index.sa.monthly": _fred_payload(_constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002)),
         }) as client:
             ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 
@@ -1780,8 +1780,8 @@ class TestRecordedMonitorResultRevisionImmutability:
 
         second_revision_value = base[latest_period] * 0.80  # a further, different revision
         with _patched(observations_by_series={
-            "PCEPILFE": _fred_payload({latest_period: second_revision_value}),
-            "PCEPI": _fred_payload(_constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002)),
+            "us.pce.core.price-index.sa.monthly": _fred_payload({latest_period: second_revision_value}),
+            "us.pce.headline.price-index.sa.monthly": _fred_payload(_constant_growth_series(date(2025, 1, 1), 13, start_value=130.0, monthly_growth=0.002)),
         }) as client:
             ReleaseProcessingService(client).process_occurrence(occurrence.id, db_session, AS_OF)
 

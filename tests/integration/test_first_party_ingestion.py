@@ -245,10 +245,10 @@ class TestFredHistoryIsNeverTouched:
         # A separate row holds the BLS data.
         assert _series(db_session, PAYROLLS).id != fred.id
 
-    def test_readers_still_resolve_the_fred_row(self, db_session):
+    def test_readers_resolve_the_first_party_row_not_the_fred_row(self, db_session):
         self._seed_fred_payems(db_session)
         _import(db_session)
-        assert active_binding(PAYROLLS).storage_series_id == "PAYEMS"
+        assert active_binding(PAYROLLS).storage_series_id == PAYROLLS
 
     def test_the_repository_refuses_to_write_into_a_row_owned_by_another_source(self, db_session):
         db_session.add(EconomicSeries(series_id=PAYROLLS, title="x", units="x", source="FRED", concept_id=PAYROLLS))

@@ -34,17 +34,17 @@ def _release(session, name="Test Release", provider_release_id="9001", active=Tr
 class TestMappings:
     def test_real_curated_cpi_mapping_maps_to_headline_and_core_cpi(self, db_session):
         release = db_session.execute(
-            sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "10")
+            sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "cpi")
         ).scalar_one()
         mappings = ReleaseProcessingRepository(db_session).get_active_mappings(release.id)
-        assert sorted(m.series_id for m in mappings) == ["CPIAUCSL", "CPILFESL"]
+        assert sorted(m.series_id for m in mappings) == ["us.cpi.core.price-index.sa.monthly", "us.cpi.headline.price-index.sa.monthly"]
 
     def test_real_curated_personal_income_and_outlays_mapping_maps_to_pce_and_core_pce(self, db_session):
         release = db_session.execute(
-            sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "54")
+            sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "pio")
         ).scalar_one()
         mappings = ReleaseProcessingRepository(db_session).get_active_mappings(release.id)
-        assert sorted(m.series_id for m in mappings) == ["PCEPI", "PCEPILFE"]
+        assert sorted(m.series_id for m in mappings) == ["us.pce.core.price-index.sa.monthly", "us.pce.headline.price-index.sa.monthly"]
 
     def test_no_mapping_seeded_for_unrelated_release_families(self, db_session):
         """JOLTS, GDP, and Advance Retail Sales have no canonical
@@ -69,10 +69,10 @@ class TestMappings:
         claims/hours/earnings/other CES series (per the frozen
         contract's own explicit exclusion list, §5)."""
         release = db_session.execute(
-            sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "50")
+            sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "empsit")
         ).scalar_one()
         mappings = ReleaseProcessingRepository(db_session).get_active_mappings(release.id)
-        assert sorted(m.series_id for m in mappings) == ["PAYEMS", "UNRATE"]
+        assert sorted(m.series_id for m in mappings) == ["us.nonfarm.payroll-employment.sa.monthly", "us.unemployment-rate.sa.monthly"]
 
     def test_get_active_mappings_works_without_any_economic_series_row_existing(self, db_session):
         """The central design decision: a curated mapping is readable
@@ -82,11 +82,11 @@ class TestMappings:
         (never asserts anything about global database state, which a
         long-lived shared test database cannot guarantee)."""
         assert (
-            db_session.execute(sa.select(EconomicSeries).where(EconomicSeries.series_id.in_(["CPIAUCSL", "CPILFESL"]))).first()
+            db_session.execute(sa.select(EconomicSeries).where(EconomicSeries.series_id.in_(["us.cpi.headline.price-index.sa.monthly", "us.cpi.core.price-index.sa.monthly"]))).first()
             is None
         )
         release = db_session.execute(
-            sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "10")
+            sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "cpi")
         ).scalar_one()
         mappings = ReleaseProcessingRepository(db_session).get_active_mappings(release.id)
         assert len(mappings) == 2
@@ -95,15 +95,15 @@ class TestMappings:
         release = _release(db_session)
         repo = ReleaseProcessingRepository(db_session)
 
-        db_session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id="UNRATE", active=False))
+        db_session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id="us.unemployment-rate.sa.monthly", active=False))
         db_session.flush()
         assert repo.get_active_mappings(release.id) == []
 
     def test_mapping_uniqueness_enforced_at_the_database_level(self, db_session):
         release = _release(db_session)
-        db_session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id="UNRATE", active=True))
+        db_session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id="us.unemployment-rate.sa.monthly", active=True))
         db_session.flush()
-        db_session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id="UNRATE", active=True))
+        db_session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id="us.unemployment-rate.sa.monthly", active=True))
         with pytest.raises(IntegrityError):
             db_session.flush()
 
@@ -111,27 +111,27 @@ class TestMappings:
 class TestSeriesAndObservationWrites:
     def test_create_series_then_get_by_series_id_round_trips(self, db_session):
         repo = ReleaseProcessingRepository(db_session)
-        assert repo.get_series_by_series_id("UNRATE") is None
-        created = repo.create_series("UNRATE", "Unemployment Rate", "Percent")
-        found = repo.get_series_by_series_id("UNRATE")
+        assert repo.get_series_by_series_id("us.unemployment-rate.sa.monthly") is None
+        created = repo.create_series("us.unemployment-rate.sa.monthly", "Unemployment Rate", "Percent")
+        found = repo.get_series_by_series_id("us.unemployment-rate.sa.monthly")
         assert found is not None and found.id == created.id
 
     def test_write_observation_inserts_when_absent(self, db_session):
         repo = ReleaseProcessingRepository(db_session)
-        series = repo.create_series("UNRATE", "Unemployment Rate", "Percent")
+        series = repo.create_series("us.unemployment-rate.sa.monthly", "Unemployment Rate", "Percent")
         repo.write_observation(series.id, date(2026, 1, 1), 4.1)
         assert repo.get_observations_by_date(series.id) == {date(2026, 1, 1): 4.1}
 
     def test_write_observation_overwrites_when_present(self, db_session):
         repo = ReleaseProcessingRepository(db_session)
-        series = repo.create_series("UNRATE", "Unemployment Rate", "Percent")
+        series = repo.create_series("us.unemployment-rate.sa.monthly", "Unemployment Rate", "Percent")
         repo.write_observation(series.id, date(2026, 1, 1), 4.1)
         repo.write_observation(series.id, date(2026, 1, 1), 4.2)
         assert repo.get_observations_by_date(series.id) == {date(2026, 1, 1): 4.2}
 
     def test_write_observation_can_write_and_overwrite_a_none_value(self, db_session):
         repo = ReleaseProcessingRepository(db_session)
-        series = repo.create_series("UNRATE", "Unemployment Rate", "Percent")
+        series = repo.create_series("us.unemployment-rate.sa.monthly", "Unemployment Rate", "Percent")
         repo.write_observation(series.id, date(2026, 1, 1), None)
         assert repo.get_observations_by_date(series.id) == {date(2026, 1, 1): None}
         repo.write_observation(series.id, date(2026, 1, 1), 4.1)
@@ -139,7 +139,7 @@ class TestSeriesAndObservationWrites:
 
     def test_get_observations_by_date_returns_full_history(self, db_session):
         repo = ReleaseProcessingRepository(db_session)
-        series = repo.create_series("UNRATE", "Unemployment Rate", "Percent")
+        series = repo.create_series("us.unemployment-rate.sa.monthly", "Unemployment Rate", "Percent")
         repo.write_observation(series.id, date(2026, 1, 1), 4.0)
         repo.write_observation(series.id, date(2026, 2, 1), 4.1)
         assert repo.get_observations_by_date(series.id) == {date(2026, 1, 1): 4.0, date(2026, 2, 1): 4.1}
@@ -164,7 +164,7 @@ class TestCheckRunAndUpdatePersistence:
         repo.add_observation_update(
             run.id,
             ObservationChangeRecord(
-                series_id="UNRATE", observation_date=date(2026, 1, 1), change_type="NEW", previous_value=None, new_value=4.1, detected_at=now
+                series_id="us.unemployment-rate.sa.monthly", observation_date=date(2026, 1, 1), change_type="NEW", previous_value=None, new_value=4.1, detected_at=now
             ),
         )
         updates = repo.list_observation_updates_for_run(run.id)
@@ -247,7 +247,7 @@ def _occurrence(session, release, scheduled_date=date(2026, 7, 15)):
 AS_OF = date(2026, 8, 15)
 
 
-def _mapping(session, release, series_id="UNRATE", active=True):
+def _mapping(session, release, series_id="us.unemployment-rate.sa.monthly", active=True):
     session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id=series_id, active=active))
     session.flush()
 
@@ -395,7 +395,7 @@ class TestListDueOccurrenceIds:
         "10") is processable through this exact same due-work query
         with zero special-casing -- proving this isn't scoped to
         synthetic test releases only."""
-        release = db_session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "10")).scalar_one()
+        release = db_session.execute(sa.select(EconomicRelease).where(EconomicRelease.provider_release_id == "cpi")).scalar_one()
         occurrence = _occurrence(db_session, release, scheduled_date=AS_OF)
         due = ReleaseProcessingRepository(db_session).list_due_occurrence_ids(AS_OF, retry_window_days=7)
         assert occurrence.id in due

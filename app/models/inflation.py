@@ -55,6 +55,10 @@ CONFIRMATION_SERIES_ID = active_binding(CONFIRMATION_CONCEPT_ID).storage_series_
 TARGET_SERIES_ID = active_binding(TARGET_CONCEPT_ID).storage_series_id
 HEADLINE_CPI_SERIES_ID = active_binding(HEADLINE_CPI_CONCEPT_ID).storage_series_id
 
+#: The provider's identifier for the target series, for display (#56B)
+#: -- see the matching note in app/models/labor.py.
+TARGET_PROVIDER_SERIES_ID = active_binding(TARGET_CONCEPT_ID).provider_series_id
+
 
 class InflationSeriesIdentities(BaseModel):
     """Who `inflation_v1.0`'s four input series actually are (#38).
@@ -156,7 +160,7 @@ class TargetResult(BaseModel):
     target-gap state. Computed independently of Core PCE's own
     momentum period; one's availability never gates the other."""
 
-    series_id: str = TARGET_SERIES_ID
+    series_id: str = TARGET_PROVIDER_SERIES_ID
     calculation_period: date | None
     headline_pce_yoy: float | None
     fed_objective_percent: float = FED_OBJECTIVE_PERCENT

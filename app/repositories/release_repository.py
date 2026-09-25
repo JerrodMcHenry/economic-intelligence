@@ -61,6 +61,20 @@ class ReleaseRepository:
             select(ReleaseOccurrence).where(ReleaseOccurrence.id == occurrence_id)
         ).scalar_one_or_none()
 
+    def occurrence_exists(self, economic_release_id: int, scheduled_date: date) -> bool:
+        """Whether this `(release, date)` occurrence is already persisted
+        -- lets a caller report created vs. existing around the upsert
+        below (#56B schedule sync)."""
+        return (
+            self._session.execute(
+                select(ReleaseOccurrence.id).where(
+                    ReleaseOccurrence.economic_release_id == economic_release_id,
+                    ReleaseOccurrence.scheduled_date == scheduled_date,
+                )
+            ).scalar_one_or_none()
+            is not None
+        )
+
     def upsert_occurrence(self, economic_release_id: int, scheduled_date: date) -> ReleaseOccurrence:
         """Idempotent upsert keyed on `(economic_release_id, scheduled_date)`
         -- the frozen occurrence identity (see
@@ -115,14 +129,20 @@ class ReleaseRepository:
         unlike `EconomicObservation.observation_date`, which is unique
         per series).
         """
-        conditions = []
+        # Active releases only (#56B): the catalog moved from FRED to BLS
+        # and BEA, and the retired FRED releases' occurrences are history,
+        # not a schedule -- listing both would show every release twice.
+        conditions = [EconomicRelease.active.is_(True)]
         if start_date is not None:
             conditions.append(ReleaseOccurrence.scheduled_date >= start_date)
         if end_date is not None:
             conditions.append(ReleaseOccurrence.scheduled_date <= end_date)
 
         total = self._session.execute(
-            select(func.count()).select_from(ReleaseOccurrence).where(*conditions)
+            select(func.count())
+            .select_from(ReleaseOccurrence)
+            .join(EconomicRelease, ReleaseOccurrence.economic_release_id == EconomicRelease.id)
+            .where(*conditions)
         ).scalar_one()
 
         scheduled_date_order = (

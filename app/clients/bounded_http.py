@@ -131,6 +131,13 @@ def _decode(provider: str, raw: bytes) -> str:
         raise ProviderResponseError(provider, "response is not valid UTF-8 text") from None
 
 
+def _new_client(timeout: float) -> httpx.Client:
+    """The ONE place this module creates an HTTP client -- the seam tests
+    replace (a mock transport in the client tests; a refusal everywhere
+    else, so no test can reach BLS or BEA)."""
+    return httpx.Client(timeout=timeout, follow_redirects=False)
+
+
 @contextmanager
 def _stream(
     provider: str,
@@ -147,7 +154,7 @@ def _stream(
         raise ValueError("max_attempts must be at least 1")
 
     for attempt in range(1, max_attempts + 1):
-        client = httpx.Client(timeout=timeout, follow_redirects=False)
+        client = _new_client(timeout)
         try:
             response_cm = client.stream(method, url, json=json_body, headers=headers)
             try:

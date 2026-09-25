@@ -96,7 +96,7 @@ export function JobsPage() {
               <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-brand" />
               Both surveys through {formatPeriod(monitor.data.evaluation_period)}
             </span>
-            <span>Published by the U.S. Bureau of Labor Statistics, via FRED</span>
+            <span>Published by the U.S. Bureau of Labor Statistics</span>
           </div>
         )}
         <div className="mt-3">

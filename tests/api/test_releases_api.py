@@ -215,25 +215,16 @@ class TestPostReleasesSync:
             "failed": [],
         }
 
-    def test_curated_catalog_is_what_gets_synced_when_active(self, client, release_seed_session, fred_configured):
-        """With the curated catalog active (its normal state -- no
-        deactivation here), a sync attempts exactly the six curated
-        releases and none created ad hoc by this test."""
-        with patch.object(FREDClient, "get_release_dates", return_value=[]):
+    def test_the_real_catalog_gives_the_fred_sync_nothing_to_do(self, client, release_seed_session, fred_configured):
+        """#56B: with the migrated catalog in its normal state -- BLS/BEA
+        active, FRED inactive -- the FRED calendar sync has no FRED
+        release to ask about, and never asks FRED about a BLS/BEA one."""
+        with patch.object(FREDClient, "get_release_dates", return_value=[]) as get_release_dates:
             response = client.post("/api/v1/releases/sync")
 
         assert response.status_code == 200
-        body = response.json()
-        synced_names = sorted(s["name"] for s in body["synced"])
-        assert synced_names == [
-            "Advance Monthly Sales for Retail and Food Services",
-            "Consumer Price Index",
-            "Employment Situation",
-            "Gross Domestic Product",
-            "Job Openings and Labor Turnover Survey",
-            "Personal Income and Outlays",
-        ]
-        assert body["failed"] == []
+        assert response.json() == {"synced": [], "failed": []}
+        get_release_dates.assert_not_called()
 
     def test_idempotent_repeated_sync(self, client, release_seed_session, fred_configured):
         _deactivate_curated_releases(release_seed_session)

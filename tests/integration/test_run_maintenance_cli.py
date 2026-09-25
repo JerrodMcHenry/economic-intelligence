@@ -4,9 +4,10 @@
 subprocess, for speed, but the REAL `app.db.session.session_scope()`
 (via the same `real_session_scope`-style monkeypatch
 `tests/integration/test_process_release_cli.py` already uses), so this
-proves the actual production wiring (settings -> FREDClient ->
-MaintenanceOrchestrator -> session_scope), not a lookalike. FRED is
-mocked at the FREDClient-*method* boundary, never a live call.
+proves the actual production wiring (settings -> BLS/BEA source ->
+MaintenanceOrchestrator -> session_scope), not a lookalike. Since #56B
+the provider is mocked at the `FirstPartyObservationSource` method
+boundary, never a live call.
 """
 
 from datetime import date, datetime, timezone
@@ -14,12 +15,27 @@ from unittest.mock import patch
 
 import pytest
 
-from app.clients.fred import FREDClient, FREDTimeoutError
+from app.clients.bounded_http import ProviderTimeoutError
 from app.db.models import EconomicRelease, EconomicSeries, MaintenanceSweep, ReleaseSeriesMapping
 from app.operations.run_maintenance import main
 from app.repositories.release_repository import ReleaseRepository
+from app.services.first_party_source import FirstPartyObservationSource
+from app.services.release_schedule import ScheduleSyncOutcome
 
 AS_OF = datetime.now(timezone.utc).date()
+
+
+@pytest.fixture(autouse=True)
+def _schedule_isolated(monkeypatch):
+    """#56B: these tests are about the SWEEP, run with today's date, so
+    the real committed schedule must not decide what is due -- near a
+    release day it would make a real occurrence due. The schedule's own
+    behaviour inside maintenance is tested in
+    `test_maintenance_release_schedule.py`."""
+    import app.operations.run_maintenance as run_maintenance
+
+    monkeypatch.setattr(run_maintenance, "sync_schedule", lambda session: ScheduleSyncOutcome(0, 0, ()))
+    monkeypatch.setattr(run_maintenance, "schedule_status", lambda today: [])
 
 
 @pytest.fixture
@@ -48,7 +64,7 @@ def _seed_release_mapping_and_occurrence(scheduled_date=AS_OF, provider_release_
         release = EconomicRelease(name="Maintenance CLI Test Release", provider="FRED", provider_release_id=provider_release_id, active=True)
         session.add(release)
         session.flush()
-        session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id="UNRATE", active=True))
+        session.add(ReleaseSeriesMapping(economic_release_id=release.id, series_id="us.unemployment-rate.sa.monthly", active=True))
         occurrence = ReleaseRepository(session).upsert_occurrence(release.id, scheduled_date)
         session.flush()
         return release.id, occurrence.id
@@ -59,7 +75,7 @@ def _cleanup(release_id: int, sweep_id: int | None = None):
 
     with session_scope() as session:
         session.execute(EconomicRelease.__table__.delete().where(EconomicRelease.id == release_id))
-        session.execute(EconomicSeries.__table__.delete().where(EconomicSeries.series_id == "UNRATE"))
+        session.execute(EconomicSeries.__table__.delete().where(EconomicSeries.series_id == "us.unemployment-rate.sa.monthly"))
         if sweep_id is not None:
             session.execute(MaintenanceSweep.__table__.delete().where(MaintenanceSweep.id == sweep_id))
 
@@ -94,7 +110,7 @@ class TestOneDueOccurrence:
     def test_no_change_occurrence_succeeds_with_zero_exit(self, configured_settings, capsys):
         release_id, occurrence_id = _seed_release_mapping_and_occurrence()
         try:
-            with patch.object(FREDClient, "get_observations", return_value=[]):
+            with patch.object(FirstPartyObservationSource, "get_observations", return_value=[]):
                 exit_code = main(["--as-of-date", AS_OF.isoformat()])
             sweep_id = _latest_sweep_id()
 
@@ -111,7 +127,7 @@ class TestProviderFailure:
     def test_provider_failure_exits_non_zero_and_reports_it_safely(self, configured_settings, capsys):
         release_id, occurrence_id = _seed_release_mapping_and_occurrence()
         try:
-            with patch.object(FREDClient, "get_observations", side_effect=FREDTimeoutError("timed out")):
+            with patch.object(FirstPartyObservationSource, "get_observations", side_effect=ProviderTimeoutError("BLS", "timed out")):
                 exit_code = main(["--as-of-date", AS_OF.isoformat()])
             sweep_id = _latest_sweep_id()
 
@@ -123,15 +139,22 @@ class TestProviderFailure:
 
 
 class TestNotConfigured:
-    def test_missing_fred_api_key_exits_two_before_touching_the_database(self, monkeypatch, test_database_url, capsys):
-        from app.core.config import settings
+    def test_no_fred_key_is_needed(self, configured_settings, monkeypatch, capsys):
+        """#56B: maintenance fetches from BLS and BEA. A deployment with no
+        FRED credential at all runs a clean sweep."""
+        monkeypatch.setattr(configured_settings, "fred_api_key", None)
+        exit_code = main(["--as-of-date", AS_OF.isoformat()])
+        sweep_id = _latest_sweep_id()
+        try:
+            assert exit_code == 0
+            captured = capsys.readouterr()
+            assert "FRED" not in captured.out + captured.err
+            assert "Due occurrences: 0" in captured.out
+        finally:
+            from app.db.session import session_scope
 
-        monkeypatch.setattr(settings, "fred_api_key", None)
-        monkeypatch.setattr(settings, "database_url", test_database_url)
-        exit_code = main([])
-        assert exit_code == 2
-        err = capsys.readouterr().err
-        assert "FRED integration is not configured" in err
+            with session_scope() as session:
+                session.execute(MaintenanceSweep.__table__.delete().where(MaintenanceSweep.id == sweep_id))
 
     def test_missing_database_url_exits_two(self, monkeypatch):
         from app.core.config import settings

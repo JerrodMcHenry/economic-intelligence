@@ -75,16 +75,16 @@ class TestFiveYearObservationStart:
 
 class TestComponentsForSeries:
     def test_primary_series_feeds_primary_momentum_and_confirmation(self):
-        assert components_for_series("PCEPILFE") == frozenset({"PRIMARY_MOMENTUM", "CONFIRMATION"})
+        assert components_for_series("us.pce.core.price-index.sa.monthly") == frozenset({"PRIMARY_MOMENTUM", "CONFIRMATION"})
 
     def test_confirmation_series_feeds_confirmation_only(self):
-        assert components_for_series("CPILFESL") == frozenset({"CONFIRMATION"})
+        assert components_for_series("us.cpi.core.price-index.sa.monthly") == frozenset({"CONFIRMATION"})
 
     def test_target_series_feeds_target_and_headline_pce(self):
-        assert components_for_series("PCEPI") == frozenset({"TARGET", "HEADLINE_PCE"})
+        assert components_for_series("us.pce.headline.price-index.sa.monthly") == frozenset({"TARGET", "HEADLINE_PCE"})
 
     def test_headline_cpi_series_feeds_headline_cpi_only(self):
-        assert components_for_series("CPIAUCSL") == frozenset({"HEADLINE_CPI"})
+        assert components_for_series("us.cpi.headline.price-index.sa.monthly") == frozenset({"HEADLINE_CPI"})
 
     def test_unrelated_series_feeds_nothing(self):
         """A future curated series with no deterministic Inflation

@@ -795,10 +795,15 @@ describe("explanations (Increment #17C)", () => {
     const user = userEvent.setup();
 
     await user.click(within(section).getByLabelText("What does Consumer Price Index (CPI) mean?"));
-    expect(within(section).getByText(/bureau of labor statistics/i)).toBeInTheDocument();
+    // #56B: the source is the agency, named with its own series ids.
+    expect(
+      within(section).getByText("Series: CUSR0000SA0 (headline) / CUSR0000SA0L1E (core) · Source: U.S. Bureau of Labor Statistics"),
+    ).toBeInTheDocument();
 
     await user.click(within(section).getByLabelText("What does Personal Consumption Expenditures (PCE) price index mean?"));
-    expect(within(section).getByText(/bureau of economic analysis/i)).toBeInTheDocument();
+    expect(
+      within(section).getByText("Series: DPCERG (headline) / DPCCRG (core) · Source: U.S. Bureau of Economic Analysis"),
+    ).toBeInTheDocument();
   });
 
   it("'Why is momentum {state}?' shows the exact backend evidence for this response, not a recalculated value", async () => {

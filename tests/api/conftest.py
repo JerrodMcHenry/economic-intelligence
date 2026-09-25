@@ -86,6 +86,9 @@ def seed_session(test_database_url: str):
 #: (provider, provider_release_id) identity so `release_seed_session`'s
 #: cleanup can tell curated rows apart from ones a test created.
 _CURATED_RELEASE_PROVIDER_IDENTITIES = {"9", "10", "50", "53", "54", "192"}
+#: #56B: the ACTIVE catalog -- the publishers' own releases. The FRED
+#: rows above are the migrated baseline too, but INACTIVE since #56B.
+_FIRST_PARTY_RELEASE_IDENTITIES = {("BLS", "cpi"), ("BLS", "empsit"), ("BEA", "pio")}
 
 
 @pytest.fixture
@@ -101,10 +104,10 @@ def release_seed_session(test_database_url: str):
     test session like any other migrated data, not get wiped out by the
     first test that uses this fixture. `release_occurrences` has no
     baseline data at all (the seed migration creates none), so it's
-    still safe to truncate in full. Cleanup also restores `active=True`
-    on the curated catalog -- a sync-path test may deactivate it
-    on purpose (to isolate itself), and that must never leak into the
-    next test.
+    still safe to truncate in full. Cleanup restores the catalog's
+    migrated activity (#56B: first-party active, FRED inactive) -- a
+    sync-path test may change it on purpose (to isolate itself), and
+    that must never leak into the next test.
     """
     engine = create_engine(test_database_url)
     session = Session(bind=engine)
@@ -113,12 +116,29 @@ def release_seed_session(test_database_url: str):
     finally:
         session.rollback()
         session.execute(text("TRUNCATE TABLE release_occurrences RESTART IDENTITY CASCADE"))
+        # Restore the MIGRATED baseline exactly (#56B): the curated FRED
+        # rows present but inactive, the first-party rows present and
+        # active with active mappings, and nothing else.
         placeholders = ", ".join(f"'{provider_release_id}'" for provider_release_id in _CURATED_RELEASE_PROVIDER_IDENTITIES)
-        session.execute(
-            text(f"DELETE FROM economic_releases WHERE provider != 'FRED' OR provider_release_id NOT IN ({placeholders})")
+        first_party = " OR ".join(
+            f"(provider = '{provider}' AND provider_release_id = '{release_id}')"
+            for provider, release_id in sorted(_FIRST_PARTY_RELEASE_IDENTITIES)
         )
         session.execute(
-            text(f"UPDATE economic_releases SET active = true WHERE provider = 'FRED' AND provider_release_id IN ({placeholders})")
+            text(
+                f"DELETE FROM economic_releases WHERE NOT ((provider = 'FRED' AND provider_release_id IN ({placeholders})) "
+                f"OR {first_party})"
+            )
+        )
+        session.execute(
+            text(f"UPDATE economic_releases SET active = false WHERE provider = 'FRED' AND provider_release_id IN ({placeholders})")
+        )
+        session.execute(text(f"UPDATE economic_releases SET active = true WHERE {first_party}"))
+        session.execute(
+            text(
+                "UPDATE release_series_mappings SET active = true WHERE economic_release_id IN "
+                f"(SELECT id FROM economic_releases WHERE {first_party})"
+            )
         )
         session.commit()
         session.close()

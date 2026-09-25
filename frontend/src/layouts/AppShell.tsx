@@ -173,12 +173,14 @@ export function AppShell() {
                 non-endorsement notice to be displayed, and #45 found it
                 rendered only inside a collapsed disclosure on
                 `/housing`, which is not a display. It lives here, on
-                every page, for the same reason the FRED and Treasury
-                lines do. */}
+                every page, for the same reason the BLS, BEA and
+                Treasury lines do. The BLS sentence is VERBATIM too: the
+                BLS API terms require it (#56B). */}
             <p className="sm:max-w-xl sm:text-right">
-              Source data: FRED®, Federal Reserve Bank of St. Louis; U.S. Department of the Treasury; U.S. Census
-              Bureau and U.S. Department of Housing and Urban Development. This product uses the Census Bureau Data
-              API but is not endorsed or certified by the Census Bureau.
+              Source data: U.S. Bureau of Labor Statistics; U.S. Bureau of Economic Analysis; U.S. Department of the
+              Treasury; U.S. Census Bureau and U.S. Department of Housing and Urban Development. BLS.gov cannot vouch
+              for the data or analyses derived from these data after the data have been retrieved from BLS.gov. This
+              product uses the Census Bureau Data API but is not endorsed or certified by the Census Bureau.
             </p>
           </div>
         </PageContainer>

@@ -125,6 +125,12 @@ class ReleaseSyncService:
         failed: list[ReleaseSyncFailure] = []
 
         for release in repo.get_active_releases():
+            if release.provider != "FRED":
+                # #56B: BLS and BEA occurrences come from the committed
+                # first-party schedule (`app.services.release_schedule`),
+                # never from FRED's calendar -- a BLS release id means
+                # nothing to FRED.
+                continue
             try:
                 release_dates = self._fred_client.get_release_dates(release.provider_release_id)
             except FREDError as exc:

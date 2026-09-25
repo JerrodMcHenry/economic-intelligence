@@ -26,6 +26,7 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from app.repositories.series_repository import provider_series_id_for
 from app.concepts.bindings import active_binding
 from app.concepts.registry import concept as economic_concept
 from app.db.models import (
@@ -330,9 +331,10 @@ class IntelligenceBuilder:
                 EvidenceRef(
                     concept_id=series.concept_id,
                     # Identity read from the stored series row (#38),
-                    # never from a module constant.
+                    # never from a module constant; for a concept-keyed
+                    # BLS/BEA row the agency's own id (#56B).
                     provider=series.source,
-                    provider_series_id=series.series_id,
+                    provider_series_id=provider_series_id_for(series),
                     observation_date=update.observation_date,
                     value=update.new_value,
                 )
@@ -355,7 +357,7 @@ class IntelligenceBuilder:
                 delta=delta,
                 observation_date=update.observation_date,
                 provider=series.source,
-                provider_series_id=series.series_id,
+                provider_series_id=provider_series_id_for(series),
                 series_title=series.title,
                 units=series.units,
             ),

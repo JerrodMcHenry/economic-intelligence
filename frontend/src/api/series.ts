@@ -25,17 +25,22 @@ export function getSeriesObservations(seriesId: string): Promise<SeriesObservati
  * The series `inflation_v1.0` leads with, and therefore the one the
  * climb draws. Named here rather than at the call site so the page
  * never hardcodes a provider id inline.
+ *
+ * #56B: these are MacroChipz STORAGE ids (concept ids), not provider
+ * ids -- the rows now hold BEA and BLS data. The agency series id
+ * (`DPCCRG`, `CES0000000001`, `LNS14000000`) arrives on every
+ * observation as `series_id` evidence from the monitor endpoints.
  */
-export const CORE_PCE_SERIES_ID = "PCEPILFE";
+export const CORE_PCE_SERIES_ID = "us.pce.core.price-index.sa.monthly";
 
 export function getCorePceObservations(): Promise<SeriesObservationsResponse> {
   return getSeriesObservations(CORE_PCE_SERIES_ID);
 }
 
 /** The employer survey MacroChipz plots on `/jobs` (#51B). */
-export const PAYROLL_SERIES_ID = "PAYEMS";
+export const PAYROLL_SERIES_ID = "us.nonfarm.payroll-employment.sa.monthly";
 /** The household survey. Carries a published gap; see `SurveyThreshold`. */
-export const UNEMPLOYMENT_SERIES_ID = "UNRATE";
+export const UNEMPLOYMENT_SERIES_ID = "us.unemployment-rate.sa.monthly";
 
 export function getPayrollObservations(): Promise<SeriesObservationsResponse> {
   return getSeriesObservations(PAYROLL_SERIES_ID);

@@ -164,35 +164,34 @@ class TestInvariantEDualBindings:
             assert len(all_bindings) >= 1
             assert sum(1 for b in all_bindings if b.active) == 1
 
-    def test_a_second_inactive_binding_does_not_change_the_active_one(self) -> None:
-        """The dual-binding shape the BLS migration uses -- now REAL, not
-        hypothetical (#56A added it): two bindings for one concept,
-        exactly one active, and resolution unaffected until #56B flips
-        the flag."""
+    def test_the_dual_binding_resolves_to_the_agency_and_keeps_fred_inactive(self) -> None:
+        """The dual-binding shape ADR-034 designed, after #56B flipped it:
+        two bindings for one concept, exactly one active -- now BLS -- and
+        FRED kept, inactive, on its own row so its history stays FRED's."""
         concept_id = "us.nonfarm.payroll-employment.sa.monthly"
         pair = bindings_for_concept(concept_id)
 
-        assert sorted((b.provider, b.active) for b in pair) == [("BLS", False), ("FRED", True)]
-        assert active_binding(concept_id).provider == "FRED"
-        assert active_binding(concept_id).storage_series_id == "PAYEMS"
+        assert sorted((b.provider, b.active) for b in pair) == [("BLS", True), ("FRED", False)]
+        assert active_binding(concept_id).provider == "BLS"
+        assert active_binding(concept_id).storage_series_id == concept_id
         # Separate rows, so FRED history is never relabelled.
         assert {b.storage_series_id for b in pair} == {"PAYEMS", concept_id}
 
-    def test_every_first_party_binding_is_inactive_until_activation(self) -> None:
-        """#56A populates BLS/BEA rows without changing what any reader
-        resolves. The day this fails, #56B has flipped a flag -- and
-        every other guarantee of that increment must hold with it."""
+    def test_every_inflation_and_jobs_concept_resolves_to_bls_or_bea_never_fred(self) -> None:
+        """#56B's first requirement, for all six at once."""
         first_party = [b for b in BINDINGS if b.provider in {"BLS", "BEA"}]
         assert len(first_party) == 6
-        assert not any(b.active for b in first_party)
         for binding in first_party:
-            assert binding.storage_series_id == binding.concept_id
+            resolved = active_binding(binding.concept_id)
+            assert resolved == binding
+            assert resolved.storage_series_id == binding.concept_id
             fred = [b for b in bindings_for_concept(binding.concept_id) if b.provider == "FRED"]
-            assert len(fred) == 1 and fred[0].active
+            assert len(fred) == 1 and not fred[0].active
             # Native units and factors identical to FRED's, so the
             # methodologies cannot tell the two rows apart.
             assert binding.provider_native_unit == fred[0].provider_native_unit
             assert binding.canonical_unit_factor == fred[0].canonical_unit_factor
+        assert not any(b.active for b in BINDINGS if b.provider == "FRED")
 
 
 class TestAmbiguityCannotSilentlySucceed:

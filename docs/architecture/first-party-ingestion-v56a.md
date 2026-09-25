@@ -164,4 +164,5 @@ python -m app.operations.import_first_party [--years 10] [--provider all|bls|bea
   increment's job.
 - **`SeriesIdentity.provider_series_id` for concept-keyed rows** still
   reads the storage id (the known gap in #54B §3). Harmless while the
-  rows are inert. Must be fixed before activation in #56B.
+  rows are inert. Must be fixed before activation in #56B. **Resolved in
+  #56B** (`provider_series_id_for`; see first-party-activation-v56b.md).

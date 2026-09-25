@@ -34,8 +34,8 @@ pytestmark = pytest.mark.integration
 # repository this turn (production-reliability-deployment-v1.md §7) --
 # never assumed or duplicated as application logic, only used here to
 # arrange each test's own starting database state.
-_HEAD = "a6f1c3d95e20"
-_ONE_BEFORE_HEAD = "e7b3d51c8a94"
+_HEAD = "b8d2e4f60a17"
+_ONE_BEFORE_HEAD = "a6f1c3d95e20"
 _THREE_BEFORE_HEAD = "b7c41d92e8a3"
 
 

@@ -33,7 +33,9 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
-from app.clients.fred import FREDClient
+from app.clients.bea import BEAClient
+from app.clients.bls import BLSClient
+from app.services.first_party_source import FirstPartyObservationSource
 from app.core.config import settings
 from app.core.schema_compatibility import check_schema_compatibility
 from app.db.session import session_scope
@@ -53,9 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     as_of_date = args.as_of_date or datetime.now(timezone.utc).date()
 
-    if not settings.fred_api_key:
-        print("Operational failure: FRED integration is not configured on this server.", file=sys.stderr)
-        return 1
+    # #56B: no FRED key is needed -- see run_maintenance.
     if not settings.database_url:
         print("Operational failure: database is not configured on this server.", file=sys.stderr)
         return 1
@@ -84,8 +84,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    client = FREDClient(api_key=settings.fred_api_key, timeout=settings.fred_timeout_seconds)
-    service = ReleaseProcessingService(client)
+    source = FirstPartyObservationSource(BLSClient(api_key=settings.bls_api_key), BEAClient(), today=as_of_date)
+    service = ReleaseProcessingService(source)
 
     try:
         with session_scope() as session:
@@ -120,7 +120,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m app.operations.process_release",
         description=(
-            "Process one release occurrence: fetch its mapped canonical series from FRED over a bounded "
+            "Process one release occurrence: fetch its mapped canonical series from BLS or BEA over a bounded "
             "five-year window, detect and persist genuine NEW/REVISED observation changes, and compute+persist "
             "any resulting deterministic Inflation or Labor analytical consequence."
         ),

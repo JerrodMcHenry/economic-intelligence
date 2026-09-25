@@ -40,14 +40,13 @@ FAKE_KEY = "synthetic-bls-key-0000000000000000"
 
 
 def serve(handler):
-    """Patch the transport's client so every request reaches `handler`."""
-    real_client = httpx.Client
+    """Replace the transport's client factory so every request reaches
+    `handler` -- the same redirect/timeout settings, a mock transport."""
 
-    def factory(*args, **kwargs):
-        kwargs["transport"] = httpx.MockTransport(handler)
-        return real_client(*args, **kwargs)
+    def factory(timeout):
+        return httpx.Client(timeout=timeout, follow_redirects=False, transport=httpx.MockTransport(handler))
 
-    return patch.object(bounded_http.httpx, "Client", factory)
+    return patch.object(bounded_http, "_new_client", factory)
 
 
 class Recorder:

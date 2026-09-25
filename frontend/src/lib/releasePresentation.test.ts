@@ -19,7 +19,7 @@ describe("releaseDisplayLabel", () => {
   });
 
   it("falls back to the canonical name for a curated release with no shortLabel entry", () => {
-    const cpi = buildReleaseOccurrenceItem({ provider_release_id: "10", name: "Consumer Price Index" });
+    const cpi = buildReleaseOccurrenceItem({ provider_release_id: "cpi", name: "Consumer Price Index" });
     expect(releaseDisplayLabel(cpi)).toBe("Consumer Price Index");
   });
 
@@ -42,7 +42,7 @@ describe("isShortenedLabel", () => {
   });
 
   it("is false when the canonical name is shown as-is", () => {
-    const cpi = buildReleaseOccurrenceItem({ provider_release_id: "10", name: "Consumer Price Index" });
+    const cpi = buildReleaseOccurrenceItem({ provider_release_id: "cpi", name: "Consumer Price Index" });
     expect(isShortenedLabel(cpi)).toBe(false);
   });
 
@@ -54,9 +54,9 @@ describe("isShortenedLabel", () => {
 
 describe("releaseCategory", () => {
   it.each([
-    ["10", "Inflation"],
-    ["54", "Inflation / Consumer"],
-    ["50", "Labor"],
+    ["cpi", "Inflation"],
+    ["pio", "Inflation / Consumer"],
+    ["empsit", "Labor"],
     ["192", "Labor"],
     ["53", "Growth"],
     ["9", "Consumer"],

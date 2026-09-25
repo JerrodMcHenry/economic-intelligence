@@ -24,9 +24,9 @@ interface ReleasePresentation {
 }
 
 const RELEASE_PRESENTATION: Record<string, ReleasePresentation> = {
-  "10": { category: "Inflation" }, // Consumer Price Index
-  "54": { category: "Inflation / Consumer" }, // Personal Income and Outlays
-  "50": { category: "Labor" }, // Employment Situation
+  cpi: { category: "Inflation" }, // Consumer Price Index
+  pio: { category: "Inflation / Consumer" }, // Personal Income and Outlays
+  empsit: { category: "Labor" }, // Employment Situation
   "192": { shortLabel: "JOLTS", category: "Labor" }, // Job Openings and Labor Turnover Survey
   "53": { shortLabel: "GDP", category: "Growth" }, // Gross Domestic Product
   "9": { shortLabel: "Advance Retail Sales", category: "Consumer" }, // Advance Monthly Sales for Retail and Food Services

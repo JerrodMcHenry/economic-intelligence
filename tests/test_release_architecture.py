@@ -444,3 +444,62 @@ class TestImageCarriesTheFrontend:
         content = _source(_DOCKERIGNORE)
         for required in ("frontend/node_modules/", "frontend/build/", "**/.env"):
             assert required in content, required
+
+
+class TestDependenciesAreLocked:
+    """#56B: CI and the image install the SAME exact, hash-checked
+    versions. In #56A, unpinned resolution let a new SQLAlchemy reach CI
+    between two pushes of unchanged code."""
+
+    @staticmethod
+    def _pins(path: str) -> dict[str, str]:
+        import re as _re
+
+        pins = {}
+        for line in (REPO_ROOT / path).read_text().splitlines():
+            match = _re.match(r"^([A-Za-z0-9_.\-]+)==([^\s\\\\]+)", line)
+            if match:
+                pins[match.group(1).lower().replace("_", "-")] = match.group(2)
+        return pins
+
+    @staticmethod
+    def _declared() -> set[str]:
+        import re as _re
+        import tomllib
+
+        project = tomllib.loads(_source(_PYPROJECT))["project"]
+        names = [*project["dependencies"], *project["optional-dependencies"]["dev"]]
+        return {_re.split(r"[\[<>=!~; ]", name, maxsplit=1)[0].lower().replace("_", "-") for name in names}
+
+    def test_every_declared_dependency_is_pinned_in_the_dev_lock(self):
+        assert self._declared() <= set(self._pins("requirements-dev.lock"))
+
+    def test_the_production_lock_has_every_runtime_dependency_and_no_test_tooling(self):
+        pins = self._pins("requirements.lock")
+        import tomllib
+
+        runtime = {name.split("[")[0].split(">")[0].split("=")[0].lower() for name in tomllib.loads(_source(_PYPROJECT))["project"]["dependencies"]}
+        assert runtime <= set(pins)
+        assert "pytest" not in pins
+
+    def test_the_two_locks_agree_on_every_shared_version(self):
+        prod, dev = self._pins("requirements.lock"), self._pins("requirements-dev.lock")
+        assert {name: version for name, version in prod.items() if dev.get(name) != version} == {}
+
+    def test_every_pin_carries_a_hash(self):
+        for path in ("requirements.lock", "requirements-dev.lock"):
+            text = (REPO_ROOT / path).read_text()
+            assert text.count("==") == len(self._pins(path))
+            assert text.count("--hash=sha256:") >= len(self._pins(path)), path
+
+    def test_the_image_installs_only_the_locked_set(self):
+        code = _code_only(_DOCKERFILE)
+        assert "pip install --no-cache-dir --require-hashes -r requirements.lock" in code
+        assert "pip install --no-cache-dir --no-deps ." in code
+        assert "pip install --no-cache-dir . " not in code
+
+    def test_ci_installs_the_same_locked_set(self):
+        content = _source(_CI_WORKFLOW)
+        assert "pip install --require-hashes -r requirements-dev.lock" in content
+        assert "pip install --no-deps -e ." in content
+        assert 'pip install -e ".[dev]"' not in content

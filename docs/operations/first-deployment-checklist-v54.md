@@ -1,13 +1,15 @@
-# MacroChipz — Restricted Deployment Checklist (#54A → #55A)
+# MacroChipz — Restricted Deployment Checklist (#54A → #55A → #56B)
 
-**Increment #55A — preparation only. Nothing deployed, provisioned,
-purchased or configured; nothing committed or pushed.**
-- Baseline `7c7e5ce`: CI green (run 36049522444).
+**Preparation only. Nothing deployed, provisioned, purchased or
+configured; nothing committed or pushed by these increments.**
 - #54A evidence (§1–§2) is unchanged below.
-- #55A **replaces #54A's Rates + Housing-only plan** with a restricted
-  deployment of all four worlds. Inflation and Jobs stay FRED-sourced
-  (the #54B migration is audited, not approved), so nothing may be
-  served without authentication.
+- #55A **replaced #54A's Rates + Housing-only plan** with a restricted
+  deployment of all four worlds behind an access gate (ADR-042).
+- **#56B moved Inflation and Jobs to BLS and BEA.** The deployment needs
+  no FRED credential and holds no FRED data. The restriction itself is
+  unchanged: production is still always gated (ADR-042). Making the site
+  public is a separate, explicit decision, not a side effect of this
+  migration.
 
 Decision record: `docs/adr/042-restricted-demo-access-gate.md`. The
 platform decisions in `render-production-architecture-v1.md` (#26F)
@@ -156,16 +158,16 @@ no prerendered object pages (CI asserts the sitemap's absence).
 
 ## §4. Remaining blockers and decisions
 
+**#56B status.**
+- **R1 CLOSED:** the Container workflow is green on `404a983` and
+  `5b7fe50`.
+- **R2 CLOSED for the deployment:** Inflation and Jobs now come from BLS
+  and BEA. No FRED credential is configured, and no FRED data or FRED
+  calendar is fetched or stored (a fresh database was verified with zero
+  FRED observations and zero FRED occurrences).
+- **R3 remains.**
+
 **Blocking:**
-- **R1 — Docker CI has not run yet.** `container.yml` runs on the next
-  push. Its Docker steps (build, image contents, migrate, start, logs)
-  have never executed. The HTTP checks it runs were executed locally
-  against the image-equivalent process, 41/41 + 5/5 (§1b). **Do not
-  deploy until that workflow is green.**
-- **R2 — FRED terms under restriction (DECISION).** Restricting access
-  reduces exposure to a handful of invited reviewers. It does **not**
-  resolve FRED's API terms (#46B §D.3), which is a human decision.
-  Record the decision before deploying.
 - **R3 — public repository contains FRED-derived snapshots.**
   - `docs/product/mockups/v50a/inflation-snapshot.json` and `data.js`
     (from `9b97f16`), and `v51a/jobs-snapshot.json`, `data.js` and
@@ -207,7 +209,8 @@ instance, branch `main`, **auto-deploy off**):
 | `ACCESS_USERNAME` | e.g. `reviewer` | no |
 | `ACCESS_PASSWORD` | `python -c "import secrets; print(secrets.token_urlsafe(24))"` (32 chars), `sync: false` | **yes** |
 | `OPERATOR_TOKEN` | `python -c "import secrets; print(secrets.token_urlsafe(32))"`, `sync: false` | **yes** |
-| `FRED_API_KEY` | FRED key, `sync: false` — needed for Inflation/Jobs ingestion (R2) | **yes** |
+| `FRED_API_KEY` | **unset** (#56B) — nothing in the deployment uses FRED | — |
+| `BLS_API_KEY` | optional (#56B). Keyless BLS v1 allows 25 queries/day, enough for daily maintenance plus imports; a key raises it to 500 | **yes** |
 | `CENSUS_API_KEY` | Census key, `sync: false` | **yes** |
 | `CORS_ALLOWED_ORIGINS` | **unset** — the frontend is same-origin | — |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | **unset** — Analyst stays disabled (VERIFIED: `available: false`) | — |
@@ -230,7 +233,8 @@ instance, branch `main`, **auto-deploy off**):
 
 ## §6. Deployment sequence
 
-Prerequisites: R1 green, and R2 and R3 decided.
+Prerequisites: CI and Container green on the deploy commit, and R3
+decided.
 
 1. **Workspace:** Hobby. Enable deploy-failure email notifications.
 2. **Postgres:** create per §5. Confirm the Recovery page shows PITR.
@@ -283,46 +287,65 @@ printf 'user = "%s:%s"\nheader = "X-Operator-Token: %s"\n' \
 2. **Housing:**
    `curl -X POST -K ~/.macrochipz-operator.curlrc "$APP/api/v1/housing/sync?full_history=true"`
    → `SUCCEEDED`.
-3. **Release calendar (FRED):**
-   `curl -X POST -K ~/.macrochipz-operator.curlrc $APP/api/v1/releases/sync`.
-4. **Inflation and Jobs.**
-   - Process the most recent past CPI (10), Employment Situation (50)
-     and Personal Income and Outlays (54) occurrence.
-   - Open a Render Shell on the web service and list the occurrences
-     with the snippet below (VERIFIED locally through the
-     production-only environment).
+3. **Inflation and Jobs** (#56B: BLS and BEA, no FRED). In a Render
+   Shell on the web service -- a command, not an HTTP request, so no
+   request timeout or deploy can cut it off:
+   ```sh
+   python -m app.operations.import_first_party      # 10 years, one BLS query + the BEA NIPA file
+   python -m app.operations.release_schedule --sync # BLS/BEA release dates -> occurrences
+   ```
+   Expect `SUCCEEDED BASELINE_BACKFILL` for BLS and BEA, and every
+   schedule `OK` (VERIFIED on a fresh database, #56B: 464 + 230
+   observations, 37 occurrences).
+4. **Optional, first recorded results:** process the latest past
+   occurrence of each release. After an import of the same data this
+   reports `NO_CHANGE` (VERIFIED) -- it proves the path, and it is what
+   the scheduled job does after every release day.
+   ```sh
+   python -m app.operations.process_release --occurrence-id <id>
+   ```
+   The ids come from the snippet below (VERIFIED locally through the
+   production-only environment).
 
 ```sh
 python - <<'PY'
 from sqlalchemy import text
 from app.db.session import session_scope
 with session_scope() as s:
-    rows = s.execute(text("""
-        select distinct on (r.provider_release_id) r.provider_release_id, r.name, o.id, o.scheduled_date
+    for pid, occ, day in s.execute(text("""
+        select distinct on (r.provider_release_id) r.provider_release_id, o.id, o.scheduled_date
         from release_occurrences o join economic_releases r on r.id = o.economic_release_id
-        where r.provider_release_id in ('10', '54', '50') and o.scheduled_date <= current_date
-        order by r.provider_release_id, o.scheduled_date desc"""))
-    for release, name, occurrence_id, day in rows:
-        print(f"{release:>3}  {day}  occurrence {occurrence_id}  {name}")
+        where r.active and o.scheduled_date <= current_date
+        order by r.provider_release_id, o.scheduled_date desc""")):
+        print(pid, occ, day)
 PY
 ```
 
-   - Then, for each id:
-     `python -m app.operations.process_release --occurrence-id <id>`.
-     Each fetches the 5-year window and records a monitor result.
 5. **Verify:** `/api/v1/monitors/inflation` and `/monitors/labor` return
    states other than `INSUFFICIENT_DATA`.
-   - State duration may still report insufficient history: 60 stored
-     months against about 73 needed (existing, #54B T4).
+   - #56B imports 115-116 months, so state duration has the ~73 it needs.
 6. **Ongoing refresh (manual at first):**
    - Rates weekly.
    - Housing monthly.
-   - `releases/sync` monthly.
-   - `python -m app.operations.run_maintenance` after each CPI,
-     Employment Situation or PIO release day. It processes occurrences
-     due within a 7-day window.
+   - `python -m app.operations.run_maintenance` once a day (or after
+     each CPI, Employment Situation or PIO release day). It first writes
+     the committed schedule, reports each release as OK / EXPIRING /
+     EXPIRED, then processes occurrences due within a 7-day window.
+     **It exits 1 once the schedule has expired** -- which, as a Render
+     Cron Job, sends the failure email.
    - A Render Cron Job for `run_maintenance` is optional: ≥ $1/month
-     (DOCS), same image, and `FRED_API_KEY` + `DATABASE_URL` only.
+     (DOCS), same image, `DATABASE_URL` only (plus `BLS_API_KEY` if
+     set). No FRED key.
+   - **Every December:** add the next year's dates to
+     `app/models/release_schedule.py` from the BLS and BEA schedule
+     pages, and deploy. The 2026 schedule EXPIRES after 2026-12-23;
+     `release_schedule` warns from 45 days before.
+   - **Manual path, no calendar needed:**
+     `python -m app.operations.import_first_party` re-reads BLS and BEA
+     and records only genuine changes (new months as observed, revisions
+     as REVISED). Use it whenever the schedule has expired or a release
+     was missed. It updates the data the monitors read; it does not
+     write release-processing history.
 
 ## §8. Ingestion: interruption, detection, retry
 

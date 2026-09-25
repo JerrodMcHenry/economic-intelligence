@@ -52,8 +52,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      # #56B: the locked, hash-checked set -- the same versions the
+      # Docker image installs -- then the project without resolving.
       - name: Install backend dependencies
-        run: pip install -e ".[dev]"
+        run: |
+          pip install --require-hashes -r requirements-dev.lock
+          pip install --no-deps -e .
 
       - name: Create isolated test database
         run: psql "postgresql://postgres@localhost:5432/postgres" -c "CREATE DATABASE economic_intelligence_test;"
